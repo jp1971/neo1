@@ -1,1 +1,1 @@
-add_subdirectory(apple1)
+add_subdirectory(neo1-23)
