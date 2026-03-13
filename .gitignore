@@ -1,0 +1,25 @@
+# macOS
+**/.DS_Store
+
+# VS Code local project files
+**/.vscode
+
+# Build output
+**/build
+
+# Generated binaries
+*.uf2
+*.bin
+*.hex
+*.elf
+*.map
+*.dis
+
+# CMake / Ninja
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+.ninja_deps
+.ninja_log
+pico_sdk_import.cmake
