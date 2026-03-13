@@ -1,0 +1,11 @@
+[submodule "lib/pico-sdk"]
+	path = lib/pico-sdk
+	url = https://github.com/vsladkov/pico-sdk.git
+
+[submodule "lib/PicoDVI"]
+	path = lib/PicoDVI
+	url = https://github.com/vsladkov/PicoDVI.git
+
+[submodule "lib/tinyusb"]
+	path = lib/tinyusb
+	url = https://github.com/vsladkov/tinyusb.git
