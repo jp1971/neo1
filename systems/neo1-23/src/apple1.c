@@ -36,7 +36,7 @@
 #include "systems/neo1.h"
 #include "neo1_terminal.h"
 #include "neo1_video.h"
-#include "apple1_usb.h"
+#include "neo1_usb.h"
 #include "roms/neo1_roms.h"
 
 #include "hardware/vreg.h"
@@ -65,7 +65,7 @@ static void neo1_video_sync_terminal(void) {
    neo1_video_set_terminal(&state.term);
 }
 
-static void apple1_usb_char_in(uint8_t ch, void* user_data) {
+static void neo1_usb_char_in(uint8_t ch, void* user_data) {
     (void)user_data;
 
 #if APPLE1_KBD_DEBUG
@@ -135,7 +135,7 @@ static void app_init(void) {
     apple1_init(&state.apple1, &desc);
     apple1_reset(&state.apple1);
 
-    apple1_usb_init(apple1_usb_char_in, 0);
+    neo1_usb_init(neo1_usb_char_in, 0);
 
    neo1_video_sync_terminal();
 }
@@ -253,7 +253,7 @@ int main(void) {
         uint32_t start_time_us = time_us_32();
 
         poll_keyboard();
-        apple1_usb_task();
+        neo1_usb_task();
 
         // Run a modest chunk of cycles. We can tune this later.
         const uint32_t num_ticks = 5000;

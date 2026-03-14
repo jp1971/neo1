@@ -1,4 +1,4 @@
-#include "apple1_usb.h"
+#include "neo1_usb.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -12,7 +12,7 @@
 // TinyUSB example helper headers.
 static const uint8_t keycode2ascii[128][2] = { HID_KEYCODE_TO_ASCII };
 
-static apple1_usb_char_handler_t g_char_handler = NULL;
+static neo1_usb_char_handler_t g_char_handler = NULL;
 static void* g_char_handler_user_data = NULL;
 
 static bool g_keyboard_mounted = false;
@@ -22,7 +22,7 @@ static hid_keyboard_report_t g_prev_report = { 0 };
 // internal helpers
 // -----------------------------------------------------------------------------
 
-static inline bool apple1_usb_is_key_in_report(hid_keyboard_report_t const* report, uint8_t keycode) {
+static inline bool neo1_usb_is_key_in_report(hid_keyboard_report_t const* report, uint8_t keycode) {
     for (uint32_t i = 0; i < 6; i++) {
         if (report->keycode[i] == keycode) {
             return true;
@@ -31,13 +31,13 @@ static inline bool apple1_usb_is_key_in_report(hid_keyboard_report_t const* repo
     return false;
 }
 
-static void apple1_usb_emit_char(uint8_t ch) {
+static void neo1_usb_emit_char(uint8_t ch) {
     if (g_char_handler) {
         g_char_handler(ch, g_char_handler_user_data);
     }
 }
 
-static void apple1_usb_process_kbd_report(hid_keyboard_report_t const* report) {
+static void neo1_usb_process_kbd_report(hid_keyboard_report_t const* report) {
     // Modifier bits from TinyUSB HID definitions.
     const bool shift =
         (report->modifier & (KEYBOARD_MODIFIER_LEFTSHIFT | KEYBOARD_MODIFIER_RIGHTSHIFT)) != 0;
@@ -51,25 +51,25 @@ static void apple1_usb_process_kbd_report(hid_keyboard_report_t const* report) {
         }
 
         // Only emit newly pressed keys.
-        if (apple1_usb_is_key_in_report(&g_prev_report, keycode)) {
+        if (neo1_usb_is_key_in_report(&g_prev_report, keycode)) {
             continue;
         }
 
         switch (keycode) {
             case HID_KEY_ENTER:
-                apple1_usb_emit_char('\r');
+                neo1_usb_emit_char('\r');
                 break;
 
             case HID_KEY_BACKSPACE:
-                apple1_usb_emit_char(0x08);
+                neo1_usb_emit_char(0x08);
                 break;
 
             case HID_KEY_TAB:
-                apple1_usb_emit_char('\t');
+                neo1_usb_emit_char('\t');
                 break;
 
             case HID_KEY_SPACE:
-                apple1_usb_emit_char(' ');
+                neo1_usb_emit_char(' ');
                 break;
 
             default: {
@@ -82,7 +82,7 @@ static void apple1_usb_process_kbd_report(hid_keyboard_report_t const* report) {
                                 ch = (uint8_t)(upper - '@');
                             }
                         }
-                        apple1_usb_emit_char(ch);
+                        neo1_usb_emit_char(ch);
                     }
                 }
                 break;
@@ -97,7 +97,7 @@ static void apple1_usb_process_kbd_report(hid_keyboard_report_t const* report) {
 // public API
 // -----------------------------------------------------------------------------
 
-void apple1_usb_init(apple1_usb_char_handler_t handler, void* user_data) {
+void neo1_usb_init(neo1_usb_char_handler_t handler, void* user_data) {
     g_char_handler = handler;
     g_char_handler_user_data = user_data;
     g_keyboard_mounted = false;
@@ -107,11 +107,11 @@ void apple1_usb_init(apple1_usb_char_handler_t handler, void* user_data) {
     tusb_init();
 }
 
-void apple1_usb_task(void) {
+void neo1_usb_task(void) {
     tuh_task();
 }
 
-bool apple1_usb_keyboard_mounted(void) {
+bool neo1_usb_keyboard_mounted(void) {
     return g_keyboard_mounted;
 }
 
@@ -152,7 +152,7 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t cons
 
     if (itf_protocol == HID_ITF_PROTOCOL_KEYBOARD) {
         // printf("[usb] keyboard report dev=%u inst=%u\n", dev_addr, instance);
-        apple1_usb_process_kbd_report((hid_keyboard_report_t const*) report);
+        neo1_usb_process_kbd_report((hid_keyboard_report_t const*) report);
     }
 
     // Request the next report.
