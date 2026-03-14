@@ -76,7 +76,6 @@ void wdc65C02cpu_set_irq(bool state);
 #define CHIPS_ASSERT(c) assert(c)
 #endif
 
-#ifdef OLIMEX_NEO6502
 #define _GPIO_MASK       (0xFF)
 #define _GPIO_SHIFT_BITS (0)
 #define _OE1_PIN         (8)
@@ -87,17 +86,6 @@ void wdc65C02cpu_set_irq(bool state);
 #define _RESET_PIN       (26)
 #define _IRQ_PIN         (25)
 #define _NMI_PIN         (27)
-#else
-#define _GPIO_MASK       (0x3FC)
-#define _GPIO_SHIFT_BITS (2)
-#define _OE1_PIN         (10)
-#define _OE2_PIN         (11)
-#define _OE3_PIN         (20)
-#define _RW_PIN          (21)
-#define _CLOCK_PIN       (22)
-#define _RESET_PIN       (26)
-#define _IRQ_PIN         (28)
-#endif  // OLIMEX_NEO6502
 
 void wdc65C02cpu_init() {
     gpio_init_mask(_GPIO_MASK);
@@ -129,11 +117,9 @@ void wdc65C02cpu_init() {
     gpio_set_dir(_IRQ_PIN, GPIO_OUT);
     gpio_put(_IRQ_PIN, 1);
 
-#ifdef OLIMEX_NEO6502
     gpio_init(_NMI_PIN);  // NMI
     gpio_set_dir(_NMI_PIN, GPIO_OUT);
     gpio_put(_NMI_PIN, 1);
-#endif  // OLIMEX_NEO6502
 
     gpio_put(_RESET_PIN, 0);
     sleep_us(1000);
@@ -151,11 +137,9 @@ void wdc65C02cpu_reset() {
 }
 
 void wdc65C02cpu_nmi() {
-#ifdef OLIMEX_NEO6502
     gpio_put(_NMI_PIN, 0);
     sleep_us(1000);
     gpio_put(_NMI_PIN, 1);
-#endif  // OLIMEX_NEO6502
 }
 
 void wdc65C02cpu_tick(wdc6502cpu_t* c) {
@@ -177,12 +161,6 @@ uint16_t wdc65C02cpu_get_addr() {
     __asm volatile("nop\n");
     __asm volatile("nop\n");
     __asm volatile("nop\n");
-#ifndef OLIMEX_NEO6502
-    __asm volatile("nop\n");
-    __asm volatile("nop\n");
-    __asm volatile("nop\n");
-    __asm volatile("nop\n");
-#endif
     uint16_t addr = (gpio_get_all() >> _GPIO_SHIFT_BITS) & 0xFF;
     gpio_put(_OE1_PIN, 1);
 
@@ -193,12 +171,6 @@ uint16_t wdc65C02cpu_get_addr() {
     __asm volatile("nop\n");
     __asm volatile("nop\n");
     __asm volatile("nop\n");
-#ifndef OLIMEX_NEO6502
-    __asm volatile("nop\n");
-    __asm volatile("nop\n");
-    __asm volatile("nop\n");
-    __asm volatile("nop\n");
-#endif
     addr |= (gpio_get_all() << (8 - _GPIO_SHIFT_BITS)) & 0xFF00;
     gpio_put(_OE2_PIN, 1);
 
@@ -217,12 +189,6 @@ uint8_t wdc65C02cpu_get_data() {
     __asm volatile("nop\n");
     __asm volatile("nop\n");
     __asm volatile("nop\n");
-#ifndef OLIMEX_NEO6502
-    __asm volatile("nop\n");
-    __asm volatile("nop\n");
-    __asm volatile("nop\n");
-    __asm volatile("nop\n");
-#endif
     uint8_t data = (gpio_get_all() >> _GPIO_SHIFT_BITS) & 0xFF;
     gpio_put(_OE3_PIN, 1);
 
@@ -236,10 +202,8 @@ void wdc65C02cpu_set_data(uint8_t data) {
 
     gpio_put_masked(_GPIO_MASK, data << _GPIO_SHIFT_BITS);
     gpio_put(_OE3_PIN, 0);
-#ifndef OLIMEX_NEO6502
     __asm volatile("nop\n");
     __asm volatile("nop\n");
-#endif
     gpio_put(_OE3_PIN, 1);
 
     // printf("set data: %02x\n", data);

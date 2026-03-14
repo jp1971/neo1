@@ -10,7 +10,6 @@ add_executable(neo1
 target_compile_options(neo1 PRIVATE -Wall)
 
 target_compile_definitions(neo1 PRIVATE
-    OLIMEX_NEO6502=1
     DVI_DEFAULT_SERIAL_CONFIG=olimex_neo6502_cfg
     DVI_VERTICAL_REPEAT=1
     DVI_N_TMDS_BUFFERS=3

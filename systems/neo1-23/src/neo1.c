@@ -26,7 +26,7 @@
 //
 // Notes:
 // - CHIPS_IMPL must appear in exactly one C/C++ translation unit
-// - OLIMEX_NEO6502 should be defined for Neo6502 builds
+// - This build targets the Olimex Neo6502 platform exclusively.
 
 #define CHIPS_IMPL
 
@@ -40,11 +40,7 @@
 #include "pico/stdlib.h"
 
 #include "chips/chips_common.h"
-#ifdef OLIMEX_NEO6502
 #include "chips/wdc65C02cpu.h"
-#else
-#include "chips/mos6502cpu.h"
-#endif
 #include "chips/mem.h"
 #include "chips/clk.h"
 
@@ -305,16 +301,11 @@ int main(void) {
     
     sleep_ms(200);
 
-    printf("[apple1] starting...\n");
-#ifdef OLIMEX_NEO6502
-    printf("[apple1] OLIMEX_NEO6502 defined\n");
-#else
-    printf("[apple1] OLIMEX_NEO6502 NOT defined\n");
-#endif
+    printf("[neo1] starting...\n");
 
     // Print ROM size as a quick confirmation that the expected Neo1-23 system
     // image is compiled into the build.
-    printf("[apple1] ROM size = %u bytes\n", (unsigned)sizeof(apple1_rom));
+    printf("[neo1] ROM size = %u bytes\n", (unsigned)sizeof(apple1_rom));
 
     // The Neo1-23 system ROM occupies the top 8 KiB of memory ($E000-$FFFF).
     // The 65C02 vectors live in the last 6 bytes of that image, so printing

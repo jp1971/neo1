@@ -23,9 +23,7 @@
 #define FONT_CHAR_WIDTH 8
 #define FONT_CHAR_HEIGHT 8
 
-#ifdef OLIMEX_NEO6502
 #define VREG_VSEL VREG_VOLTAGE_1_10
-#endif
 
 #define FRAME_WIDTH   640
 #define FRAME_HEIGHT  480
@@ -171,11 +169,9 @@ void neo1_video_set_terminal(neo1_terminal_t* term) {
 }
 
 void neo1_video_init(neo1_terminal_t* term) {
-#ifdef OLIMEX_NEO6502
     vreg_set_voltage(VREG_VSEL);
     sleep_ms(10);
     set_sys_clock_khz(DVI_TIMING.bit_clk_khz, true);
-#endif
 
     g_front_buffer_index = 0;
     g_pending_buffer_index = 0;

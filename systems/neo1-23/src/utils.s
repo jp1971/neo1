@@ -67,11 +67,7 @@ decl_func apple2_render_scanline
 decl_func copy_tmdsbuf
 	push {r2-r7, lr}
 
-#ifdef OLIMEX_NEO6502
 .rept 160
-#else
-.rept 200
-#endif
 	ldmia r1!, {r2, r3, r4, r5, r6, r7}
 	stmia r0!, {r2, r3, r4, r5, r6, r7}
 .endr
