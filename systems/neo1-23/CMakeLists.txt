@@ -17,6 +17,11 @@ target_compile_definitions(neo1 PRIVATE
     NEO1_ENABLE_DVI=1
 )
 
+target_include_directories(neo1 PRIVATE
+    ${CMAKE_SOURCE_DIR}/lib/PicoDVI/software/include
+    ${CMAKE_SOURCE_DIR}/lib/PicoDVI/software/libdvi
+)
+
 target_link_libraries(neo1
     pico_stdlib
     pico_multicore

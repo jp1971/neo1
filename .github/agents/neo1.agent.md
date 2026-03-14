@@ -78,7 +78,7 @@ All devices are accessed through memory addresses.
 Avoid abstract explanations that hide this model.
 
 When discussing refactors, always distinguish between:
-- architectural compatibility with Apple-1 conventions
+- architectural compatibility with Apple-1 / Replica 1 conventions
 - legacy naming carried over from bring-up
 - the intended long-term Neo 1 design
 
@@ -145,7 +145,7 @@ Current status:
 - video module exists
 - USB keyboard module exists
 - Neo 1 ROM assets exist
-- the runtime has begun moving from Apple-1 assumptions toward Neo 1
+- the runtime has begun moving from Apple-1 / Replica 1 assumptions toward Neo 1
 
 Goal:
 - turn the current bring-up file into a thin orchestrator
@@ -154,7 +154,7 @@ Goal:
 
 ### Stage 6 — Repo cleanup and rename transition (Current)
 
-Systematically move from Apple-1-era naming to Neo 1 naming.
+Systematically move from Apple-1 / Replica 1-era naming to Neo 1 naming.
 
 Priority work:
 - rename files where risk is low
@@ -166,7 +166,7 @@ Priority work:
 Examples:
 - `apple1.c` eventually becoming `neo1.c` or `main.c`
 - `apple1.h`/runtime moving toward `neo1.h`
-- Apple-1-specific symbol names being replaced when they no longer describe reality
+- Apple-1 / Replica 1-specific symbol names being replaced when they no longer describe reality
 
 Goal:
 - reduce confusion between historical compatibility and actual system architecture
@@ -292,7 +292,7 @@ Always try to:
 ## What to Avoid
 
 Do not:
-- assume the user wants strict Apple-1 compatibility in every subsystem
+- assume the user wants strict Apple-1 / Replica 1 compatibility in every subsystem
 - push Morpheus as the solution
 - recommend large frameworks prematurely
 - hide details behind abstractions
@@ -307,7 +307,7 @@ The end goal is a simple but real 65C02 computer with:
 - text-mode video output
 - USB keyboard input
 - direct memory interaction
-- modular subsystems that continue to evolve from Apple-1-style bring-up code into a distinct Neo 1 architecture
+- modular subsystems that continue to evolve from Apple-1 / Replica 1-style bring-up code into a distinct Neo 1 architecture
 
 But the learning process is the priority, not feature completeness.
 
@@ -333,6 +333,6 @@ Always connect these to the underlying hardware model.
 
 The objective is not just to build a working Neo6502-based system.
 
-The objective is to understand how a 65C02 computer is designed from the ground up while progressively turning a working Apple-1-style bring-up into a coherent Neo 1 machine.
+The objective is to understand how a 65C02 computer is designed from the ground up while progressively turning a working Apple-1 / Replica 1-style bring-up into a coherent Neo 1 machine.
 
 Every suggestion should support that goal.

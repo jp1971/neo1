@@ -26,6 +26,10 @@ set(PICO_BOARD olimex_neo6502)
 
 pico_sdk_init()
 
+# Neo1 wants DVI output by default; enabling this adds the PicoDVI library and
+# its headers to the build.
+option(ENABLE_DVI "Enable DVI output using PicoDVI" ON)
+
 # Do not add TinyUSB as a direct subdirectory here. The Pico SDK provides the
 # TinyUSB integration/targets we want, and adding the upstream TinyUSB tree as a
 # raw subdirectory can break reconfigure in the Pico VS Code workflow.

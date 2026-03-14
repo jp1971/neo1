@@ -1,15 +1,15 @@
-// apple1.h
+// neo1.h
 //
-// Minimal Apple-1 runtime for Neo6502 using Reload's hardware 65C02 glue.
+// Minimal Neo1 runtime for Neo6502 using Reload's hardware 65C02 glue.
 //
 // Use this header the same way as the other Chips-style headers:
 //
 //     #define CHIPS_IMPL
-//     #include "apple1.h"
+//     #include "neo1.h"
 //
 // before including it in exactly one C/C++ translation unit.
 //
-// Required includes before apple1.h:
+// Required includes before neo1.h:
 //
 // - chips/chips_common.h
 // - chips/wdc65C02cpu.h   (for Neo6502 hardware CPU path)
@@ -20,7 +20,7 @@
 // - real WDC65C02 on Neo6502
 // - flat 64K memory backing store
 // - Neo 1 top ROM image at $E000-$FFFF (8 KB, including vectors)
-// - Apple-1 style I/O at $D010-$D013
+// - Apple-1 / Replica 1-style I/O at $D010-$D013
 // - buffered startup trace (no live printf in bus loop)
 //
 // ## zlib/libpng license
@@ -55,33 +55,33 @@ extern "C" {
 // constants
 // -----------------------------------------------------------------------------
 
-#define APPLE1_SNAPSHOT_VERSION (1)
-#define APPLE1_FREQUENCY        (1021800)
+#define NEO1_SNAPSHOT_VERSION (1)
+#define NEO1_FREQUENCY        (1021800)
 
 enum {
-    APPLE1_MEM_SIZE     = 0x10000,
-    APPLE1_ROM_BASE     = 0xE000,
-    APPLE1_ROM_SIZE     = 0x2000,
+    NEO1_MEM_SIZE     = 0x10000,
+    NEO1_ROM_BASE     = 0xE000,
+    NEO1_ROM_SIZE     = 0x2000,
 
-    APPLE1_IO_KBD       = 0xD010,
-    APPLE1_IO_KBDCR     = 0xD011,
-    APPLE1_IO_DSP       = 0xD012,
-    APPLE1_IO_DSPCR     = 0xD013,
+    NEO1_IO_KBD       = 0xD010,
+    NEO1_IO_KBDCR     = 0xD011,
+    NEO1_IO_DSP       = 0xD012,
+    NEO1_IO_DSPCR     = 0xD013,
 
-    APPLE1_TRACE_COUNT  = 64,
+    NEO1_TRACE_COUNT  = 64,
 };
 
 // -----------------------------------------------------------------------------
 // types
 // -----------------------------------------------------------------------------
 
-typedef void (*apple1_char_out_t)(uint8_t ch, void* user_data);
+typedef void (*neo1_char_out_t)(uint8_t ch, void* user_data);
 
 typedef struct {
     uint16_t addr;
     uint8_t data;
     bool rw;   // true = read, false = write
-} apple1_trace_event_t;
+} neo1_trace_event_t;
 
 typedef struct {
     chips_debug_t debug;   // optional debugging hook
@@ -91,10 +91,10 @@ typedef struct {
     } roms;
 
     struct {
-        apple1_char_out_t func; // optional display output callback
+        neo1_char_out_t func; // optional display output callback
         void* user_data;
     } char_out;
-} apple1_desc_t;
+} neo1_desc_t;
 
 typedef struct {
     MOS6502CPU_T cpu;
@@ -103,13 +103,13 @@ typedef struct {
     chips_debug_t debug;
 
     // Full 64K backing store. ROM is copied into $E000-$FFFF at init.
-    uint8_t ram[APPLE1_MEM_SIZE];
+    uint8_t ram[NEO1_MEM_SIZE];
     uint8_t* rom;
 
-    // Simple Apple-1 input latch (bit 7 set means "valid"/ready convention)
+    // Simple Neo1 input latch (bit 7 set means "valid"/ready convention)
     uint8_t kbd_latched;
 
-    // Minimal Apple-1 PIA-like state. We do not emulate a full 6820/6821,
+    // Minimal Neo1 PIA-like state. We do not emulate a full 6820/6821,
     // only the control/data-direction behavior WozMon relies on.
     uint8_t kbd_cr;
     uint8_t dsp_cr;
@@ -119,36 +119,36 @@ typedef struct {
     uint8_t dsp_data;
 
     // Optional display callback
-    apple1_char_out_t char_out;
+    neo1_char_out_t char_out;
     void* char_out_user_data;
 
     // Buffered startup trace
-    apple1_trace_event_t startup_trace[APPLE1_TRACE_COUNT];
+    neo1_trace_event_t startup_trace[NEO1_TRACE_COUNT];
     uint32_t startup_trace_len;
     bool startup_trace_complete;
 
     uint32_t system_ticks;
-} apple1_t;
+} neo1_t;
 
 // -----------------------------------------------------------------------------
 // API
 // -----------------------------------------------------------------------------
 
-void apple1_init(apple1_t* sys, const apple1_desc_t* desc);
-void apple1_discard(apple1_t* sys);
-void apple1_reset(apple1_t* sys);
-void apple1_tick(apple1_t* sys);
-uint32_t apple1_exec(apple1_t* sys, uint32_t micro_seconds);
+void neo1_init(neo1_t* sys, const neo1_desc_t* desc);
+void neo1_discard(neo1_t* sys);
+void neo1_reset(neo1_t* sys);
+void neo1_tick(neo1_t* sys);
+uint32_t neo1_exec(neo1_t* sys, uint32_t micro_seconds);
 
-// Inject one Apple-1 keyboard character (ASCII). Bit 7 will be set internally.
-void apple1_key_down(apple1_t* sys, uint8_t ascii);
+// Inject one Neo1 keyboard character (ASCII). Bit 7 will be set internally.
+void neo1_key_down(neo1_t* sys, uint8_t ascii);
 
 // Startup trace accessors
-uint32_t apple1_read_startup_trace(const apple1_t* sys, const apple1_trace_event_t** out_events);
+uint32_t neo1_read_startup_trace(const neo1_t* sys, const neo1_trace_event_t** out_events);
 
 // Snapshot helpers
-uint32_t apple1_save_snapshot(apple1_t* sys, apple1_t* dst);
-bool apple1_load_snapshot(apple1_t* sys, uint32_t version, apple1_t* src);
+uint32_t neo1_save_snapshot(neo1_t* sys, neo1_t* dst);
+bool neo1_load_snapshot(neo1_t* sys, uint32_t version, neo1_t* src);
 
 #ifdef __cplusplus
 } // extern "C"
@@ -166,33 +166,33 @@ bool apple1_load_snapshot(apple1_t* sys, uint32_t version, apple1_t* src);
 // internal helpers
 // -----------------------------------------------------------------------------
 
-static void _apple1_init_memorymap(apple1_t* sys) {
+static void _neo1_init_memorymap(neo1_t* sys) {
     mem_init(&sys->mem);
 
     // Map the whole 64K backing store as RAM. We protect ROM writes manually.
-    mem_map_ram(&sys->mem, 0, 0x0000, APPLE1_MEM_SIZE, sys->ram);
+    mem_map_ram(&sys->mem, 0, 0x0000, NEO1_MEM_SIZE, sys->ram);
 }
 
-static inline void _apple1_capture_trace(apple1_t* sys, uint16_t addr, uint8_t data, bool rw) {
+static inline void _neo1_capture_trace(neo1_t* sys, uint16_t addr, uint8_t data, bool rw) {
     if (sys->startup_trace_complete) {
         return;
     }
 
-    if (sys->startup_trace_len < APPLE1_TRACE_COUNT) {
-        apple1_trace_event_t* ev = &sys->startup_trace[sys->startup_trace_len++];
+    if (sys->startup_trace_len < NEO1_TRACE_COUNT) {
+        neo1_trace_event_t* ev = &sys->startup_trace[sys->startup_trace_len++];
         ev->addr = addr;
         ev->data = data;
         ev->rw = rw;
 
-        if (sys->startup_trace_len == APPLE1_TRACE_COUNT) {
+        if (sys->startup_trace_len == NEO1_TRACE_COUNT) {
             sys->startup_trace_complete = true;
         }
     }
 }
 
-static inline uint8_t _apple1_mem_read(apple1_t* sys, uint16_t addr) {
+static inline uint8_t _neo1_mem_read(neo1_t* sys, uint16_t addr) {
     switch (addr) {
-        case APPLE1_IO_KBD:
+        case NEO1_IO_KBD:
             // If bit 2 is clear, access the DDR. Otherwise access the peripheral register.
             if ((sys->kbd_cr & 0x04) == 0) {
                 return sys->kbd_ddr;
@@ -203,11 +203,11 @@ static inline uint8_t _apple1_mem_read(apple1_t* sys, uint16_t addr) {
                 return v;
             }
 
-        case APPLE1_IO_KBDCR:
+        case NEO1_IO_KBDCR:
             // Preserve the programmed control bits, but report key-ready in bit 7.
             return (sys->kbd_cr & 0x7F) | ((sys->kbd_latched != 0) ? 0x80 : 0x00);
 
-        case APPLE1_IO_DSP:
+        case NEO1_IO_DSP:
             // If bit 2 is clear, access the DDR. Otherwise access the peripheral register.
             if ((sys->dsp_cr & 0x04) == 0) {
                 return sys->dsp_ddr;
@@ -217,7 +217,7 @@ static inline uint8_t _apple1_mem_read(apple1_t* sys, uint16_t addr) {
                 return 0x00;
             }
 
-        case APPLE1_IO_DSPCR:
+        case NEO1_IO_DSPCR:
             // Minimal model: preserve the programmed control bits and report ready in bit 7.
             return (sys->dsp_cr & 0x7F) | 0x80;
 
@@ -226,9 +226,9 @@ static inline uint8_t _apple1_mem_read(apple1_t* sys, uint16_t addr) {
     }
 }
 
-static inline void _apple1_mem_write(apple1_t* sys, uint16_t addr, uint8_t data) {
+static inline void _neo1_mem_write(neo1_t* sys, uint16_t addr, uint8_t data) {
     switch (addr) {
-        case APPLE1_IO_KBD:
+        case NEO1_IO_KBD:
             if ((sys->kbd_cr & 0x04) == 0) {
                 sys->kbd_ddr = data;
             } else {
@@ -236,11 +236,11 @@ static inline void _apple1_mem_write(apple1_t* sys, uint16_t addr, uint8_t data)
             }
             break;
 
-        case APPLE1_IO_KBDCR:
+        case NEO1_IO_KBDCR:
             sys->kbd_cr = data;
             break;
 
-        case APPLE1_IO_DSP:
+        case NEO1_IO_DSP:
             if ((sys->dsp_cr & 0x04) == 0) {
                 sys->dsp_ddr = data;
             } else {
@@ -251,28 +251,28 @@ static inline void _apple1_mem_write(apple1_t* sys, uint16_t addr, uint8_t data)
             }
             break;
 
-        case APPLE1_IO_DSPCR:
+        case NEO1_IO_DSPCR:
             sys->dsp_cr = data;
             break;
 
         default:
             // Protect the ROM region. Neo 1 ROM is copied into $E000-$FFFF.
-            if (addr < APPLE1_ROM_BASE) {
+            if (addr < NEO1_ROM_BASE) {
                 mem_wr(&sys->mem, addr, data);
             }
             break;
     }
 }
 
-static inline void _apple1_mem_rw(apple1_t* sys, uint16_t addr, bool rw) {
+static inline void _neo1_mem_rw(neo1_t* sys, uint16_t addr, bool rw) {
     if (rw) {
-        uint8_t data = _apple1_mem_read(sys, addr);
+        uint8_t data = _neo1_mem_read(sys, addr);
         MOS6502CPU_SET_DATA(&sys->cpu, data);
-        _apple1_capture_trace(sys, addr, data, true);
+        _neo1_capture_trace(sys, addr, data, true);
     } else {
         uint8_t data = MOS6502CPU_GET_DATA(&sys->cpu);
-        _apple1_mem_write(sys, addr, data);
-        _apple1_capture_trace(sys, addr, data, false);
+        _neo1_mem_write(sys, addr, data);
+        _neo1_capture_trace(sys, addr, data, false);
     }
 }
 
@@ -280,7 +280,7 @@ static inline void _apple1_mem_rw(apple1_t* sys, uint16_t addr, bool rw) {
 // public implementation
 // -----------------------------------------------------------------------------
 
-void apple1_init(apple1_t* sys, const apple1_desc_t* desc) {
+void neo1_init(neo1_t* sys, const neo1_desc_t* desc) {
     CHIPS_ASSERT(sys && desc);
     if (desc->debug.callback.func) {
         CHIPS_ASSERT(desc->debug.stopped);
@@ -291,7 +291,7 @@ void apple1_init(apple1_t* sys, const apple1_desc_t* desc) {
     sys->debug = desc->debug;
 
     CHIPS_ASSERT(desc->roms.rom.ptr);
-    CHIPS_ASSERT(desc->roms.rom.size >= APPLE1_ROM_SIZE);
+    CHIPS_ASSERT(desc->roms.rom.size >= NEO1_ROM_SIZE);
 
     sys->rom = desc->roms.rom.ptr;
     sys->char_out = desc->char_out.func;
@@ -302,20 +302,20 @@ void apple1_init(apple1_t* sys, const apple1_desc_t* desc) {
     MOS6502CPU_INIT(&sys->cpu, 0);
 
     // Build flat memory map and preload memory.
-    _apple1_init_memorymap(sys);
+    _neo1_init_memorymap(sys);
 
     // Fill memory with a predictable Apple-like pattern:
     // even bytes 00, odd bytes FF. This mirrors how apple2.h seeds RAM.
-    for (uint32_t addr = 0; addr < APPLE1_MEM_SIZE; addr += 2) {
+    for (uint32_t addr = 0; addr < NEO1_MEM_SIZE; addr += 2) {
         sys->ram[addr] = 0x00;
         sys->ram[addr + 1] = 0xFF;
     }
 
     // Copy the 8 KB Neo 1 top ROM image to $E000-$FFFF. This ROM should
     // already contain NMI/RESET/IRQ vectors in its last 6 bytes.
-    memcpy(&sys->ram[APPLE1_ROM_BASE], sys->rom, APPLE1_ROM_SIZE);
+    memcpy(&sys->ram[NEO1_ROM_BASE], sys->rom, NEO1_ROM_SIZE);
 
-    printf("[apple1] mem E000=%02X E001=%02X F000=%02X F001=%02X FFFA=%02X FFFB=%02X FFFC=%02X FFFD=%02X FFFE=%02X FFFF=%02X\n",
+    printf("[neo1] mem E000=%02X E001=%02X F000=%02X F001=%02X FFFA=%02X FFFB=%02X FFFC=%02X FFFD=%02X FFFE=%02X FFFF=%02X\n",
         sys->ram[0xE000], sys->ram[0xE001],
         sys->ram[0xF000], sys->ram[0xF001],
         sys->ram[0xFFFA], sys->ram[0xFFFB],
@@ -338,12 +338,12 @@ void apple1_init(apple1_t* sys, const apple1_desc_t* desc) {
     sys->system_ticks = 0;
 }
 
-void apple1_discard(apple1_t* sys) {
+void neo1_discard(neo1_t* sys) {
     CHIPS_ASSERT(sys && sys->valid);
     sys->valid = false;
 }
 
-void apple1_reset(apple1_t* sys) {
+void neo1_reset(neo1_t* sys) {
     CHIPS_ASSERT(sys && sys->valid);
 
     sys->kbd_latched = 0;
@@ -366,30 +366,30 @@ void apple1_reset(apple1_t* sys) {
     MOS6502CPU_SET_RESET(&sys->cpu, false);
 }
 
-void apple1_tick(apple1_t* sys) {
+void neo1_tick(neo1_t* sys) {
     CHIPS_ASSERT(sys && sys->valid);
 
     // This ordering intentionally matches the working Apple II implementation:
     //   1) tick the real CPU / hardware glue
     //   2) service memory using captured addr/rw
     MOS6502CPU_TICK(&sys->cpu);
-    _apple1_mem_rw(sys, sys->cpu.addr, sys->cpu.rw);
+    _neo1_mem_rw(sys, sys->cpu.addr, sys->cpu.rw);
 
     sys->system_ticks++;
 }
 
-uint32_t apple1_exec(apple1_t* sys, uint32_t micro_seconds) {
+uint32_t neo1_exec(neo1_t* sys, uint32_t micro_seconds) {
     CHIPS_ASSERT(sys && sys->valid);
 
-    uint32_t num_ticks = clk_us_to_ticks(APPLE1_FREQUENCY, micro_seconds);
+    uint32_t num_ticks = clk_us_to_ticks(NEO1_FREQUENCY, micro_seconds);
 
     if (0 == sys->debug.callback.func) {
         for (uint32_t ticks = 0; ticks < num_ticks; ticks++) {
-            apple1_tick(sys);
+            neo1_tick(sys);
         }
     } else {
         for (uint32_t ticks = 0; (ticks < num_ticks) && !(*sys->debug.stopped); ticks++) {
-            apple1_tick(sys);
+            neo1_tick(sys);
             sys->debug.callback.func(sys->debug.callback.user_data, 0);
         }
     }
@@ -397,10 +397,10 @@ uint32_t apple1_exec(apple1_t* sys, uint32_t micro_seconds) {
     return num_ticks;
 }
 
-void apple1_key_down(apple1_t* sys, uint8_t ascii) {
+void neo1_key_down(neo1_t* sys, uint8_t ascii) {
     CHIPS_ASSERT(sys && sys->valid);
 
-    // Apple-1 monitor convention: set bit 7 on incoming key.
+    // Replica 1 / Apple-1 monitor convention: set bit 7 on incoming key.
     // Translate LF to CR for convenience.
     if (ascii == '\n') {
         ascii = '\r';
@@ -412,7 +412,7 @@ void apple1_key_down(apple1_t* sys, uint8_t ascii) {
     }
 }
 
-uint32_t apple1_read_startup_trace(const apple1_t* sys, const apple1_trace_event_t** out_events) {
+uint32_t neo1_read_startup_trace(const neo1_t* sys, const neo1_trace_event_t** out_events) {
     CHIPS_ASSERT(sys);
     if (out_events) {
         *out_events = sys->startup_trace;
@@ -420,21 +420,21 @@ uint32_t apple1_read_startup_trace(const apple1_t* sys, const apple1_trace_event
     return sys->startup_trace_len;
 }
 
-uint32_t apple1_save_snapshot(apple1_t* sys, apple1_t* dst) {
+uint32_t neo1_save_snapshot(neo1_t* sys, neo1_t* dst) {
     CHIPS_ASSERT(sys && dst);
     *dst = *sys;
     chips_debug_snapshot_onsave(&dst->debug);
     mem_snapshot_onsave(&dst->mem, sys);
-    return APPLE1_SNAPSHOT_VERSION;
+    return NEO1_SNAPSHOT_VERSION;
 }
 
-bool apple1_load_snapshot(apple1_t* sys, uint32_t version, apple1_t* src) {
+bool neo1_load_snapshot(neo1_t* sys, uint32_t version, neo1_t* src) {
     CHIPS_ASSERT(sys && src);
-    if (version != APPLE1_SNAPSHOT_VERSION) {
+    if (version != NEO1_SNAPSHOT_VERSION) {
         return false;
     }
 
-    static apple1_t im;
+    static neo1_t im;
     im = *src;
     chips_debug_snapshot_onload(&im.debug, &sys->debug);
     mem_snapshot_onload(&im.mem, sys);

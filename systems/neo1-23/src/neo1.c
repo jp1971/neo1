@@ -1,6 +1,6 @@
-// apple1.c
+// neo1.c
 //
-// Neo1-23 Apple-1-compatible machine entry point.
+// Neo1-23 machine entry point.
 //
 // This file is now less of a bring-up experiment and more of a thin machine
 // orchestrator. The RP2040-side platform services live in separate Neo1 modules:
@@ -17,8 +17,9 @@
 // - initialize the system ROM environment
 // - run the machine tick loop
 //
-// Architecturally, this is still Apple-1-compatible at the machine interface,
-// but it is now running on a distinct Neo1-23 platform with:
+// Architecturally, this remains compatible with Apple-1 / Replica 1 conventions
+// at the machine interface, but it is now running on a distinct Neo1-23 platform
+// with:
 // - an 8 KiB system ROM at $E000-$FFFF
 // - DVI text output
 // - USB keyboard input
@@ -53,8 +54,8 @@
 #include "hardware/vreg.h"
 #include "hardware/clocks.h"
 
-#ifndef APPLE1_DVI_TEST_PATTERN
-#define APPLE1_DVI_TEST_PATTERN (0)
+#ifndef NEO1_DVI_TEST_PATTERN
+#define NEO1_DVI_TEST_PATTERN (0)
 #endif
 
 // -----------------------------------------------------------------------------
@@ -62,7 +63,7 @@
 // -----------------------------------------------------------------------------
 
 typedef struct {
-    apple1_t apple1;
+    neo1_t neo1;
     neo1_terminal_t term;
 } state_t;
 
@@ -83,7 +84,7 @@ static void neo1_video_sync_terminal(void) {
 //
 // TinyUSB decodes HID reports in neo1_usb.c and forwards ASCII-like characters
 // here. This function normalizes them into the conventions expected by the
-// Apple-1-style machine interface before injecting them into apple1_key_down().
+// Apple-1 / Replica 1-style machine interface before injecting them into neo1_key_down().
 //
 // Current normalization policy:
 // - LF becomes CR
@@ -93,7 +94,7 @@ static void neo1_video_sync_terminal(void) {
 static void neo1_usb_char_in(uint8_t ch, void* user_data) {
     (void)user_data;
 
-#if APPLE1_KBD_DEBUG
+#if NEO1_KBD_DEBUG
     printf("[usb] ascii=%02X", (unsigned)ch);
     if ((ch >= 32) && (ch < 127)) {
         printf(" '%c'", ch);
@@ -109,7 +110,7 @@ static void neo1_usb_char_in(uint8_t ch, void* user_data) {
         ch = (uint8_t)toupper(ch);
     }
 
-    apple1_key_down(&state.apple1, ch);
+    neo1_key_down(&state.neo1, ch);
 }
 
 // -----------------------------------------------------------------------------
@@ -124,13 +125,13 @@ static void neo1_usb_char_in(uint8_t ch, void* user_data) {
 // - into the Neo1 terminal/video pipeline for on-screen display
 // - into UART/stdout for debugging and serial visibility
 //
-// Apple-1 software commonly sets bit 7 on output characters, so we strip it
-// before rendering or printing the byte.
+// Replica 1 / Apple-1 monitor software commonly sets bit 7 on output
+// characters, so we strip it before rendering or printing the byte.
 //
-static void apple1_char_out(uint8_t ch, void* user_data) {
+static void neo1_char_out(uint8_t ch, void* user_data) {
     (void)user_data;
 
-    // Apple-1 monitor output often has bit 7 set. Strip it for terminal display.
+    // Replica 1 / Apple-1 monitor output often has bit 7 set. Strip it for terminal display.
     ch &= 0x7F;
     neo1_terminal_putc(&state.term, ch);
     neo1_video_sync_terminal();
@@ -156,17 +157,17 @@ static void apple1_char_out(uint8_t ch, void* user_data) {
 // - which output callback receives machine-generated characters
 // - whether optional debug hooks are enabled
 //
-static apple1_desc_t apple1_desc(void) {
-    return (apple1_desc_t){
+static neo1_desc_t neo1_desc(void) {
+    return (neo1_desc_t){
         .debug = {0},
         .roms = {
             .rom = {
-                .ptr = apple1_rom,
-                .size = sizeof(apple1_rom),
+                .ptr = neo1_system_rom_bin,
+                .size = sizeof(neo1_system_rom_bin),
             },
         },
         .char_out = {
-            .func = apple1_char_out,
+            .func = neo1_char_out,
             .user_data = 0,
         },
     };
@@ -185,9 +186,9 @@ static apple1_desc_t apple1_desc(void) {
 static void app_init(void) {
     neo1_terminal_clear(&state.term);
 
-    apple1_desc_t desc = apple1_desc();
-    apple1_init(&state.apple1, &desc);
-    apple1_reset(&state.apple1);
+    neo1_desc_t desc = neo1_desc();
+    neo1_init(&state.neo1, &desc);
+    neo1_reset(&state.neo1);
 
     neo1_usb_init(neo1_usb_char_in, 0);
 
@@ -205,12 +206,12 @@ static void app_init(void) {
 // - UART/stdin polling here
 // - USB keyboard input through neo1_usb_task()
 //
-// Both paths normalize characters into the same Apple-1-style machine input
-// convention and then inject them via apple1_key_down().
+// Both paths normalize characters into the same Apple-1 / Replica 1-style machine
+// input convention and then inject them via neo1_key_down().
 //
 
-#ifndef APPLE1_KBD_DEBUG
-#define APPLE1_KBD_DEBUG (0)
+#ifndef NEO1_KBD_DEBUG
+#define NEO1_KBD_DEBUG (0)
 #endif
 
 #ifndef NEO1_TERM_DEBUG
@@ -239,7 +240,7 @@ static void poll_keyboard(void) {
         ch = toupper(ch);
     }
 
-    apple1_key_down(&state.apple1, (uint8_t)ch);
+    neo1_key_down(&state.neo1, (uint8_t)ch);
 }
 
 // -----------------------------------------------------------------------------
@@ -254,10 +255,10 @@ static void poll_keyboard(void) {
 // inside the memory/bus path.
 //
 static void print_startup_trace(void) {
-    const apple1_trace_event_t* ev = 0;
-    uint32_t count = apple1_read_startup_trace(&state.apple1, &ev);
+    const neo1_trace_event_t* ev = 0;
+    uint32_t count = neo1_read_startup_trace(&state.neo1, &ev);
 
-    printf("[apple1] startup trace (%u events)\n", (unsigned)count);
+    printf("[neo1] startup trace (%u events)\n", (unsigned)count);
 
     for (uint32_t i = 0; i < count; i++) {
         printf("%c %04X %02X\n",
@@ -289,14 +290,14 @@ static void print_startup_trace(void) {
 int main(void) {
     stdio_init_all();
     app_init();
-    printf("[apple1] configuring DVI...\n");
+    printf("[neo1] configuring DVI...\n");
    neo1_video_init(&state.term);
 
     // DVI init changes the system clock; reinitialize stdio/UART so the
     // serial console stays at the expected baud rate.
     stdio_init_all();
 
-    printf("[apple1] starting DVI core...\n");
+    printf("[neo1] starting DVI core...\n");
    neo1_video_start();
     
     sleep_ms(200);
@@ -305,30 +306,30 @@ int main(void) {
 
     // Print ROM size as a quick confirmation that the expected Neo1-23 system
     // image is compiled into the build.
-    printf("[neo1] ROM size = %u bytes\n", (unsigned)sizeof(apple1_rom));
+    printf("[neo1] ROM size = %u bytes\n", (unsigned)sizeof(neo1_system_rom_bin));
 
     // The Neo1-23 system ROM occupies the top 8 KiB of memory ($E000-$FFFF).
     // The 65C02 vectors live in the last 6 bytes of that image, so printing
     // them here is a quick sanity check that the ROM layout is what we expect.
-    if (sizeof(apple1_rom) >= 0x2000) {
-        const uint32_t vec_base = (uint32_t)sizeof(apple1_rom) - 6u;
-        printf("[apple1] vectors: NMI=%02X%02X RESET=%02X%02X IRQ=%02X%02X\n",
-               apple1_rom[vec_base + 1], apple1_rom[vec_base + 0],
-               apple1_rom[vec_base + 3], apple1_rom[vec_base + 2],
-               apple1_rom[vec_base + 5], apple1_rom[vec_base + 4]);
+    if (sizeof(neo1_system_rom_bin) >= 0x2000) {
+        const uint32_t vec_base = (uint32_t)sizeof(neo1_system_rom_bin) - 6u;
+        printf("[neo1] vectors: NMI=%02X%02X RESET=%02X%02X IRQ=%02X%02X\n",
+               neo1_system_rom_bin[vec_base + 1], neo1_system_rom_bin[vec_base + 0],
+               neo1_system_rom_bin[vec_base + 3], neo1_system_rom_bin[vec_base + 2],
+               neo1_system_rom_bin[vec_base + 5], neo1_system_rom_bin[vec_base + 4]);
     }
 
-    printf("[apple1] capturing startup trace...\n");
+    printf("[neo1] capturing startup trace...\n");
 
     // Capture enough early bus activity to understand reset/startup behavior,
     // but keep printing outside the bus loop so timing stays predictable.
-    while (state.apple1.startup_trace_len < APPLE1_TRACE_COUNT) {
-        apple1_tick(&state.apple1);
+    while (state.neo1.startup_trace_len < NEO1_TRACE_COUNT) {
+        neo1_tick(&state.neo1);
     }
 
     print_startup_trace();
 
-    printf("[apple1] entering run loop...\n");
+    printf("[neo1] entering run loop...\n");
 
     while (1) {
         uint32_t start_time_us = time_us_32();
@@ -341,7 +342,7 @@ int main(void) {
         // needs different pacing or tighter synchronization.
         const uint32_t num_ticks = 5000;
         for (uint32_t i = 0; i < num_ticks; i++) {
-            apple1_tick(&state.apple1);
+            neo1_tick(&state.neo1);
         }
 
         uint32_t end_time_us = time_us_32();
