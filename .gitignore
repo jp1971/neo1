@@ -7,6 +7,9 @@
 # Build output
 **/build
 
+# Agent reference files
+**/ref
+
 # Generated binaries
 *.uf2
 *.bin
