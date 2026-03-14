@@ -1,5 +1,5 @@
-add_executable(apple1
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/apple1.c
+add_executable(neo1
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1_terminal.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1_usb.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1_video.c
@@ -7,9 +7,9 @@ add_executable(apple1
     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils.S
 )
 
-target_compile_options(apple1 PRIVATE -Wall)
+target_compile_options(neo1 PRIVATE -Wall)
 
-target_compile_definitions(apple1 PRIVATE
+target_compile_definitions(neo1 PRIVATE
     OLIMEX_NEO6502=1
     DVI_DEFAULT_SERIAL_CONFIG=olimex_neo6502_cfg
     DVI_VERTICAL_REPEAT=1
@@ -18,12 +18,12 @@ target_compile_definitions(apple1 PRIVATE
 )
 
 if (ENABLE_DVI)
-    target_compile_definitions(apple1 PRIVATE
-        APPLE1_ENABLE_DVI=1
+    target_compile_definitions(neo1 PRIVATE
+        NEO1_ENABLE_DVI=1
     )
 endif()
 
-target_link_libraries(apple1
+target_link_libraries(neo1
     pico_stdlib
     pico_multicore
     pico_util
@@ -32,7 +32,7 @@ target_link_libraries(apple1
 )
 
 if (ENABLE_DVI)
-    target_link_libraries(apple1
+    target_link_libraries(neo1
         libdvi
         hardware_dma
         hardware_irq
@@ -44,8 +44,8 @@ if (ENABLE_DVI)
 endif()
 
 # create map/bin/hex/uf2
-pico_add_extra_outputs(apple1)
+pico_add_extra_outputs(neo1)
 
 # Serial-only for now
-pico_enable_stdio_usb(apple1 0)
-pico_enable_stdio_uart(apple1 1)
+pico_enable_stdio_usb(neo1 0)
+pico_enable_stdio_uart(neo1 1)

@@ -19,12 +19,10 @@ set(PICO_TINYUSB_PATH ${CMAKE_CURRENT_LIST_DIR}/lib/tinyusb)
 
 include(pico_sdk_import.cmake)
 
-project(apple1                           C CXX ASM)
+project(neo1                           C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 set(PICO_BOARD olimex_neo6502)
-# set(PICO_BOARD olimex_rp2040pc)
-# set(PICO_BOARD pico_zero)
 
 pico_sdk_init()
 
