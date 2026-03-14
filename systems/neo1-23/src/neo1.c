@@ -48,6 +48,7 @@
 #include "systems/neo1.h"
 #include "neo1_terminal.h"
 #include "neo1_video.h"
+#include "neo1_msc.h"
 #include "neo1_usb.h"
 #include "roms/neo1_roms.h"
 
@@ -191,6 +192,7 @@ static void app_init(void) {
     neo1_init(&state.neo1, &desc);
     neo1_reset(&state.neo1);
 
+    neo1_msc_init();
     neo1_usb_init(neo1_usb_char_in, 0);
 
    neo1_video_sync_terminal();

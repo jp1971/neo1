@@ -47,6 +47,8 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "systems/neo1_msc.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -221,6 +223,10 @@ static inline uint8_t _neo1_mem_read(neo1_t* sys, uint16_t addr) {
             // Minimal model: preserve the programmed control bits and report ready in bit 7.
             return (sys->dsp_cr & 0x7F) | 0x80;
 
+        case NEO1_IO_MSC_STATUS:
+        case NEO1_IO_MSC_DATA:
+            return neo1_msc_io_read(addr);
+
         default:
             return mem_rd(&sys->mem, addr);
     }
@@ -253,6 +259,13 @@ static inline void _neo1_mem_write(neo1_t* sys, uint16_t addr, uint8_t data) {
 
         case NEO1_IO_DSPCR:
             sys->dsp_cr = data;
+            break;
+
+        case NEO1_IO_MSC_CMD:
+        case NEO1_IO_MSC_SECTOR_LO:
+        case NEO1_IO_MSC_SECTOR_HI:
+        case NEO1_IO_MSC_DATA:
+            neo1_msc_io_write(addr, data);
             break;
 
         default:

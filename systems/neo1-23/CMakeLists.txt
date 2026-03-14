@@ -2,6 +2,7 @@ add_executable(neo1
     ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1_terminal.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1_usb.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1_msc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1_video.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/console_font_8x8.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils.S

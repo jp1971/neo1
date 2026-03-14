@@ -17,3 +17,6 @@ bool neo1_usb_keyboard_mounted(void);
 
 // Returns true if an MSC device is currently mounted.
 bool neo1_usb_msc_mounted(void);
+
+// Helper for listing the root directory. Used by neo1 main for quick debugging.
+void neo1_msc_list_files(void);
