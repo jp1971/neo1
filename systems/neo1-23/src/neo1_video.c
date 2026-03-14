@@ -20,14 +20,8 @@
 #include "neo1_terminal.h"
 #include "neo1_video.h"
 
-#ifndef NEO1_ENABLE_DVI
-#define NEO1_ENABLE_DVI (1)
-#endif
-
 #define FONT_CHAR_WIDTH 8
 #define FONT_CHAR_HEIGHT 8
-
-#if NEO1_ENABLE_DVI
 
 #ifdef OLIMEX_NEO6502
 #define VREG_VSEL VREG_VOLTAGE_1_10
@@ -221,18 +215,3 @@ void neo1_video_start(void) {
     multicore_launch_core1(core1_main);
     sem_release(&dvi_start_sem);
 }
-
-#else
-
-void neo1_video_set_terminal(neo1_terminal_t* term) {
-    (void)term;
-}
-
-void neo1_video_init(neo1_terminal_t* term) {
-    (void)term;
-}
-
-void neo1_video_start(void) {
-}
-
-#endif

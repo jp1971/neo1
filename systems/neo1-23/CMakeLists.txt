@@ -15,13 +15,8 @@ target_compile_definitions(neo1 PRIVATE
     DVI_VERTICAL_REPEAT=1
     DVI_N_TMDS_BUFFERS=3
     DVI_MONOCHROME_TMDS=1
+    NEO1_ENABLE_DVI=1
 )
-
-if (ENABLE_DVI)
-    target_compile_definitions(neo1 PRIVATE
-        NEO1_ENABLE_DVI=1
-    )
-endif()
 
 target_link_libraries(neo1
     pico_stdlib
@@ -29,19 +24,14 @@ target_link_libraries(neo1
     pico_util
     tinyusb_host
     tinyusb_board
+    libdvi
+    hardware_dma
+    hardware_irq
+    hardware_pio
+    hardware_interp
+    hardware_vreg
+    hardware_clocks
 )
-
-if (ENABLE_DVI)
-    target_link_libraries(neo1
-        libdvi
-        hardware_dma
-        hardware_irq
-        hardware_pio
-        hardware_interp
-        hardware_vreg
-        hardware_clocks
-    )
-endif()
 
 # create map/bin/hex/uf2
 pico_add_extra_outputs(neo1)

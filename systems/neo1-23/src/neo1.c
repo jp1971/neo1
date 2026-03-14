@@ -57,10 +57,6 @@
 #include "hardware/vreg.h"
 #include "hardware/clocks.h"
 
-#ifndef APPLE1_ENABLE_DVI
-#define APPLE1_ENABLE_DVI (1)
-#endif
-
 #ifndef APPLE1_DVI_TEST_PATTERN
 #define APPLE1_DVI_TEST_PATTERN (0)
 #endif
@@ -297,7 +293,6 @@ static void print_startup_trace(void) {
 int main(void) {
     stdio_init_all();
     app_init();
-#if APPLE1_ENABLE_DVI
     printf("[apple1] configuring DVI...\n");
    neo1_video_init(&state.term);
 
@@ -307,8 +302,6 @@ int main(void) {
 
     printf("[apple1] starting DVI core...\n");
    neo1_video_start();
-#endif
-
     
     sleep_ms(200);
 

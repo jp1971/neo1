@@ -30,10 +30,6 @@ pico_sdk_init()
 # TinyUSB integration/targets we want, and adding the upstream TinyUSB tree as a
 # raw subdirectory can break reconfigure in the Pico VS Code workflow.
 
-add_compile_options(-Wall)
-
-option(ENABLE_DVI "Build PicoDVI/libdvi (HDMI video output)" ON)
-
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/fatfs/source
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src
