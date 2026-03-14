@@ -195,6 +195,22 @@ void tuh_msc_umount_cb(uint8_t dev_addr) {
     f_mount(NULL, "0:", 0);
 }
 
+// General device mount callback for debugging
+void tuh_mount_cb(uint8_t dev_addr) {
+    printf("[usb] device mounted dev=%u\n", dev_addr);
+    
+    // Get device descriptor (blocking)
+    tusb_desc_device_t desc;
+    if (tuh_descriptor_get_device_sync(dev_addr, &desc, sizeof(desc)) == sizeof(desc)) {
+        printf("[usb] VID=%04X PID=%04X class=%02X\n", desc.idVendor, desc.idProduct, desc.bDeviceClass);
+    }
+}
+
+// General device unmount callback for debugging
+void tuh_umount_cb(uint8_t dev_addr) {
+    printf("[usb] device unmounted dev=%u\n", dev_addr);
+}
+
 // Test function to list files
 void neo1_msc_list_files(void) {
     if (!g_msc_mounted) {
