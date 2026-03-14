@@ -35,7 +35,7 @@
 
 #include "systems/neo1.h"
 #include "neo1_terminal.h"
-#include "apple1_video.h"
+#include "neo1_video.h"
 #include "apple1_usb.h"
 #include "roms/neo1_roms.h"
 
@@ -61,8 +61,8 @@ typedef struct {
 
 static state_t __not_in_flash() state;
 
-static void apple1_video_sync_terminal(void) {
-    apple1_video_set_terminal(&state.term);
+static void neo1_video_sync_terminal(void) {
+   neo1_video_set_terminal(&state.term);
 }
 
 static void apple1_usb_char_in(uint8_t ch, void* user_data) {
@@ -97,7 +97,7 @@ static void apple1_char_out(uint8_t ch, void* user_data) {
     // Apple-1 monitor output often has bit 7 set. Strip it for terminal display.
     ch &= 0x7F;
     neo1_terminal_putc(&state.term, ch);
-    apple1_video_sync_terminal();
+    neo1_video_sync_terminal();
 
     // Make carriage return readable on a modern terminal.
     if (ch == '\r') {
@@ -137,7 +137,7 @@ static void app_init(void) {
 
     apple1_usb_init(apple1_usb_char_in, 0);
 
-    apple1_video_sync_terminal();
+   neo1_video_sync_terminal();
 }
 
 // -----------------------------------------------------------------------------
@@ -205,14 +205,14 @@ int main(void) {
     app_init();
 #if APPLE1_ENABLE_DVI
     printf("[apple1] configuring DVI...\n");
-    apple1_video_init(&state.term);
+   neo1_video_init(&state.term);
 
     // DVI init changes the system clock; reinitialize stdio/UART so the
     // serial console stays at the expected baud rate.
     stdio_init_all();
 
     printf("[apple1] starting DVI core...\n");
-    apple1_video_start();
+   neo1_video_start();
 #endif
 
     

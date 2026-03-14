@@ -18,16 +18,16 @@
 #include "console_font_8x8.h"
 
 #include "neo1_terminal.h"
-#include "apple1_video.h"
+#include "neo1_video.h"
 
-#ifndef APPLE1_ENABLE_DVI
-#define APPLE1_ENABLE_DVI (1)
+#ifndef NEO1_ENABLE_DVI
+#define NEO1_ENABLE_DVI (1)
 #endif
 
 #define FONT_CHAR_WIDTH 8
 #define FONT_CHAR_HEIGHT 8
 
-#if APPLE1_ENABLE_DVI
+#if NEO1_ENABLE_DVI
 
 #ifdef OLIMEX_NEO6502
 #define VREG_VSEL VREG_VOLTAGE_1_10
@@ -37,13 +37,13 @@
 #define FRAME_HEIGHT  480
 #define DVI_TIMING    dvi_timing_640x480p_60hz
 
-#define APPLE1_SCALED_CHAR_WIDTH   (FONT_CHAR_WIDTH * 2)
-#define APPLE1_SCALED_CHAR_HEIGHT  (FONT_CHAR_HEIGHT * 2)
-#define APPLE1_ACTIVE_HEIGHT       (NEO1_TERM_ROWS * APPLE1_SCALED_CHAR_HEIGHT)
-#define APPLE1_EMPTY_LINES         (((FRAME_HEIGHT - APPLE1_ACTIVE_HEIGHT) / 2))
-#define APPLE1_SCANLINE_BYTES      (FRAME_WIDTH / 8)
-#define APPLE1_TEXT_BYTES          (NEO1_TERM_COLS * 2)
-#define APPLE1_LEFT_PAD_BYTES      ((APPLE1_SCANLINE_BYTES - APPLE1_TEXT_BYTES) / 2)
+#define NEO1_SCALED_CHAR_WIDTH   (FONT_CHAR_WIDTH * 2)
+#define NEO1_SCALED_CHAR_HEIGHT  (FONT_CHAR_HEIGHT * 2)
+#define NEO1_ACTIVE_HEIGHT       (NEO1_TERM_ROWS * NEO1_SCALED_CHAR_HEIGHT)
+#define NEO1_EMPTY_LINES         (((FRAME_HEIGHT - NEO1_ACTIVE_HEIGHT) / 2))
+#define NEO1_SCANLINE_BYTES      (FRAME_WIDTH / 8)
+#define NEO1_TEXT_BYTES          (NEO1_TERM_COLS * 2)
+#define NEO1_LEFT_PAD_BYTES      ((NEO1_SCANLINE_BYTES - NEO1_TEXT_BYTES) / 2)
 
 static struct dvi_inst dvi0;
 static struct semaphore dvi_start_sem;
@@ -58,17 +58,17 @@ static volatile bool g_has_pending_buffer = false;
 static volatile bool g_term_dirty = false;
 static volatile uint32_t g_set_terminal_calls = 0;
 static volatile uint32_t g_terminal_buffer_swaps = 0;
-#define APPLE1_CURSOR_BLINK_FRAMES 30
-static uint16_t __not_in_flash("apple1_video_font") g_font_16x8_ram[256 * FONT_CHAR_HEIGHT];
+#define NEO1_CURSOR_BLINK_FRAMES 30
+static uint16_t __not_in_flash("neo1_video_font") g_font_16x8_ram[256 * FONT_CHAR_HEIGHT];
 
-static inline uint8_t apple1_reverse_bits8(uint8_t v) {
+static inline uint8_t neo1_reverse_bits8(uint8_t v) {
     v = (uint8_t)(((v & 0xF0u) >> 4) | ((v & 0x0Fu) << 4));
     v = (uint8_t)(((v & 0xCCu) >> 2) | ((v & 0x33u) << 2));
     v = (uint8_t)(((v & 0xAAu) >> 1) | ((v & 0x55u) << 1));
     return v;
 }
 
-static inline uint16_t apple1_expand_row_2x(uint8_t bits) {
+static inline uint16_t neo1_expand_row_2x(uint8_t bits) {
     uint16_t out = 0;
     for (uint32_t i = 0; i < 8; i++) {
         if (bits & (1u << i)) {
@@ -78,7 +78,7 @@ static inline uint16_t apple1_expand_row_2x(uint8_t bits) {
     return out;
 }
 
-static void __not_in_flash_func(apple1_video_prepare_scanline)(uint32_t line) {
+static void __not_in_flash_func(neo1_video_prepare_scanline)(uint32_t line) {
     static uint8_t scanbuf[FRAME_WIDTH / 8];
     memset(scanbuf, 0, sizeof(scanbuf));
 
@@ -86,21 +86,21 @@ static void __not_in_flash_func(apple1_video_prepare_scanline)(uint32_t line) {
         goto encode_line;
     }
 
-    if (line >= APPLE1_EMPTY_LINES) {
-        const uint32_t active_height = APPLE1_ACTIVE_HEIGHT;
-        if (line < (APPLE1_EMPTY_LINES + active_height)) {
-            const uint32_t local_y = line - APPLE1_EMPTY_LINES;
-            const uint32_t row = local_y / APPLE1_SCALED_CHAR_HEIGHT;
+    if (line >= NEO1_EMPTY_LINES) {
+        const uint32_t active_height = NEO1_ACTIVE_HEIGHT;
+        if (line < (NEO1_EMPTY_LINES + active_height)) {
+            const uint32_t local_y = line - NEO1_EMPTY_LINES;
+            const uint32_t row = local_y / NEO1_SCALED_CHAR_HEIGHT;
             const uint32_t gy  = (local_y / 2) % FONT_CHAR_HEIGHT;
-            const uint32_t cell_y = local_y % APPLE1_SCALED_CHAR_HEIGHT;
+            const uint32_t cell_y = local_y % NEO1_SCALED_CHAR_HEIGHT;
 
             if (row < NEO1_TERM_ROWS) {
                 for (uint32_t col = 0; col < NEO1_TERM_COLS; col++) {
                     uint8_t ch = g_term_buffers[g_front_buffer_index].chars[row][col];
                     ch &= 0x7F;
 
-                    uint32_t dst_byte = APPLE1_LEFT_PAD_BYTES + (col * 2);
-                    if ((dst_byte + 1) < APPLE1_SCANLINE_BYTES) {
+                    uint32_t dst_byte = NEO1_LEFT_PAD_BYTES + (col * 2);
+                    if ((dst_byte + 1) < NEO1_SCANLINE_BYTES) {
                         uint16_t bits16 = g_font_16x8_ram[((uint32_t)ch * FONT_CHAR_HEIGHT) + gy];
                         scanbuf[dst_byte + 0] = (uint8_t)(bits16 & 0xFFu);
                         scanbuf[dst_byte + 1] = (uint8_t)(bits16 >> 8);
@@ -108,7 +108,7 @@ static void __not_in_flash_func(apple1_video_prepare_scanline)(uint32_t line) {
                 }
             }
             if (row < NEO1_TERM_ROWS) {
-                const bool cursor_blink_on = (((dvi_frame_counter / APPLE1_CURSOR_BLINK_FRAMES) & 1u) == 0u);
+                const bool cursor_blink_on = (((dvi_frame_counter / NEO1_CURSOR_BLINK_FRAMES) & 1u) == 0u);
                 const uint32_t cursor_x = g_term_buffers[g_front_buffer_index].cursor_x;
                 const uint32_t cursor_y = g_term_buffers[g_front_buffer_index].cursor_y;
 
@@ -116,9 +116,9 @@ static void __not_in_flash_func(apple1_video_prepare_scanline)(uint32_t line) {
                     (cursor_y < NEO1_TERM_ROWS) &&
                     (cursor_x < NEO1_TERM_COLS) &&
                     (row == cursor_y) &&
-                    (cell_y >= (APPLE1_SCALED_CHAR_HEIGHT - 2))) {
-                    const uint32_t cursor_byte = APPLE1_LEFT_PAD_BYTES + (cursor_x * 2);
-                    if ((cursor_byte + 1) < APPLE1_SCANLINE_BYTES) {
+                    (cell_y >= (NEO1_SCALED_CHAR_HEIGHT - 2))) {
+                    const uint32_t cursor_byte = NEO1_LEFT_PAD_BYTES + (cursor_x * 2);
+                    if ((cursor_byte + 1) < NEO1_SCANLINE_BYTES) {
                         scanbuf[cursor_byte + 0] = 0xFFu;
                         scanbuf[cursor_byte + 1] = 0xFFu;
                     }
@@ -154,7 +154,7 @@ static void __not_in_flash_func(_scanline_callback)(void) {
         }
     }
 
-    apple1_video_prepare_scanline(dvi_line_counter);
+    neo1_video_prepare_scanline(dvi_line_counter);
     dvi_line_counter++;
 }
 
@@ -167,7 +167,7 @@ static void __not_in_flash_func(core1_main)(void) {
     }
 }
 
-void apple1_video_set_terminal(neo1_terminal_t* term) {
+void neo1_video_set_terminal(neo1_terminal_t* term) {
     g_term = term;
     g_set_terminal_calls++;
 
@@ -176,7 +176,7 @@ void apple1_video_set_terminal(neo1_terminal_t* term) {
     }
 }
 
-void apple1_video_init(neo1_terminal_t* term) {
+void neo1_video_init(neo1_terminal_t* term) {
 #ifdef OLIMEX_NEO6502
     vreg_set_voltage(VREG_VSEL);
     sleep_ms(10);
@@ -190,7 +190,7 @@ void apple1_video_init(neo1_terminal_t* term) {
     g_set_terminal_calls = 0;
     g_terminal_buffer_swaps = 0;
 
-    apple1_video_set_terminal(term);
+    neo1_video_set_terminal(term);
 
     if (g_term) {
         memcpy(&g_term_buffers[0], g_term, sizeof(g_term_buffers[0]));
@@ -201,8 +201,8 @@ void apple1_video_init(neo1_terminal_t* term) {
     for (uint32_t ch = 0; ch < 256; ch++) {
         for (uint32_t row = 0; row < FONT_CHAR_HEIGHT; row++) {
             uint8_t bits = console_font_8x8[(ch * FONT_CHAR_HEIGHT) + row];
-            bits = apple1_reverse_bits8(bits);
-            g_font_16x8_ram[(ch * FONT_CHAR_HEIGHT) + row] = apple1_expand_row_2x(bits);
+            bits = neo1_reverse_bits8(bits);
+            g_font_16x8_ram[(ch * FONT_CHAR_HEIGHT) + row] = neo1_expand_row_2x(bits);
         }
     }
 
@@ -213,10 +213,10 @@ void apple1_video_init(neo1_terminal_t* term) {
     dvi_init(&dvi0, next_striped_spin_lock_num(), next_striped_spin_lock_num());
 
     dvi_line_counter = 1;
-    apple1_video_prepare_scanline(0);
+    neo1_video_prepare_scanline(0);
 }
 
-void apple1_video_start(void) {
+void neo1_video_start(void) {
     hw_set_bits(&bus_ctrl_hw->priority, BUSCTRL_BUS_PRIORITY_PROC1_BITS);
     multicore_launch_core1(core1_main);
     sem_release(&dvi_start_sem);
@@ -224,15 +224,15 @@ void apple1_video_start(void) {
 
 #else
 
-void apple1_video_set_terminal(neo1_terminal_t* term) {
+void neo1_video_set_terminal(neo1_terminal_t* term) {
     (void)term;
 }
 
-void apple1_video_init(neo1_terminal_t* term) {
+void neo1_video_init(neo1_terminal_t* term) {
     (void)term;
 }
 
-void apple1_video_start(void) {
+void neo1_video_start(void) {
 }
 
 #endif
