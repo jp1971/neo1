@@ -68,6 +68,7 @@ typedef struct {
 } state_t;
 
 static state_t __not_in_flash() state;
+static bool msc_listed = false;
 
 //
 // Push the current terminal state into the video module.
@@ -336,6 +337,11 @@ int main(void) {
 
         poll_keyboard();
         neo1_usb_task();
+
+        if (neo1_usb_msc_mounted() && !msc_listed) {
+            neo1_msc_list_files();
+            msc_listed = true;
+        }
 
         // Run a modest chunk of machine cycles per host iteration.
         // This is intentionally simple and can be revisited later if Neo1-23

@@ -14,3 +14,6 @@ void neo1_usb_task(void);
 
 // Returns true if a keyboard is currently attached.
 bool neo1_usb_keyboard_mounted(void);
+
+// Returns true if an MSC device is currently mounted.
+bool neo1_usb_msc_mounted(void);

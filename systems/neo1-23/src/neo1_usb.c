@@ -7,6 +7,8 @@
 #include "bsp/board_api.h"
 #include "tusb.h"
 #include "class/hid/hid.h"
+#include "class/msc/msc.h"
+#include "ff.h"
 
 // Keep the HID keycode -> ASCII lookup local to Neo 1 instead of depending on
 // TinyUSB example helper headers.
@@ -17,6 +19,9 @@ static void* g_char_handler_user_data = NULL;
 
 static bool g_keyboard_mounted = false;
 static hid_keyboard_report_t g_prev_report = { 0 };
+
+static bool g_msc_mounted = false;
+static FATFS fs;
 
 // -----------------------------------------------------------------------------
 // internal helpers
@@ -115,6 +120,10 @@ bool neo1_usb_keyboard_mounted(void) {
     return g_keyboard_mounted;
 }
 
+bool neo1_usb_msc_mounted(void) {
+    return g_msc_mounted;
+}
+
 // -----------------------------------------------------------------------------
 // TinyUSB host callbacks
 // -----------------------------------------------------------------------------
@@ -157,4 +166,55 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t cons
 
     // Request the next report.
     tuh_hid_receive_report(dev_addr, instance);
+}
+
+// -----------------------------------------------------------------------------
+// MSC callbacks
+// -----------------------------------------------------------------------------
+
+// MSC device is mounted
+void tuh_msc_mount_cb(uint8_t dev_addr) {
+    printf("[msc] mounted dev=%u\n", dev_addr);
+    g_msc_mounted = true;
+
+    // Mount FatFs
+    FRESULT res = f_mount(&fs, "0:", 1);
+    if (res != FR_OK) {
+        printf("[msc] FatFs mount failed: %d\n", res);
+    } else {
+        printf("[msc] FatFs mounted\n");
+    }
+}
+
+// MSC device is unmounted
+void tuh_msc_umount_cb(uint8_t dev_addr) {
+    printf("[msc] unmounted dev=%u\n", dev_addr);
+    g_msc_mounted = false;
+
+    // Unmount FatFs
+    f_mount(NULL, "0:", 0);
+}
+
+// Test function to list files
+void neo1_msc_list_files(void) {
+    if (!g_msc_mounted) {
+        printf("[msc] no drive mounted\n");
+        return;
+    }
+
+    DIR dir;
+    FILINFO fno;
+    FRESULT res = f_opendir(&dir, "0:");
+    if (res != FR_OK) {
+        printf("[msc] opendir failed: %d\n", res);
+        return;
+    }
+
+    printf("[msc] files:\n");
+    while (true) {
+        res = f_readdir(&dir, &fno);
+        if (res != FR_OK || fno.fname[0] == 0) break;
+        printf("  %s\n", fno.fname);
+    }
+    f_closedir(&dir);
 }

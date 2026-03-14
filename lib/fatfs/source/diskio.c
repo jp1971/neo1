@@ -9,136 +9,93 @@
 
 #include "ff.h"			/* Obtains integer types */
 #include "diskio.h"		/* Declarations of disk functions */
+#include "tusb.h"
+#include "class/msc/msc.h"
 
 /* Definitions of physical drive number for each drive */
-#define DEV_RAM		0	/* Example: Map Ramdisk to physical drive 0 */
-#define DEV_MMC		1	/* Example: Map MMC/SD card to physical drive 1 */
-#define DEV_USB		2	/* Example: Map USB MSD to physical drive 2 */
+#define DEV_USB		0	/* Map USB MSD to physical drive 0 */
 
+static bool disk_inited[1] = {false};
+static volatile bool msc_complete = false;
+static bool msc_success = false;
+
+bool msc_complete_cb(uint8_t dev_addr, tuh_msc_complete_data_t const* cb_data) {
+    (void)dev_addr; (void)cb_data;
+    msc_complete = true;
+    msc_success = cb_data->csw->status == 0;
+    return true;
+}
 
 /*-----------------------------------------------------------------------*/
 /* Get Drive Status                                                      */
 /*-----------------------------------------------------------------------*/
 
 DSTATUS disk_status (
-	BYTE pdrv		/* Physical drive nmuber to identify the drive */
+	BYTE pdrv		/* Physical drive number to identify the drive */
 )
 {
-	DSTATUS stat;
-	int result;
+	if (pdrv != DEV_USB) return STA_NOINIT;
 
-	switch (pdrv) {
-	case DEV_RAM :
-		result = RAM_disk_status();
+	if (!disk_inited[pdrv]) return STA_NOINIT;
 
-		// translate the reslut code here
-
-		return stat;
-
-	case DEV_MMC :
-		result = MMC_disk_status();
-
-		// translate the reslut code here
-
-		return stat;
-
-	case DEV_USB :
-		result = USB_disk_status();
-
-		// translate the reslut code here
-
-		return stat;
-	}
-	return STA_NOINIT;
+	// For MSC, assume always ready if mounted
+	return 0;
 }
-
-
 
 /*-----------------------------------------------------------------------*/
 /* Inidialize a Drive                                                    */
 /*-----------------------------------------------------------------------*/
 
 DSTATUS disk_initialize (
-	BYTE pdrv				/* Physical drive nmuber to identify the drive */
+	BYTE pdrv				/* Physical drive number to identify the drive */
 )
 {
-	DSTATUS stat;
-	int result;
+	if (pdrv != DEV_USB) return STA_NOINIT;
 
-	switch (pdrv) {
-	case DEV_RAM :
-		result = RAM_disk_initialize();
-
-		// translate the reslut code here
-
-		return stat;
-
-	case DEV_MMC :
-		result = MMC_disk_initialize();
-
-		// translate the reslut code here
-
-		return stat;
-
-	case DEV_USB :
-		result = USB_disk_initialize();
-
-		// translate the reslut code here
-
-		return stat;
-	}
-	return STA_NOINIT;
+	disk_inited[pdrv] = true;
+	return 0;
 }
-
-
 
 /*-----------------------------------------------------------------------*/
 /* Read Sector(s)                                                        */
 /*-----------------------------------------------------------------------*/
 
 DRESULT disk_read (
-	BYTE pdrv,		/* Physical drive nmuber to identify the drive */
+	BYTE pdrv,		/* Physical drive number to identify the drive */
 	BYTE *buff,		/* Data buffer to store read data */
 	LBA_t sector,	/* Start sector in LBA */
 	UINT count		/* Number of sectors to read */
 )
 {
-	DRESULT res;
-	int result;
+	if (pdrv != DEV_USB) return RES_PARERR;
+	if (!disk_inited[pdrv]) return RES_NOTRDY;
 
-	switch (pdrv) {
-	case DEV_RAM :
-		// translate the arguments here
+	// Find the MSC device
+	uint8_t dev_addr = 0;
+	for (uint8_t addr = 1; addr <= CFG_TUH_DEVICE_MAX; addr++) {
+		if (tuh_msc_mounted(addr)) {
+			dev_addr = addr;
+			break;
+		}
+	}
+	if (dev_addr == 0) return RES_NOTRDY;
 
-		result = RAM_disk_read(buff, sector, count);
-
-		// translate the reslut code here
-
-		return res;
-
-	case DEV_MMC :
-		// translate the arguments here
-
-		result = MMC_disk_read(buff, sector, count);
-
-		// translate the reslut code here
-
-		return res;
-
-	case DEV_USB :
-		// translate the arguments here
-
-		result = USB_disk_read(buff, sector, count);
-
-		// translate the reslut code here
-
-		return res;
+	// Read sectors
+	for (UINT i = 0; i < count; i++) {
+		msc_complete = false;
+		msc_success = false;
+		if (!tuh_msc_read10(dev_addr, 0, buff + i * 512, sector + i, 1, msc_complete_cb, 0)) {
+			return RES_ERROR;
+		}
+		// Wait for completion
+		while (!msc_complete) {
+			tuh_task();
+		}
+		if (!msc_success) return RES_ERROR;
 	}
 
-	return RES_PARERR;
+	return RES_OK;
 }
-
-
 
 /*-----------------------------------------------------------------------*/
 /* Write Sector(s)                                                       */
@@ -147,45 +104,40 @@ DRESULT disk_read (
 #if FF_FS_READONLY == 0
 
 DRESULT disk_write (
-	BYTE pdrv,			/* Physical drive nmuber to identify the drive */
+	BYTE pdrv,		/* Physical drive number to identify the drive */
 	const BYTE *buff,	/* Data to be written */
 	LBA_t sector,		/* Start sector in LBA */
 	UINT count			/* Number of sectors to write */
 )
 {
-	DRESULT res;
-	int result;
+	if (pdrv != DEV_USB) return RES_PARERR;
+	if (!disk_inited[pdrv]) return RES_NOTRDY;
 
-	switch (pdrv) {
-	case DEV_RAM :
-		// translate the arguments here
+	// Find the MSC device
+	uint8_t dev_addr = 0;
+	for (uint8_t addr = 1; addr <= CFG_TUH_DEVICE_MAX; addr++) {
+		if (tuh_msc_mounted(addr)) {
+			dev_addr = addr;
+			break;
+		}
+	}
+	if (dev_addr == 0) return RES_NOTRDY;
 
-		result = RAM_disk_write(buff, sector, count);
-
-		// translate the reslut code here
-
-		return res;
-
-	case DEV_MMC :
-		// translate the arguments here
-
-		result = MMC_disk_write(buff, sector, count);
-
-		// translate the reslut code here
-
-		return res;
-
-	case DEV_USB :
-		// translate the arguments here
-
-		result = USB_disk_write(buff, sector, count);
-
-		// translate the reslut code here
-
-		return res;
+	// Write sectors
+	for (UINT i = 0; i < count; i++) {
+		msc_complete = false;
+		msc_success = false;
+		if (!tuh_msc_write10(dev_addr, 0, buff + i * 512, sector + i, 1, msc_complete_cb, 0)) {
+			return RES_ERROR;
+		}
+		// Wait for completion
+		while (!msc_complete) {
+			tuh_task();
+		}
+		if (!msc_success) return RES_ERROR;
 	}
 
-	return RES_PARERR;
+	return RES_OK;
 }
 
 #endif
@@ -196,34 +148,50 @@ DRESULT disk_write (
 /*-----------------------------------------------------------------------*/
 
 DRESULT disk_ioctl (
-	BYTE pdrv,		/* Physical drive nmuber (0..) */
+	BYTE pdrv,		/* Physical drive number (0..) */
 	BYTE cmd,		/* Control code */
 	void *buff		/* Buffer to send/receive control data */
 )
 {
-	DRESULT res;
-	int result;
+	if (pdrv != DEV_USB) return RES_PARERR;
+	if (!disk_inited[pdrv]) return RES_NOTRDY;
 
-	switch (pdrv) {
-	case DEV_RAM :
-
-		// Process of the command for the RAM drive
-
-		return res;
-
-	case DEV_MMC :
-
-		// Process of the command for the MMC/SD card
-
-		return res;
-
-	case DEV_USB :
-
-		// Process of the command the USB drive
-
-		return res;
+	// Find the MSC device
+	uint8_t dev_addr = 0;
+	for (uint8_t addr = 1; addr <= CFG_TUH_DEVICE_MAX; addr++) {
+		if (tuh_msc_mounted(addr)) {
+			dev_addr = addr;
+			break;
+		}
 	}
+	if (dev_addr == 0) return RES_NOTRDY;
 
-	return RES_PARERR;
+	switch (cmd) {
+		case CTRL_SYNC:
+			// Sync write cache (not needed for MSC)
+			return RES_OK;
+
+		case GET_SECTOR_COUNT: {
+			// For now, return a large number
+			*(LBA_t*)buff = 1000000;
+			return RES_OK;
+		}
+
+		case GET_SECTOR_SIZE:
+			*(WORD*)buff = 512;
+			return RES_OK;
+
+		case GET_BLOCK_SIZE:
+			*(DWORD*)buff = 1;
+			return RES_OK;
+
+		default:
+			return RES_PARERR;
+	}
+}
+
+DWORD get_fattime(void) {
+	// Return a fixed time for now
+	return ((2023 - 1980) << 25) | (1 << 21) | (1 << 16) | (0 << 11) | (0 << 5) | (0 >> 1);
 }
 

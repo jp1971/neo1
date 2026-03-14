@@ -5,6 +5,10 @@ add_executable(neo1
     ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1_video.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/console_font_8x8.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils.S
+    ${CMAKE_SOURCE_DIR}/lib/fatfs/source/ff.c
+    ${CMAKE_SOURCE_DIR}/lib/fatfs/source/ffunicode.c
+    ${CMAKE_SOURCE_DIR}/lib/fatfs/source/ffsystem.c
+    ${CMAKE_SOURCE_DIR}/lib/fatfs/source/diskio.c
 )
 
 target_compile_options(neo1 PRIVATE -Wall)
@@ -20,6 +24,7 @@ target_compile_definitions(neo1 PRIVATE
 target_include_directories(neo1 PRIVATE
     ${CMAKE_SOURCE_DIR}/lib/PicoDVI/software/include
     ${CMAKE_SOURCE_DIR}/lib/PicoDVI/software/libdvi
+    ${CMAKE_SOURCE_DIR}/lib/fatfs/source
 )
 
 target_link_libraries(neo1
