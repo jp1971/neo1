@@ -27,6 +27,8 @@ TMP_INDEX    = $0200
 TMP_STATUS   = $0201
 TMP_TENS     = $0202
 TMP_ONES     = $0203
+TMP_B0       = $0204
+TMP_B1       = $0205
 
         .org $0400
 
@@ -165,18 +167,78 @@ OPEN_OK:
         BCC READ_OK
         JMP ERR
 READ_OK:
+        ; Read first two bytes for format detection.
+        ; Header mode heuristic:
+        ;   b0 < $20 and b1 >= $02 => treat b0/b1 as little-endian load address.
+        ; Raw mode fallback:
+        ;   otherwise load full 512 bytes at $0300 and jump $0300.
+        LDA MSC_DATA
+        STA TMP_B0
+        LDA MSC_DATA
+        STA TMP_B1
 
+        LDA TMP_B0
+        CMP #$20
+        BCS RAW_MODE
+        LDA TMP_B1
+        CMP #$02
+        BCC RAW_MODE
+
+HEADER_MODE:
+        LDA TMP_B0
+        STA ZP_PTR_LO
+        LDA TMP_B1
+        STA ZP_PTR_HI
+
+        ; Copy remaining 510 bytes (bytes 2..511) to load address.
+        LDY #$00
+HDR_COPY0:
+        LDA MSC_DATA
+        STA (ZP_PTR_LO),Y
+        INY
+        CPY #$FE
+        BNE HDR_COPY0
+
+        INC ZP_PTR_HI
+        LDY #$00
+HDR_COPY1:
+        LDA MSC_DATA
+        STA (ZP_PTR_LO),Y
+        INY
+        BNE HDR_COPY1
+
+        JMP (ZP_PTR_LO)
+
+RAW_MODE:
         LDA #$00
         STA ZP_PTR_LO
         LDA #$03
         STA ZP_PTR_HI
 
+        ; Preserve first two bytes as code bytes in raw mode.
         LDY #$00
-COPY_LOOP:
+        LDA TMP_B0
+        STA (ZP_PTR_LO),Y
+        INY
+        LDA TMP_B1
+        STA (ZP_PTR_LO),Y
+        INY
+
+        ; Fill remainder of first page (bytes 2..255).
+RAW_COPY0:
         LDA MSC_DATA
         STA (ZP_PTR_LO),Y
         INY
-        BNE COPY_LOOP
+        BNE RAW_COPY0
+
+        ; Copy second page (bytes 256..511).
+        INC ZP_PTR_HI
+        LDY #$00
+RAW_COPY1:
+        LDA MSC_DATA
+        STA (ZP_PTR_LO),Y
+        INY
+        BNE RAW_COPY1
 
         JMP $0300
 
