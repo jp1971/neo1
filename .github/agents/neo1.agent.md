@@ -63,6 +63,53 @@ The RP2040 firmware currently provides the 64KB memory space seen by the 65C02 a
 The project is now in an intermediate state where many files, symbols, and comments still use `apple1` naming even though the machine is increasingly a standalone Neo 1 system.
 The assistant should actively help identify and execute safe, incremental rename and cleanup steps.
 
+## Current Snapshot (March 2026)
+
+Treat the following as current, verified project state:
+
+- Boot/runtime:
+	- WozMon boots by default.
+	- `E000R` enters Integer BASIC.
+	- `F000R` enters Krusader.
+	- `0400R` runs the Neo1-23 filer/loader.
+- USB storage path is working end-to-end:
+	- TinyUSB host MSC + FatFs integrated.
+	- 6502 can enumerate files and load binaries through memory-mapped MSC registers.
+- MSC register model currently includes:
+	- command/status/data/sector registers at `$D014`-`$D018`
+	- filer-support registers at `$D019`-`$D01A` (index/info)
+- Neo1-23 filer is now in a practical phase:
+	- directory enumeration
+	- open-by-index
+	- 00-99 selection flow in the RAM-loaded phase-2 loader
+- RAM-loaded software artifacts are intentionally tracked under `src/ram/`.
+
+## RAM Program Workflow (Important)
+
+Use `src/ram/` as the home for RAM-loaded utilities and experiments.
+
+Current examples include:
+- `neo1_msc_boot_loader.h` (earlier bring-up loader kept for reference)
+- `neo1_msc_phase2_loader.h` (active boot-installed filer image)
+- `neo1_msc_phase2_loader_00_99.s` (authoritative source for current phase-2 loader)
+- `neo1_loader.cfg` (ld65 linker config for RAM image generation)
+
+When updating RAM tools:
+1. edit assembly source in `src/ram/*.s`
+2. assemble/link to binary
+3. regenerate the corresponding `.h` byte image
+4. keep prior bring-up artifacts when they are still useful documentation
+
+## Tooling Notes
+
+The project tool belt now includes `cc65` for reliable 6502 assembly iteration.
+
+Preferred local commands:
+- `ca65` to assemble 6502 source
+- `ld65` with a small RAM-focused config to emit raw binary images
+
+Use this workflow instead of hand-transcribing long object byte tables whenever possible.
+
 ## Key Concepts
 
 When discussing system design, always ground explanations in the 6502 bus model.
@@ -128,7 +175,7 @@ Verify:
 - live monitor interaction visible on screen
 - stable scanline generation
 
-### Stage 5 — Modularization into Neo 1 (Current)
+### Stage 5 — Modularization into Neo 1 (Complete)
 
 Refactor the current bring-up code into clear subsystems.
 
@@ -152,7 +199,7 @@ Goal:
 - make the pico-6502 tree increasingly self-contained
 - evolve toward a standalone project called Neo 1
 
-### Stage 6 — Repo cleanup and rename transition (Current)
+### Stage 6 — Repo cleanup and rename transition (Complete)
 
 Systematically move from Apple-1 / Replica 1-era naming to Neo 1 naming.
 
@@ -188,6 +235,12 @@ Goal:
 ### Stage 8 — Storage / loader / communications
 
 Use RP2040 firmware to load programs into memory or communicate with external systems.
+
+Current status:
+- basic MSC bring-up complete
+- command-based file open/read path complete
+- phase-2 filer (`0400R`) complete for listing and 00-99 index selection
+- next major storage milestone is transitioning from raw bin nuances to CFFA1-oriented disk workflows
 
 Possible approaches:
 - USB storage
@@ -336,3 +389,14 @@ The objective is not just to build a working Neo6502-based system.
 The objective is to understand how a 65C02 computer is designed from the ground up while progressively turning a working Apple-1 / Replica 1-style bring-up into a coherent Neo 1 machine.
 
 Every suggestion should support that goal.
+
+## Context Window Guidance
+
+When major milestones are completed (for example: MSC PoC done, filer integrated, or a phase transition toward CFFA1), prefer starting a fresh chat with a crisp summary.
+
+Benefits:
+- reduces context-window drift and stale assumptions
+- keeps implementation threads focused
+- makes phase boundaries explicit (bring-up vs filer vs CFFA1)
+
+In a fresh chat, the assistant should begin by restating the current verified baseline before proposing new code changes.
