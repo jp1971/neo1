@@ -47,7 +47,7 @@
 #include <stddef.h>
 #include <string.h>
 
-#include "systems/neo1_msc.h"
+#include "../../systems/neo1-23/src/neo1_msc.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -225,6 +225,8 @@ static inline uint8_t _neo1_mem_read(neo1_t* sys, uint16_t addr) {
 
         case NEO1_IO_MSC_STATUS:
         case NEO1_IO_MSC_DATA:
+        case NEO1_IO_MSC_INDEX:
+        case NEO1_IO_MSC_INFO:
             return neo1_msc_io_read(addr);
 
         default:
@@ -265,6 +267,7 @@ static inline void _neo1_mem_write(neo1_t* sys, uint16_t addr, uint8_t data) {
         case NEO1_IO_MSC_SECTOR_LO:
         case NEO1_IO_MSC_SECTOR_HI:
         case NEO1_IO_MSC_DATA:
+        case NEO1_IO_MSC_INDEX:
             neo1_msc_io_write(addr, data);
             break;
 
