@@ -1,13 +1,11 @@
 ; neo1_cffa1_m2_blockdrv.s
 ;
-; M4 CFFA1 write-verify test for Neo1-23.
+; M5 CFFA1 image-read test for Neo1-23.
 ;
 ; Provides:
 ;   CFBlockDriver  ($1800) - ProDOS block driver with STATUS, READ, WRITE
 ;   TestMain       ($1810) - exerciser:
-;                            writes $AA pattern to block 1, reads/prints 16 bytes
-;                            writes $55 pattern to block 2, reads/prints 16 bytes
-;                            checks negative path on block 3
+;                            reads block 2 from CFFA1.PO and prints first 64 bytes
 ;
 ; CFBlockDriver call protocol (from CFFA1_API.s):
 ;   $42  pdCommandCode     0=STATUS, 1=READ, 2=WRITE
@@ -87,12 +85,8 @@ KBDCR        = $D011
 DSP          = $D012
 DSPCR        = $D013
 
-; Test buffers - keep these above the assembled image to avoid self-overwrite.
-; M4 grew the image into the old $1C00 region, so move both 512-byte buffers up.
-; Write buffer uses $2000-$20FF (first 256) + $2100-$21FF (second 256)
-; Read buffer uses $2200-$22FF (first 256) + $2300-$23FF (second 256)
-WRITE_TEST_BUFFER = $2000     ; Where we stage test patterns before WRITE
-READ_VERIFY_BUFFER= $2200     ; Where we read blocks back for verification
+; Read buffer for 512-byte block reads.
+READ_VERIFY_BUFFER= $2200
 
 ; Scratch ZP
 ZP_PTR_LO    = $F0
@@ -115,11 +109,8 @@ CFBlockDriver:
 ; 1. Print banner
 ; 2. Check CFFA1 signature bytes
 ; 3. Call CFBlockDriver with STATUS
-; 4. Fill buffer with $AA, call CFBlockDriver with WRITE to block 1
-; 5. Call CFBlockDriver with READ from block 1 into different buffer
-; 6. Print first 16 bytes of write/read buffers
-; 7. Fill buffer with $55, WRITE block 2, READ block 2, print first 16 bytes
-; 8. Negative: WRITE block 3 must return BADBLOCK ($2D)
+; 4. Call CFBlockDriver with READ from block 2 into READ_VERIFY_BUFFER
+; 5. Print first 64 bytes (hex, 16 bytes per line)
 ;------------------------------------------------------------------------------
 TestMain:
         ; --- Print banner ---
@@ -193,71 +184,12 @@ StOkLoop:
         BNE StOkLoop
 StOkDone:
 
-        ; --- WRITE block 1 with $AA pattern ---
-        ; Fill write buffer with $AA
-        LDX #$00
-        LDA #$00
-        STA ZP_PTR_LO
-        LDA #>WRITE_TEST_BUFFER
-        STA ZP_PTR_HI
-        LDY #$00
-        LDA #$AA
-FillBuffer:
-        STA (ZP_PTR_LO),Y
-        INY
-        BNE FillBuffer
-        INC ZP_PTR_HI        ; Now at $1D for second page
-        LDY #$00
-FillBuffer2:
-        STA (ZP_PTR_LO),Y
-        INY
-        BNE FillBuffer2
-
-        ; Issue WRITE command to block 1
-        LDA #CMD_WRITE
-        STA pdCommandCode
-        LDA #$00
-        STA pdUnitNumber
-        LDA #$01            ; block 1
-        STA pdBlockNumberLow
-        LDA #$00
-        STA pdBlockNumberHigh
-        LDA #<WRITE_TEST_BUFFER
-        STA pdIOBufferLow
-        LDA #>WRITE_TEST_BUFFER
-        STA pdIOBufferHigh
-        JSR CFBlockDriver
-        BCC WriteOk
-        ; Error
-        PHA
-        LDX #$00
-WrErrLoop:
-        LDA TxtWriteErr,X
-        BEQ WrErrDone
-        JSR Putc
-        INX
-        BNE WrErrLoop
-WrErrDone:
-        PLA
-        JSR PrintHex
-        JSR PrintCR
-        BRK
-WriteOk:
-        LDX #$00
-WrOkLoop:
-        LDA TxtWriteOk,X
-        BEQ WrOkDone
-        JSR Putc
-        INX
-        BNE WrOkLoop
-WrOkDone:
-
-        ; --- READ block 1 back for verification ---
+        ; --- READ block 2 from image ---
         LDA #CMD_READ
         STA pdCommandCode
         LDA #$00
         STA pdUnitNumber
-        LDA #$01            ; block 1
+        LDA #$02            ; block 2 (directory block with HELLORLD.BIN entry)
         STA pdBlockNumberLow
         LDA #$00
         STA pdBlockNumberHigh
@@ -291,19 +223,7 @@ RdOkLoop:
         BNE RdOkLoop
 RdOkDone:
 
-        ; --- Print first 16 bytes of WRITE buffer (what we wrote) ---
-        LDX #$00
-HexDumpWrite:
-        LDA WRITE_TEST_BUFFER,X
-        JSR PrintHex
-        LDA #$20            ; space separator
-        JSR Putc
-        INX
-        CPX #$10
-        BNE HexDumpWrite
-        JSR PrintCR
-
-        ; --- Print first 16 bytes of READ buffer (what we read back) ---
+        ; --- Print first 64 bytes of read buffer (16 bytes per line) ---
         LDX #$00
 HexDumpRead:
         LDA READ_VERIFY_BUFFER,X
@@ -311,188 +231,13 @@ HexDumpRead:
         LDA #$20            ; space separator
         JSR Putc
         INX
-        CPX #$10
+        TXA
+        AND #$0F
+        BNE NoRowBreak
+        JSR PrintCR
+NoRowBreak:
+        CPX #$40
         BNE HexDumpRead
-        JSR PrintCR
-
-        ; --- WRITE block 2 with $55 pattern ---
-        LDX #$00
-        LDA #$00
-        STA ZP_PTR_LO
-        LDA #>WRITE_TEST_BUFFER
-        STA ZP_PTR_HI
-        LDY #$00
-        LDA #$55
-FillBufferB2:
-        STA (ZP_PTR_LO),Y
-        INY
-        BNE FillBufferB2
-        INC ZP_PTR_HI
-        LDY #$00
-FillBufferB2_2:
-        STA (ZP_PTR_LO),Y
-        INY
-        BNE FillBufferB2_2
-
-        ; Issue WRITE command to block 2
-        LDA #CMD_WRITE
-        STA pdCommandCode
-        LDA #$00
-        STA pdUnitNumber
-        LDA #$02            ; block 2
-        STA pdBlockNumberLow
-        LDA #$00
-        STA pdBlockNumberHigh
-        LDA #<WRITE_TEST_BUFFER
-        STA pdIOBufferLow
-        LDA #>WRITE_TEST_BUFFER
-        STA pdIOBufferHigh
-        JSR CFBlockDriver
-        BCC Write2Ok
-        ; Error
-        PHA
-        LDX #$00
-Wr2ErrLoop:
-        LDA TxtWrite2Err,X
-        BEQ Wr2ErrDone
-        JSR Putc
-        INX
-        BNE Wr2ErrLoop
-Wr2ErrDone:
-        PLA
-        JSR PrintHex
-        JSR PrintCR
-        BRK
-Write2Ok:
-        LDX #$00
-Wr2OkLoop:
-        LDA TxtWrite2Ok,X
-        BEQ Wr2OkDone
-        JSR Putc
-        INX
-        BNE Wr2OkLoop
-Wr2OkDone:
-
-        ; --- READ block 2 back for verification ---
-        LDA #CMD_READ
-        STA pdCommandCode
-        LDA #$00
-        STA pdUnitNumber
-        LDA #$02            ; block 2
-        STA pdBlockNumberLow
-        LDA #$00
-        STA pdBlockNumberHigh
-        LDA #<READ_VERIFY_BUFFER
-        STA pdIOBufferLow
-        LDA #>READ_VERIFY_BUFFER
-        STA pdIOBufferHigh
-        JSR CFBlockDriver
-        BCC Read2Ok
-        ; Error
-        PHA
-        LDX #$00
-Rd2ErrLoop:
-        LDA TxtRead2Err,X
-        BEQ Rd2ErrDone
-        JSR Putc
-        INX
-        BNE Rd2ErrLoop
-Rd2ErrDone:
-        PLA
-        JSR PrintHex
-        JSR PrintCR
-        BRK
-Read2Ok:
-        LDX #$00
-Rd2OkLoop:
-        LDA TxtRead2Ok,X
-        BEQ Rd2OkDone
-        JSR Putc
-        INX
-        BNE Rd2OkLoop
-Rd2OkDone:
-
-        ; --- Print first 16 bytes of WRITE buffer (blk2 / $55) ---
-        LDX #$00
-HexDumpWrite2:
-        LDA WRITE_TEST_BUFFER,X
-        JSR PrintHex
-        LDA #$20            ; space separator
-        JSR Putc
-        INX
-        CPX #$10
-        BNE HexDumpWrite2
-        JSR PrintCR
-
-        ; --- Print first 16 bytes of READ buffer (blk2 / expected $55) ---
-        LDX #$00
-HexDumpRead2:
-        LDA READ_VERIFY_BUFFER,X
-        JSR PrintHex
-        LDA #$20            ; space separator
-        JSR Putc
-        INX
-        CPX #$10
-        BNE HexDumpRead2
-        JSR PrintCR
-
-        ; --- Negative test: WRITE block 3 should fail with BADBLOCK ($2D) ---
-        LDA #CMD_WRITE
-        STA pdCommandCode
-        LDA #$00
-        STA pdUnitNumber
-        LDA #$03            ; block 3 is intentionally unsupported in M4 backend
-        STA pdBlockNumberLow
-        LDA #$00
-        STA pdBlockNumberHigh
-        LDA #<WRITE_TEST_BUFFER
-        STA pdIOBufferLow
-        LDA #>WRITE_TEST_BUFFER
-        STA pdIOBufferHigh
-        JSR CFBlockDriver
-        BCS NegHadErr
-
-        ; Unexpected success
-        LDX #$00
-NegNoErrLoop:
-        LDA TxtNegNoErr,X
-        BEQ NegNoErrDone
-        JSR Putc
-        INX
-        BNE NegNoErrLoop
-NegNoErrDone:
-        BRK
-
-NegHadErr:
-        CMP #ERR_BADBLOCK
-        BNE NegWrongErr
-
-        LDX #$00
-NegOkLoop:
-        LDA TxtNegOk,X
-        BEQ NegOkDone
-        JSR Putc
-        INX
-        BNE NegOkLoop
-NegOkDone:
-        LDA #ERR_BADBLOCK
-        JSR PrintHex
-        JSR PrintCR
-        BRK
-
-NegWrongErr:
-        PHA
-        LDX #$00
-NegBadLoop:
-        LDA TxtNegBadErr,X
-        BEQ NegBadDone
-        JSR Putc
-        INX
-        BNE NegBadLoop
-NegBadDone:
-        PLA
-        JSR PrintHex
-        JSR PrintCR
         BRK
 
 ;------------------------------------------------------------------------------
@@ -680,7 +425,7 @@ IsDigit:
 ;------------------------------------------------------------------------------
 TxtBanner:
         .byte $0D
-        .asciiz "NEO1 CFFA1 M4 TEST"
+        .asciiz "NEO1 CFFA1 M5 READ TEST"
 TxtSigOk:
         .byte $0D
         .asciiz "SIG OK"
@@ -693,36 +438,9 @@ TxtStatusOk:
 TxtStatusErr:
         .byte $0D
         .asciiz "STATUS ERR:"
-TxtWriteOk:
-        .byte $0D
-        .asciiz "WRITE BLK1 OK"
-TxtWriteErr:
-        .byte $0D
-        .asciiz "WRITE ERR:"
 TxtReadOk:
         .byte $0D
-        .asciiz "READ BLK1 OK WROTE/READ:"
+        .asciiz "READ BLK2 OK HEX[00-3F]:"
 TxtReadErr:
         .byte $0D
         .asciiz "READ ERR:"
-TxtWrite2Ok:
-        .byte $0D
-        .asciiz "WRITE BLK2 OK"
-TxtWrite2Err:
-        .byte $0D
-        .asciiz "WRITE2 ERR:"
-TxtRead2Ok:
-        .byte $0D
-        .asciiz "READ BLK2 OK WROTE/READ:"
-TxtRead2Err:
-        .byte $0D
-        .asciiz "READ2 ERR:"
-TxtNegOk:
-        .byte $0D
-        .asciiz "NEG WRITE OK BADBLOCK:"
-TxtNegNoErr:
-        .byte $0D
-        .asciiz "NEG WRITE FAIL:NOERR"
-TxtNegBadErr:
-        .byte $0D
-        .asciiz "NEG WRITE FAIL:ERR="
