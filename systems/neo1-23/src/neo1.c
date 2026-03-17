@@ -53,6 +53,7 @@
 #include "neo1_usb.h"
 #include "roms/neo1_roms.h"
 #include "ram/neo1_msc_phase2_loader.h"
+#include "ram/neo1_cffa1_m2_blockdrv.h"
 
 #include "hardware/vreg.h"
 #include "hardware/clocks.h"
@@ -82,6 +83,15 @@ static void neo1_install_msc_boot_loader(neo1_t* sys) {
            (unsigned)loader_addr,
            (unsigned long)loader_size,
            (unsigned)loader_addr);
+
+    const uint32_t m2_size = (uint32_t)sizeof(neo1_cffa1_m2_blockdrv);
+    const uint32_t m2_addr = NEO1_CFFA1_M2_BLOCKDRV_ADDR;
+    CHIPS_ASSERT((m2_addr + m2_size) <= NEO1_ROM_BASE);
+    memcpy(&sys->ram[m2_addr], neo1_cffa1_m2_blockdrv, m2_size);
+    printf("[neo1] cffa1 m2 blockdrv installed at $%04X (%lu bytes), run with G %04X\n",
+           (unsigned)m2_addr,
+           (unsigned long)m2_size,
+            (unsigned)NEO1_CFFA1_M2_TESTMAIN_ADDR);
 }
 
 //
