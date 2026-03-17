@@ -18,6 +18,11 @@
 *.map
 *.dis
 
+# RAM assembler intermediates (keep .s/.cfg/.h sources)
+src/ram/*.o
+src/ram/*.lst
+src/ram/*.labels
+
 # CMake / Ninja
 CMakeCache.txt
 CMakeFiles/
