@@ -49,6 +49,7 @@
 #include "neo1_terminal.h"
 #include "neo1_video.h"
 #include "neo1_msc.h"
+#include "neo1_cffa1.h"
 #include "neo1_usb.h"
 #include "roms/neo1_roms.h"
 #include "ram/neo1_msc_phase2_loader.h"
@@ -205,6 +206,7 @@ static void app_init(void) {
     neo1_reset(&state.neo1);
     neo1_install_msc_boot_loader(&state.neo1);
 
+    neo1_cffa1_init();
     neo1_msc_init();
     neo1_usb_init(neo1_usb_char_in, 0);
 

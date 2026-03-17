@@ -48,6 +48,7 @@
 #include <string.h>
 
 #include "../../systems/neo1-23/src/neo1_msc.h"
+#include "../../systems/neo1-23/src/neo1_cffa1.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -193,6 +194,10 @@ static inline void _neo1_capture_trace(neo1_t* sys, uint16_t addr, uint8_t data,
 }
 
 static inline uint8_t _neo1_mem_read(neo1_t* sys, uint16_t addr) {
+    if (neo1_cffa1_handles_addr(addr)) {
+        return neo1_cffa1_io_read(addr);
+    }
+
     switch (addr) {
         case NEO1_IO_KBD:
             // If bit 2 is clear, access the DDR. Otherwise access the peripheral register.
@@ -235,6 +240,11 @@ static inline uint8_t _neo1_mem_read(neo1_t* sys, uint16_t addr) {
 }
 
 static inline void _neo1_mem_write(neo1_t* sys, uint16_t addr, uint8_t data) {
+    if (neo1_cffa1_handles_addr(addr)) {
+        neo1_cffa1_io_write(addr, data);
+        return;
+    }
+
     switch (addr) {
         case NEO1_IO_KBD:
             if ((sys->kbd_cr & 0x04) == 0) {

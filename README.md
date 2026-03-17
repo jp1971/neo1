@@ -85,10 +85,34 @@ For the 6502 to reset properly, either:
 
 Without one of those, firmware reset control may not fully reset the external 65C02.
 
+## USB storage requirements
+
+Neo1-23 uses FatFs over TinyUSB MSC. FatFs requires an **MBR-partitioned FAT32** volume.
+
+**macOS formatting (required procedure):**
+
+```sh
+# Find your USB drive identifier first:
+diskutil list
+
+# Format with MBR (replace diskN with your actual disk number):
+diskutil eraseDisk FAT32 NEO1 MBR /dev/diskN
+```
+
+Do **not** use Disk Utility's GUI — it defaults to GUID Partition Map (GPT), which FatFs does not support and produces `FatFs mount failed: 13` (`FR_NO_FILESYSTEM`).
+
+**Files to place in the root of the volume:**
+- `HELLORLD.BIN` or any `.BIN` — loadable programs for the filer
+- `CFFA1.PO` (optional) — ProDOS disk image for CFFA1 compatibility layer
+
 ## Current storage/filer status
 
 - USB MSC (mass storage) is integrated through TinyUSB + FatFs.
 - The Neo1-23 Filer at `0400R` can enumerate files and load by index.
+- CFFA1 compatibility layer exposes signature bytes at `$AFDC`/`$AFDD` and a read-only ProDOS block interface at `$AFF0`–`$AFFF`.
+  - Auto-mounts first `CFFA1.PO`, `CFFA1.HDV`, or `*.po`/`*.hdv`/`*.2mg` image found in root.
+  - Supports `PRODOS_STATUS` (`$00`) and `PRODOS_READ` (`$01`) commands via the `$AFFF` command register.
+  - 512-byte block data streams out of `$AFF8` one byte per read.
 - Existing bring-up loader and newer Phase 2 loader images are kept under `src/ram/`.
 
 ## Repository layout (high-level)
@@ -101,6 +125,8 @@ Without one of those, firmware reset control may not fully reset the external 65
 
 ## Next planned work
 
+- M2: CFFA1 boot/software path (exercise a real CFFA1-side ProDOS workflow end-to-end)
+- M3: optional CFFA1 write path
 - Phase 3 (optional): directory navigation in filer
 - Phase 4: save/write flow from 6502-side tools
 - Longer-term: richer RAM-loaded tools (e.g. TaliForth 2, Applesoft Lite workflows)
