@@ -85,11 +85,11 @@ KBDCR        = $D011
 DSP          = $D012
 DSPCR        = $D013
 
-; Test buffers - placed well above code (660 bytes to ~$1A94)
-; Write buffer uses $1B00-$1BFF (first 256) + $1C00-$1CFF (second 256)
-; Read buffer uses $1D00-$1DFF (first 256) + $1E00-$1EFF (second 256)
-WRITE_TEST_BUFFER = $1B00     ; Where we write $AA pattern (page 1)
-READ_VERIFY_BUFFER= $1D00     ; Where we read block 1 back (page 3)
+; Test buffers - keep these above the assembled image to avoid self-overwrite
+; Write buffer uses $1C00-$1CFF (first 256) + $1D00-$1DFF (second 256)
+; Read buffer uses $1E00-$1EFF (first 256) + $1F00-$1FFF (second 256)
+WRITE_TEST_BUFFER = $1C00     ; Where we write $AA pattern
+READ_VERIFY_BUFFER= $1E00     ; Where we read block 1 back
 
 ; Scratch ZP
 ZP_PTR_LO    = $F0
@@ -193,7 +193,7 @@ StOkDone:
         LDX #$00
         LDA #$00
         STA ZP_PTR_LO
-        LDA #$1B
+        LDA #$1C
         STA ZP_PTR_HI
         LDY #$00
         LDA #$AA
@@ -201,7 +201,7 @@ FillBuffer:
         STA (ZP_PTR_LO),Y
         INY
         BNE FillBuffer
-        INC ZP_PTR_HI        ; Now at $1C for second page
+        INC ZP_PTR_HI        ; Now at $1D for second page
         LDY #$00
 FillBuffer2:
         STA (ZP_PTR_LO),Y
@@ -328,6 +328,64 @@ HexDumpRead:
         INX
         CPX #$10
         BNE HexDumpRead
+        JSR PrintCR
+
+        ; --- Negative test: WRITE block 2 should fail with BADBLOCK ($2D) ---
+        LDA #CMD_WRITE
+        STA pdCommandCode
+        LDA #$00
+        STA pdUnitNumber
+        LDA #$02            ; block 2 is intentionally unsupported in M3 backend
+        STA pdBlockNumberLow
+        LDA #$00
+        STA pdBlockNumberHigh
+        LDA #<WRITE_TEST_BUFFER
+        STA pdIOBufferLow
+        LDA #>WRITE_TEST_BUFFER
+        STA pdIOBufferHigh
+        JSR CFBlockDriver
+        BCS NegHadErr
+
+        ; Unexpected success
+        LDX #$00
+NegNoErrLoop:
+        LDA TxtNegNoErr,X
+        BEQ NegNoErrDone
+        JSR Putc
+        INX
+        BNE NegNoErrLoop
+NegNoErrDone:
+        BRK
+
+NegHadErr:
+        CMP #ERR_BADBLOCK
+        BNE NegWrongErr
+
+        LDX #$00
+NegOkLoop:
+        LDA TxtNegOk,X
+        BEQ NegOkDone
+        JSR Putc
+        INX
+        BNE NegOkLoop
+NegOkDone:
+        LDA #ERR_BADBLOCK
+        JSR PrintHex
+        JSR PrintCR
+        BRK
+
+NegWrongErr:
+        PHA
+        LDX #$00
+NegBadLoop:
+        LDA TxtNegBadErr,X
+        BEQ NegBadDone
+        JSR Putc
+        INX
+        BNE NegBadLoop
+NegBadDone:
+        PLA
+        JSR PrintHex
         JSR PrintCR
         BRK
 
@@ -547,3 +605,12 @@ TxtReadOk:
 TxtReadErr:
         .byte $0D
         .asciiz "READ ERR:"
+TxtNegOk:
+        .byte $0D
+        .asciiz "NEG WRITE OK BADBLOCK:"
+TxtNegNoErr:
+        .byte $0D
+        .asciiz "NEG WRITE FAIL:NOERR"
+TxtNegBadErr:
+        .byte $0D
+        .asciiz "NEG WRITE FAIL:ERR="
