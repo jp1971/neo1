@@ -1,11 +1,13 @@
 ; neo1_cffa1_m2_blockdrv.s
 ;
-; M3 CFFA1 write-verify test for Neo1-23.
+; M4 CFFA1 write-verify test for Neo1-23.
 ;
 ; Provides:
 ;   CFBlockDriver  ($1800) - ProDOS block driver with STATUS, READ, WRITE
-;   TestMain       ($1810) - exerciser: writes $AA pattern to block 1,
-;                            reads it back, verifies 16 bytes
+;   TestMain       ($1810) - exerciser:
+;                            writes $AA pattern to block 1, reads/prints 16 bytes
+;                            writes $55 pattern to block 2, reads/prints 16 bytes
+;                            checks negative path on block 3
 ;
 ; CFBlockDriver call protocol (from CFFA1_API.s):
 ;   $42  pdCommandCode     0=STATUS, 1=READ, 2=WRITE
@@ -85,11 +87,12 @@ KBDCR        = $D011
 DSP          = $D012
 DSPCR        = $D013
 
-; Test buffers - keep these above the assembled image to avoid self-overwrite
-; Write buffer uses $1C00-$1CFF (first 256) + $1D00-$1DFF (second 256)
-; Read buffer uses $1E00-$1EFF (first 256) + $1F00-$1FFF (second 256)
-WRITE_TEST_BUFFER = $1C00     ; Where we write $AA pattern
-READ_VERIFY_BUFFER= $1E00     ; Where we read block 1 back
+; Test buffers - keep these above the assembled image to avoid self-overwrite.
+; M4 grew the image into the old $1C00 region, so move both 512-byte buffers up.
+; Write buffer uses $2000-$20FF (first 256) + $2100-$21FF (second 256)
+; Read buffer uses $2200-$22FF (first 256) + $2300-$23FF (second 256)
+WRITE_TEST_BUFFER = $2000     ; Where we stage test patterns before WRITE
+READ_VERIFY_BUFFER= $2200     ; Where we read blocks back for verification
 
 ; Scratch ZP
 ZP_PTR_LO    = $F0
@@ -114,7 +117,9 @@ CFBlockDriver:
 ; 3. Call CFBlockDriver with STATUS
 ; 4. Fill buffer with $AA, call CFBlockDriver with WRITE to block 1
 ; 5. Call CFBlockDriver with READ from block 1 into different buffer
-; 6. Compare: print first 16 bytes of both buffers
+; 6. Print first 16 bytes of write/read buffers
+; 7. Fill buffer with $55, WRITE block 2, READ block 2, print first 16 bytes
+; 8. Negative: WRITE block 3 must return BADBLOCK ($2D)
 ;------------------------------------------------------------------------------
 TestMain:
         ; --- Print banner ---
@@ -193,7 +198,7 @@ StOkDone:
         LDX #$00
         LDA #$00
         STA ZP_PTR_LO
-        LDA #$1C
+        LDA #>WRITE_TEST_BUFFER
         STA ZP_PTR_HI
         LDY #$00
         LDA #$AA
@@ -310,12 +315,133 @@ HexDumpRead:
         BNE HexDumpRead
         JSR PrintCR
 
-        ; --- Negative test: WRITE block 2 should fail with BADBLOCK ($2D) ---
+        ; --- WRITE block 2 with $55 pattern ---
+        LDX #$00
+        LDA #$00
+        STA ZP_PTR_LO
+        LDA #>WRITE_TEST_BUFFER
+        STA ZP_PTR_HI
+        LDY #$00
+        LDA #$55
+FillBufferB2:
+        STA (ZP_PTR_LO),Y
+        INY
+        BNE FillBufferB2
+        INC ZP_PTR_HI
+        LDY #$00
+FillBufferB2_2:
+        STA (ZP_PTR_LO),Y
+        INY
+        BNE FillBufferB2_2
+
+        ; Issue WRITE command to block 2
         LDA #CMD_WRITE
         STA pdCommandCode
         LDA #$00
         STA pdUnitNumber
-        LDA #$02            ; block 2 is intentionally unsupported in M3 backend
+        LDA #$02            ; block 2
+        STA pdBlockNumberLow
+        LDA #$00
+        STA pdBlockNumberHigh
+        LDA #<WRITE_TEST_BUFFER
+        STA pdIOBufferLow
+        LDA #>WRITE_TEST_BUFFER
+        STA pdIOBufferHigh
+        JSR CFBlockDriver
+        BCC Write2Ok
+        ; Error
+        PHA
+        LDX #$00
+Wr2ErrLoop:
+        LDA TxtWrite2Err,X
+        BEQ Wr2ErrDone
+        JSR Putc
+        INX
+        BNE Wr2ErrLoop
+Wr2ErrDone:
+        PLA
+        JSR PrintHex
+        JSR PrintCR
+        BRK
+Write2Ok:
+        LDX #$00
+Wr2OkLoop:
+        LDA TxtWrite2Ok,X
+        BEQ Wr2OkDone
+        JSR Putc
+        INX
+        BNE Wr2OkLoop
+Wr2OkDone:
+
+        ; --- READ block 2 back for verification ---
+        LDA #CMD_READ
+        STA pdCommandCode
+        LDA #$00
+        STA pdUnitNumber
+        LDA #$02            ; block 2
+        STA pdBlockNumberLow
+        LDA #$00
+        STA pdBlockNumberHigh
+        LDA #<READ_VERIFY_BUFFER
+        STA pdIOBufferLow
+        LDA #>READ_VERIFY_BUFFER
+        STA pdIOBufferHigh
+        JSR CFBlockDriver
+        BCC Read2Ok
+        ; Error
+        PHA
+        LDX #$00
+Rd2ErrLoop:
+        LDA TxtRead2Err,X
+        BEQ Rd2ErrDone
+        JSR Putc
+        INX
+        BNE Rd2ErrLoop
+Rd2ErrDone:
+        PLA
+        JSR PrintHex
+        JSR PrintCR
+        BRK
+Read2Ok:
+        LDX #$00
+Rd2OkLoop:
+        LDA TxtRead2Ok,X
+        BEQ Rd2OkDone
+        JSR Putc
+        INX
+        BNE Rd2OkLoop
+Rd2OkDone:
+
+        ; --- Print first 16 bytes of WRITE buffer (blk2 / $55) ---
+        LDX #$00
+HexDumpWrite2:
+        LDA WRITE_TEST_BUFFER,X
+        JSR PrintHex
+        LDA #$20            ; space separator
+        JSR Putc
+        INX
+        CPX #$10
+        BNE HexDumpWrite2
+        JSR PrintCR
+
+        ; --- Print first 16 bytes of READ buffer (blk2 / expected $55) ---
+        LDX #$00
+HexDumpRead2:
+        LDA READ_VERIFY_BUFFER,X
+        JSR PrintHex
+        LDA #$20            ; space separator
+        JSR Putc
+        INX
+        CPX #$10
+        BNE HexDumpRead2
+        JSR PrintCR
+
+        ; --- Negative test: WRITE block 3 should fail with BADBLOCK ($2D) ---
+        LDA #CMD_WRITE
+        STA pdCommandCode
+        LDA #$00
+        STA pdUnitNumber
+        LDA #$03            ; block 3 is intentionally unsupported in M4 backend
         STA pdBlockNumberLow
         LDA #$00
         STA pdBlockNumberHigh
@@ -554,7 +680,7 @@ IsDigit:
 ;------------------------------------------------------------------------------
 TxtBanner:
         .byte $0D
-        .asciiz "NEO1 CFFA1 M3 TEST"
+        .asciiz "NEO1 CFFA1 M4 TEST"
 TxtSigOk:
         .byte $0D
         .asciiz "SIG OK"
@@ -579,6 +705,18 @@ TxtReadOk:
 TxtReadErr:
         .byte $0D
         .asciiz "READ ERR:"
+TxtWrite2Ok:
+        .byte $0D
+        .asciiz "WRITE BLK2 OK"
+TxtWrite2Err:
+        .byte $0D
+        .asciiz "WRITE2 ERR:"
+TxtRead2Ok:
+        .byte $0D
+        .asciiz "READ BLK2 OK WROTE/READ:"
+TxtRead2Err:
+        .byte $0D
+        .asciiz "READ2 ERR:"
 TxtNegOk:
         .byte $0D
         .asciiz "NEG WRITE OK BADBLOCK:"

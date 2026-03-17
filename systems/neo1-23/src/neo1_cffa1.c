@@ -18,9 +18,19 @@ static bool g_image_open;
 static uint32_t g_image_blocks;
 static uint8_t g_block_buffer[NEO1_CFFA1_BLOCK_SIZE];
 static uint16_t g_block_offset;
-static uint8_t g_test_block_buffer[NEO1_CFFA1_BLOCK_SIZE];  // RAM buffer for block 1 write-verify test
-static uint32_t g_write_block;                              // Tracks which block is being written
+static uint8_t g_test_block_buffers[2][NEO1_CFFA1_BLOCK_SIZE];  // RAM buffers for M4 deterministic block tests
+static uint8_t g_write_slot;                                     // Active RAM test slot (0: block 1, 1: block 2)
 static bool g_write_in_progress;                            // True while accepting write data
+
+static int test_block_to_slot(uint32_t block) {
+    if (block == 1u) {
+        return 0;
+    }
+    if (block == 2u) {
+        return 1;
+    }
+    return -1;
+}
 
 static void set_status(uint8_t status) {
     g_regs[NEO1_CFFA1_REG_STATUS_COMMAND] = status;
@@ -149,10 +159,11 @@ static void do_cmd_status(void) {
 
 static void do_cmd_read(void) {
     const uint32_t block = get_requested_block();
-    
-    // Special case: reading test block 1 returns what was written to test buffer.
-    if (block == 1) {
-        memcpy(g_block_buffer, g_test_block_buffer, NEO1_CFFA1_BLOCK_SIZE);
+
+    // M4 deterministic RAM-backed read path for test blocks 1 and 2.
+    const int slot = test_block_to_slot(block);
+    if (slot >= 0) {
+        memcpy(g_block_buffer, g_test_block_buffers[slot], NEO1_CFFA1_BLOCK_SIZE);
         g_block_offset = 0;
         set_ok(1);
         return;
@@ -187,15 +198,15 @@ static void do_cmd_read(void) {
 
 static void do_cmd_write(void) {
     const uint32_t block = get_requested_block();
-    
-    // For M3 testing, only allow writes to block 1 (test block).
-    // Other blocks would require actual disk writes and risk corruption.
-    if (block != 1) {
+
+    // M4 deterministic write scope: accept test blocks 1 and 2 only.
+    const int slot = test_block_to_slot(block);
+    if (slot < 0) {
         set_error(NEO1_CFFA1_ERR_BADBLOCK);
         return;
     }
 
-    g_write_block = block;
+    g_write_slot = (uint8_t)slot;
     g_write_in_progress = true;
     g_block_offset = 0;  // Reuse offset counter for write streaming
     set_ok(1);  // DRQ set: ready to accept data
@@ -221,12 +232,12 @@ static void handle_command(uint8_t cmd) {
 void neo1_cffa1_init(void) {
     memset(g_regs, 0, sizeof(g_regs));
     memset(g_block_buffer, 0, sizeof(g_block_buffer));
-    memset(g_test_block_buffer, 0, sizeof(g_test_block_buffer));
+    memset(g_test_block_buffers, 0, sizeof(g_test_block_buffers));
 
     close_image_if_open();
     g_block_offset = 0;
     g_write_in_progress = false;
-    g_write_block = 0;
+    g_write_slot = 0;
 
     // Conservative ATA-like ready state.
     set_ok(0);
@@ -271,7 +282,7 @@ void neo1_cffa1_io_write(uint16_t addr, uint8_t data) {
         // Handle DATA register writes during active WRITE operation.
         if ((index == NEO1_CFFA1_REG_DATA) && g_write_in_progress) {
             if (g_block_offset < NEO1_CFFA1_BLOCK_SIZE) {
-                g_test_block_buffer[g_block_offset++] = data;
+                g_test_block_buffers[g_write_slot][g_block_offset++] = data;
             }
             // When write complete, clear DRQ and return to OK state.
             if (g_block_offset >= NEO1_CFFA1_BLOCK_SIZE) {
