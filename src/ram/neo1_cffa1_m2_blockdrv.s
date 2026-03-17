@@ -207,16 +207,6 @@ FillBuffer2:
         STA (ZP_PTR_LO),Y
         INY
         BNE FillBuffer2
-        
-        ; Print diagnostic before WRITE
-        LDX #$00
-PreWrLoop:
-        LDA TxtPreWrite,X
-        BEQ PreWrDone
-        JSR Putc
-        INX
-        BNE PreWrLoop
-PreWrDone:
 
         ; Issue WRITE command to block 1
         LDA #CMD_WRITE
@@ -256,16 +246,6 @@ WrOkLoop:
         INX
         BNE WrOkLoop
 WrOkDone:
-        
-        ; Print diagnostic after WRITE
-        LDX #$00
-PostWrLoop:
-        LDA TxtPostWrite,X
-        BEQ PostWrDone
-        JSR Putc
-        INX
-        BNE PostWrLoop
-PostWrDone:
 
         ; --- READ block 1 back for verification ---
         LDA #CMD_READ
@@ -587,15 +567,9 @@ TxtStatusOk:
 TxtStatusErr:
         .byte $0D
         .asciiz "STATUS ERR:"
-TxtPreWrite:
-        .byte $0D
-        .asciiz "[XFER]"
 TxtWriteOk:
         .byte $0D
         .asciiz "WRITE BLK1 OK"
-TxtPostWrite:
-        .byte $0D
-        .asciiz "[DONE]"
 TxtWriteErr:
         .byte $0D
         .asciiz "WRITE ERR:"

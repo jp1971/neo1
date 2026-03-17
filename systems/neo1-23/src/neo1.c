@@ -184,7 +184,7 @@ static void neo1_char_out(uint8_t ch, void* user_data) {
 //
 static neo1_desc_t neo1_desc(void) {
     return (neo1_desc_t){
-        .debug = {0},
+        .debug = {{0}},
         .roms = {
             .rom = {
                 .ptr = neo1_system_rom_bin,
