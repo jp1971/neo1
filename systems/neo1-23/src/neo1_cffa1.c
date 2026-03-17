@@ -18,6 +18,9 @@ static bool g_image_open;
 static uint32_t g_image_blocks;
 static uint8_t g_block_buffer[NEO1_CFFA1_BLOCK_SIZE];
 static uint16_t g_block_offset;
+static uint8_t g_test_block_buffer[NEO1_CFFA1_BLOCK_SIZE];  // RAM buffer for block 1 write-verify test
+static uint32_t g_write_block;                              // Tracks which block is being written
+static bool g_write_in_progress;                            // True while accepting write data
 
 static void set_status(uint8_t status) {
     g_regs[NEO1_CFFA1_REG_STATUS_COMMAND] = status;
@@ -145,12 +148,21 @@ static void do_cmd_status(void) {
 }
 
 static void do_cmd_read(void) {
+    const uint32_t block = get_requested_block();
+    
+    // Special case: reading test block 1 returns what was written to test buffer.
+    if (block == 1) {
+        memcpy(g_block_buffer, g_test_block_buffer, NEO1_CFFA1_BLOCK_SIZE);
+        g_block_offset = 0;
+        set_ok(1);
+        return;
+    }
+
     if (!open_first_image()) {
         set_error(NEO1_CFFA1_ERR_NODEV);
         return;
     }
 
-    const uint32_t block = get_requested_block();
     if (block >= g_image_blocks) {
         set_error(NEO1_CFFA1_ERR_BADBLOCK);
         return;
@@ -173,6 +185,22 @@ static void do_cmd_read(void) {
     set_ok(1);
 }
 
+static void do_cmd_write(void) {
+    const uint32_t block = get_requested_block();
+    
+    // For M3 testing, only allow writes to block 1 (test block).
+    // Other blocks would require actual disk writes and risk corruption.
+    if (block != 1) {
+        set_error(NEO1_CFFA1_ERR_BADBLOCK);
+        return;
+    }
+
+    g_write_block = block;
+    g_write_in_progress = true;
+    g_block_offset = 0;  // Reuse offset counter for write streaming
+    set_ok(1);  // DRQ set: ready to accept data
+}
+
 static void handle_command(uint8_t cmd) {
     switch (cmd) {
         case NEO1_CFFA1_CMD_PRODOS_STATUS:
@@ -180,6 +208,9 @@ static void handle_command(uint8_t cmd) {
             break;
         case NEO1_CFFA1_CMD_PRODOS_READ:
             do_cmd_read();
+            break;
+        case NEO1_CFFA1_CMD_PRODOS_WRITE:
+            do_cmd_write();
             break;
         default:
             set_error(NEO1_CFFA1_ERR_BADCMD);
@@ -190,9 +221,12 @@ static void handle_command(uint8_t cmd) {
 void neo1_cffa1_init(void) {
     memset(g_regs, 0, sizeof(g_regs));
     memset(g_block_buffer, 0, sizeof(g_block_buffer));
+    memset(g_test_block_buffer, 0, sizeof(g_test_block_buffer));
 
     close_image_if_open();
     g_block_offset = 0;
+    g_write_in_progress = false;
+    g_write_block = 0;
 
     // Conservative ATA-like ready state.
     set_ok(0);
@@ -233,6 +267,19 @@ void neo1_cffa1_io_write(uint16_t addr, uint8_t data) {
     if ((addr >= NEO1_CFFA1_IO_BASE) && (addr <= NEO1_CFFA1_IO_END)) {
         const uint16_t index = (uint16_t)(addr - NEO1_CFFA1_IO_BASE);
         g_regs[index] = data;
+
+        // Handle DATA register writes during active WRITE operation.
+        if ((index == NEO1_CFFA1_REG_DATA) && g_write_in_progress) {
+            if (g_block_offset < NEO1_CFFA1_BLOCK_SIZE) {
+                g_test_block_buffer[g_block_offset++] = data;
+            }
+            // When write complete, clear DRQ and return to OK state.
+            if (g_block_offset >= NEO1_CFFA1_BLOCK_SIZE) {
+                g_write_in_progress = false;
+                set_ok(0);
+            }
+            return;
+        }
 
         if (index == NEO1_CFFA1_REG_STATUS_COMMAND) {
             handle_command(data);

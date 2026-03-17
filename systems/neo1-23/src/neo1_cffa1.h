@@ -38,6 +38,7 @@ extern "C" {
 // These are intentionally minimal command IDs for incremental bring-up.
 #define NEO1_CFFA1_CMD_PRODOS_STATUS      (0x00)
 #define NEO1_CFFA1_CMD_PRODOS_READ        (0x01)
+#define NEO1_CFFA1_CMD_PRODOS_WRITE       (0x02)
 
 // ProDOS-style low-level error codes.
 #define NEO1_CFFA1_ERR_OK                 (0x00)

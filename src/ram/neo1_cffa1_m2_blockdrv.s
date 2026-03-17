@@ -1,17 +1,17 @@
 ; neo1_cffa1_m2_blockdrv.s
 ;
-; M2 CFFA1 compatibility test for Neo1-23.
+; M3 CFFA1 write-verify test for Neo1-23.
 ;
 ; Provides:
-;   CFBlockDriver  ($1800) - minimal ProDOS block driver stub
-;   TestMain       ($1810) - exerciser that calls STATUS then READ block 0
-;                            and prints 16 bytes of block data as hex
+;   CFBlockDriver  ($1800) - ProDOS block driver with STATUS, READ, WRITE
+;   TestMain       ($1810) - exerciser: writes $AA pattern to block 1,
+;                            reads it back, verifies 16 bytes
 ;
 ; CFBlockDriver call protocol (from CFFA1_API.s):
-;   $42  pdCommandCode     0=STATUS, 1=READ
+;   $42  pdCommandCode     0=STATUS, 1=READ, 2=WRITE
 ;   $43  pdUnitNumber      always 0
-;   $44  pdIOBufferLow     destination lo byte
-;   $45  pdIOBufferHigh    destination hi byte
+;   $44  pdIOBufferLow     buffer lo byte
+;   $45  pdIOBufferHigh    buffer hi byte
 ;   $46  pdBlockNumberLow  block# lo byte
 ;   $47  pdBlockNumberHigh block# hi byte
 ;   JSR  CFBlockDriver
@@ -21,7 +21,7 @@
 ; Neo1 CFFA1 hardware registers (implemented by neo1_cffa1.c):
 ;   $AFDC  ID1 (read: $CF)
 ;   $AFDD  ID2 (read: $FA)
-;   $AFF8  DATA register (streaming read; each read advances pointer)
+;   $AFF8  DATA register (streaming read/write)
 ;   $AFF9  ERROR register (read after command)
 ;   $AFFB  LBA[7:0]
 ;   $AFFC  LBA[15:8]
@@ -30,6 +30,7 @@
 ;   $AFFF  STATUS/COMMAND register (write=command, read=ATA status byte)
 ;             $00 = PRODOS_STATUS command
 ;             $01 = PRODOS_READ command
+;             $02 = PRODOS_WRITE command
 ;             Status bits: bit7=BSY, bit6=DRDY, bit4=DSC, bit3=DRQ, bit0=ERR
 ;
 ; Run from WozMon:
@@ -61,6 +62,7 @@ STATUS_ERR   = $01
 ; ProDOS commands
 CMD_STATUS   = $00
 CMD_READ     = $01
+CMD_WRITE    = $02
 
 ; ProDOS error codes
 ERR_OK       = $00
@@ -83,8 +85,11 @@ KBDCR        = $D011
 DSP          = $D012
 DSPCR        = $D013
 
-; Test buffer placed above code+strings to avoid self-overwrite during 512-byte read
-TEST_BUFFER  = $1A00
+; Test buffers - placed well above code (660 bytes to ~$1A94)
+; Write buffer uses $1B00-$1BFF (first 256) + $1C00-$1CFF (second 256)
+; Read buffer uses $1D00-$1DFF (first 256) + $1E00-$1EFF (second 256)
+WRITE_TEST_BUFFER = $1B00     ; Where we write $AA pattern (page 1)
+READ_VERIFY_BUFFER= $1D00     ; Where we read block 1 back (page 3)
 
 ; Scratch ZP
 ZP_PTR_LO    = $F0
@@ -107,8 +112,9 @@ CFBlockDriver:
 ; 1. Print banner
 ; 2. Check CFFA1 signature bytes
 ; 3. Call CFBlockDriver with STATUS
-; 4. Call CFBlockDriver with READ (block 0 → TEST_BUFFER)
-; 5. Print 16 bytes from TEST_BUFFER as hex pairs
+; 4. Fill buffer with $AA, call CFBlockDriver with WRITE to block 1
+; 5. Call CFBlockDriver with READ from block 1 into different buffer
+; 6. Compare: print first 16 bytes of both buffers
 ;------------------------------------------------------------------------------
 TestMain:
         ; --- Print banner ---
@@ -182,16 +188,97 @@ StOkLoop:
         BNE StOkLoop
 StOkDone:
 
-        ; --- READ block 0 test ---
+        ; --- WRITE block 1 with $AA pattern ---
+        ; Fill write buffer with $AA
+        LDX #$00
+        LDA #$00
+        STA ZP_PTR_LO
+        LDA #$1B
+        STA ZP_PTR_HI
+        LDY #$00
+        LDA #$AA
+FillBuffer:
+        STA (ZP_PTR_LO),Y
+        INY
+        BNE FillBuffer
+        INC ZP_PTR_HI        ; Now at $1C for second page
+        LDY #$00
+FillBuffer2:
+        STA (ZP_PTR_LO),Y
+        INY
+        BNE FillBuffer2
+        
+        ; Print diagnostic before WRITE
+        LDX #$00
+PreWrLoop:
+        LDA TxtPreWrite,X
+        BEQ PreWrDone
+        JSR Putc
+        INX
+        BNE PreWrLoop
+PreWrDone:
+
+        ; Issue WRITE command to block 1
+        LDA #CMD_WRITE
+        STA pdCommandCode
+        LDA #$00
+        STA pdUnitNumber
+        LDA #$01            ; block 1
+        STA pdBlockNumberLow
+        LDA #$00
+        STA pdBlockNumberHigh
+        LDA #<WRITE_TEST_BUFFER
+        STA pdIOBufferLow
+        LDA #>WRITE_TEST_BUFFER
+        STA pdIOBufferHigh
+        JSR CFBlockDriver
+        BCC WriteOk
+        ; Error
+        PHA
+        LDX #$00
+WrErrLoop:
+        LDA TxtWriteErr,X
+        BEQ WrErrDone
+        JSR Putc
+        INX
+        BNE WrErrLoop
+WrErrDone:
+        PLA
+        JSR PrintHex
+        JSR PrintCR
+        BRK
+WriteOk:
+        LDX #$00
+WrOkLoop:
+        LDA TxtWriteOk,X
+        BEQ WrOkDone
+        JSR Putc
+        INX
+        BNE WrOkLoop
+WrOkDone:
+        
+        ; Print diagnostic after WRITE
+        LDX #$00
+PostWrLoop:
+        LDA TxtPostWrite,X
+        BEQ PostWrDone
+        JSR Putc
+        INX
+        BNE PostWrLoop
+PostWrDone:
+
+        ; --- READ block 1 back for verification ---
         LDA #CMD_READ
         STA pdCommandCode
         LDA #$00
         STA pdUnitNumber
+        LDA #$01            ; block 1
         STA pdBlockNumberLow
+        LDA #$00
         STA pdBlockNumberHigh
-        LDA #<TEST_BUFFER
+        LDA #<READ_VERIFY_BUFFER
         STA pdIOBufferLow
-        LDA #>TEST_BUFFER
+        LDA #>READ_VERIFY_BUFFER
         STA pdIOBufferHigh
         JSR CFBlockDriver
         BCC ReadOk
@@ -219,23 +306,35 @@ RdOkLoop:
         BNE RdOkLoop
 RdOkDone:
 
-        ; --- Print 16 bytes from TEST_BUFFER as hex ---
+        ; --- Print first 16 bytes of WRITE buffer (what we wrote) ---
         LDX #$00
-HexDump:
-        LDA TEST_BUFFER,X
+HexDumpWrite:
+        LDA WRITE_TEST_BUFFER,X
         JSR PrintHex
         LDA #$20            ; space separator
         JSR Putc
         INX
         CPX #$10
-        BNE HexDump
+        BNE HexDumpWrite
+        JSR PrintCR
+
+        ; --- Print first 16 bytes of READ buffer (what we read back) ---
+        LDX #$00
+HexDumpRead:
+        LDA READ_VERIFY_BUFFER,X
+        JSR PrintHex
+        LDA #$20            ; space separator
+        JSR Putc
+        INX
+        CPX #$10
+        BNE HexDumpRead
         JSR PrintCR
         BRK
 
 ;------------------------------------------------------------------------------
-; DriverImpl  - minimal ProDOS block driver over Neo1 CFFA1 shim
+; DriverImpl  - ProDOS block driver over Neo1 CFFA1 shim
 ;
-; Accepts pdCommandCode = 0 (STATUS) or 1 (READ)
+; Accepts pdCommandCode = $00 (STATUS), $01 (READ), or $02 (WRITE)
 ; Returns: CLC, A=0 on success
 ;          SEC, A=error code on failure
 ;------------------------------------------------------------------------------
@@ -245,6 +344,8 @@ DriverImpl:
         BEQ DoStatus
         CMP #CMD_READ
         BEQ DoRead
+        CMP #CMD_WRITE
+        BEQ DoWrite
         LDA #ERR_BADCMD
         SEC
         RTS
@@ -317,6 +418,60 @@ ReadError:
         SEC
         RTS                     ; A already holds the error code
 
+DoWrite:
+        ; Write 32-bit LBA from ZP parameter block
+        LDA pdBlockNumberLow
+        STA CFFA1_LBA0
+        LDA pdBlockNumberHigh
+        STA CFFA1_LBA1
+        LDA #$00
+        STA CFFA1_LBA2
+        STA CFFA1_LBA3
+
+        ; Issue WRITE command
+        LDA #CMD_WRITE
+        STA CFFA1_CMD
+
+        ; Check for error before sending data
+        LDA CFFA1_ERROR
+        BNE WriteError
+
+        ; Wait for DRQ (ready to accept data)
+WaitDRQWrite:
+        LDA CFFA1_STATUS
+        AND #STATUS_DRQ
+        BEQ WaitDRQWrite
+
+        ; Stream 512 bytes from (pdIOBufferLow),Y to DATA register
+        ; Two passes of 256 bytes for full 16-bit pointer
+        LDA pdIOBufferLow
+        STA ZP_PTR_LO
+        LDA pdIOBufferHigh
+        STA ZP_PTR_HI
+
+        LDY #$00
+WriteLo:
+        LDA (ZP_PTR_LO),Y
+        STA CFFA1_DATA
+        INY
+        BNE WriteLo
+
+        INC ZP_PTR_HI
+        LDY #$00
+WriteHi:
+        LDA (ZP_PTR_LO),Y
+        STA CFFA1_DATA
+        INY
+        BNE WriteHi
+
+        LDA #ERR_OK
+        CLC
+        RTS
+
+WriteError:
+        SEC
+        RTS                     ; A already holds the error code
+
 ;------------------------------------------------------------------------------
 ; Putc  - output char in A to Neo1 DSP
 ;------------------------------------------------------------------------------
@@ -361,7 +516,7 @@ IsDigit:
 ;------------------------------------------------------------------------------
 TxtBanner:
         .byte $0D
-        .asciiz "NEO1 CFFA1 M2 TEST"
+        .asciiz "NEO1 CFFA1 M3 TEST"
 TxtSigOk:
         .byte $0D
         .asciiz "SIG OK"
@@ -374,9 +529,21 @@ TxtStatusOk:
 TxtStatusErr:
         .byte $0D
         .asciiz "STATUS ERR:"
+TxtPreWrite:
+        .byte $0D
+        .asciiz "[XFER]"
+TxtWriteOk:
+        .byte $0D
+        .asciiz "WRITE BLK1 OK"
+TxtPostWrite:
+        .byte $0D
+        .asciiz "[DONE]"
+TxtWriteErr:
+        .byte $0D
+        .asciiz "WRITE ERR:"
 TxtReadOk:
         .byte $0D
-        .asciiz "READ OK BLOCK0:"
+        .asciiz "READ BLK1 OK WROTE/READ:"
 TxtReadErr:
         .byte $0D
         .asciiz "READ ERR:"
