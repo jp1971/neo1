@@ -762,10 +762,12 @@ MliDoLoad:
 ; Uses CAT_* metadata and destination in TMP_N3:TMP_N2
 ;------------------------------------------------------------------------------
 LoadCurrentEntryAtAddr:
-        ; Seedling only for now.
+        ; Seedling and sapling.
         LDA CAT_TYPE
         CMP #$01
         BEQ LcaTypeOk
+        CMP #$02
+        BEQ LcaSapling
         LDX #$00
 LcaTypeLoop:
         LDA TxtTypeErr,X
@@ -778,6 +780,9 @@ LcaTypeDone:
         JSR PrintHex
         JSR PrintCR
         RTS
+
+LcaSapling:
+        JMP LoadSaplingAtAddr
 
 LcaTypeOk:
         ; EOF <= 512 check
@@ -910,6 +915,280 @@ LcaBigDone:
         LDA CAT_EOF0
         JSR PrintHex
         JSR PrintCR
+        RTS
+
+;------------------------------------------------------------------------------
+; LoadSaplingAtAddr
+; CAT_KEY = index block, EOF = payload byte length, destination in TMP_N3:TMP_N2
+;------------------------------------------------------------------------------
+LoadSaplingAtAddr:
+        ; Keep this compact: support sapling payload up to 2 data blocks (EOF <= $0400).
+        LDA CAT_EOF2
+        BEQ LsaChkEof1
+        JMP LsaTooBig
+LsaChkEof1:
+        LDA CAT_EOF1
+        CMP #$04
+        BCC LsaSizeOk
+        BEQ LsaSizeEq0400
+        JMP LsaTooBig
+LsaSizeEq0400:
+        LDA CAT_EOF0
+        BEQ LsaSizeOk
+        JMP LsaTooBig
+
+LsaSizeOk:
+        LDA CAT_EOF0
+        STA TMP_E_LEN
+        LDA CAT_EOF1
+        STA TMP_E_COUNT
+
+        ; Read index block from CAT_KEY.
+        LDA #CMD_READ
+        STA pdCommandCode
+        LDA #$00
+        STA pdUnitNumber
+        LDA CAT_KEY_LO
+        STA pdBlockNumberLow
+        LDA CAT_KEY_HI
+        STA pdBlockNumberHigh
+        LDA #<READ_VERIFY_BUFFER
+        STA pdIOBufferLow
+        LDA #>READ_VERIFY_BUFFER
+        STA pdIOBufferHigh
+        JSR CFBlockDriver
+        BCC LsaIdxOk
+        JMP LsaReadErr
+
+LsaIdxOk:
+        ; Block pointer #0 from index block.
+        LDY #$00
+        LDA READ_VERIFY_BUFFER,Y
+        STA TMP_N0
+        LDA READ_VERIFY_BUFFER+$100,Y
+        STA TMP_N1
+
+        ; Cache block pointer #1 before DATA reads reuse READ_VERIFY_BUFFER.
+        LDY #$01
+        LDA READ_VERIFY_BUFFER,Y
+        STA CAT_AUXLO
+        LDA READ_VERIFY_BUFFER+$100,Y
+        STA CAT_AUXHI
+
+        LDA TMP_N0
+        ORA TMP_N1
+        BEQ LsaIdx0Missing
+
+        ; Read first data block.
+        LDA #CMD_READ
+        STA pdCommandCode
+        LDA #$00
+        STA pdUnitNumber
+        LDA TMP_N0
+        STA pdBlockNumberLow
+        LDA TMP_N1
+        STA pdBlockNumberHigh
+        LDA #<READ_VERIFY_BUFFER
+        STA pdIOBufferLow
+        LDA #>READ_VERIFY_BUFFER
+        STA pdIOBufferHigh
+        JSR CFBlockDriver
+        BCC LsaData0Ok
+        JMP LsaReadErr
+
+LsaData0Ok:
+        ; Restore destination pointer clobbered by CFBlockDriver internals.
+        LDA TMP_N2
+        STA ZP_PTR_LO
+        LDA TMP_N3
+        STA ZP_PTR_HI
+        JSR CopyChunkFromBuffer
+        LDA ZP_PTR_LO
+        STA TMP_N2
+        LDA ZP_PTR_HI
+        STA TMP_N3
+
+        ; Remaining bytes?
+        LDA TMP_E_LEN
+        ORA TMP_E_COUNT
+        BNE LsaNeedIdx1
+        JMP LcaSuccess
+
+LsaNeedIdx1:
+
+        ; Need block pointer #1 (cached from index block).
+        LDA CAT_AUXLO
+        ORA CAT_AUXHI
+        BEQ LsaIdx1Missing
+
+        LDA #CMD_READ
+        STA pdCommandCode
+        LDA #$00
+        STA pdUnitNumber
+        LDA CAT_AUXLO
+        STA pdBlockNumberLow
+        LDA CAT_AUXHI
+        STA pdBlockNumberHigh
+        LDA #<READ_VERIFY_BUFFER
+        STA pdIOBufferLow
+        LDA #>READ_VERIFY_BUFFER
+        STA pdIOBufferHigh
+        JSR CFBlockDriver
+        BCC LsaData1Ok
+        JMP LsaReadErr
+
+LsaData1Ok:
+        ; Restore destination pointer clobbered by CFBlockDriver internals.
+        LDA TMP_N2
+        STA ZP_PTR_LO
+        LDA TMP_N3
+        STA ZP_PTR_HI
+        JSR CopyChunkFromBuffer
+        LDA ZP_PTR_LO
+        STA TMP_N2
+        LDA ZP_PTR_HI
+        STA TMP_N3
+        JMP LcaSuccess
+
+LsaIdx0Missing:
+        LDX #$00
+LsaIdx0Loop:
+        LDA TxtLoadSaplingIdx0Err,X
+        BEQ LsaIdx0Done
+        JSR Putc
+        INX
+        BNE LsaIdx0Loop
+LsaIdx0Done:
+        JSR PrintCR
+        RTS
+
+LsaIdx1Missing:
+        LDX #$00
+LsaIdx1Loop:
+        LDA TxtLoadSaplingIdx1Err,X
+        BEQ LsaIdx1Done
+        JSR Putc
+        INX
+        BNE LsaIdx1Loop
+LsaIdx1Done:
+        JSR PrintCR
+        RTS
+
+LsaTooBig:
+        LDX #$00
+LsaBigLoop:
+        LDA TxtLoadSaplingBig,X
+        BEQ LsaBigDone
+        JSR Putc
+        INX
+        BNE LsaBigLoop
+LsaBigDone:
+        LDA CAT_EOF2
+        JSR PrintHex
+        LDA CAT_EOF1
+        JSR PrintHex
+        LDA CAT_EOF0
+        JSR PrintHex
+        JSR PrintCR
+        RTS
+
+LsaReadErr:
+        PHA
+        LDX #$00
+LsaReadErrLoop:
+        LDA TxtLoadReadErr,X
+        BEQ LsaReadErrDone
+        JSR Putc
+        INX
+        BNE LsaReadErrLoop
+LsaReadErrDone:
+        PLA
+        JSR PrintHex
+        JSR PrintCR
+        RTS
+
+;------------------------------------------------------------------------------
+; CopyChunkFromBuffer
+; Copy min(512, TMP_E_COUNT:TMP_E_LEN) bytes from READ_VERIFY_BUFFER to dest ptr
+; in ZP_PTR_LO/HI, then decrement TMP_E_COUNT:TMP_E_LEN accordingly.
+;------------------------------------------------------------------------------
+CopyChunkFromBuffer:
+        LDA TMP_E_COUNT
+        CMP #$02
+        BCS CcbCopy512
+        CMP #$01
+        BEQ CcbCopy256Plus
+
+        ; 0..255 bytes
+        LDA TMP_E_LEN
+        BEQ CcbDone
+        STA TMP_N0
+        LDY #$00
+CcbCopyLow:
+        LDA READ_VERIFY_BUFFER,Y
+        STA (ZP_PTR_LO),Y
+        INY
+        DEC TMP_N0
+        BNE CcbCopyLow
+        CLC
+        LDA ZP_PTR_LO
+        ADC TMP_E_LEN
+        STA ZP_PTR_LO
+        BCC CcbZeroRem
+        INC ZP_PTR_HI
+CcbZeroRem:
+        LDA #$00
+        STA TMP_E_LEN
+        STA TMP_E_COUNT
+CcbDone:
+        RTS
+
+CcbCopy256Plus:
+        LDY #$00
+CcbPage0:
+        LDA READ_VERIFY_BUFFER,Y
+        STA (ZP_PTR_LO),Y
+        INY
+        BNE CcbPage0
+        INC ZP_PTR_HI
+
+        LDA TMP_E_LEN
+        BEQ CcbZeroRem
+        STA TMP_N0
+        LDY #$00
+CcbPage1Part:
+        LDA READ_VERIFY_BUFFER+$100,Y
+        STA (ZP_PTR_LO),Y
+        INY
+        DEC TMP_N0
+        BNE CcbPage1Part
+        CLC
+        LDA ZP_PTR_LO
+        ADC TMP_E_LEN
+        STA ZP_PTR_LO
+        BCC CcbZeroRem
+        INC ZP_PTR_HI
+        JMP CcbZeroRem
+
+CcbCopy512:
+        LDY #$00
+CcbFull0:
+        LDA READ_VERIFY_BUFFER,Y
+        STA (ZP_PTR_LO),Y
+        INY
+        BNE CcbFull0
+        INC ZP_PTR_HI
+        LDY #$00
+CcbFull1:
+        LDA READ_VERIFY_BUFFER+$100,Y
+        STA (ZP_PTR_LO),Y
+        INY
+        BNE CcbFull1
+        INC ZP_PTR_HI
+        SEC
+        LDA TMP_E_COUNT
+        SBC #$02
+        STA TMP_E_COUNT
         RTS
 
 ;------------------------------------------------------------------------------
@@ -1272,6 +1551,15 @@ TxtTypeErr:
 TxtLoadReadErr:
         .byte $0D
         .asciiz "LOAD READ ERR:"
+TxtLoadSaplingBig:
+        .byte $0D
+        .asciiz "LOAD SKIP:SAPLING EOF>0400 EOF="
+TxtLoadSaplingIdx0Err:
+        .byte $0D
+        .asciiz "LOAD ERR:SAPLING IDX0"
+TxtLoadSaplingIdx1Err:
+        .byte $0D
+        .asciiz "LOAD ERR:SAPLING IDX1"
 TxtLoadBig:
         .byte $0D
         .asciiz "LOAD SKIP:EOF>0200 EOF="
