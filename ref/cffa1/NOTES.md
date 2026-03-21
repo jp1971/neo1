@@ -100,6 +100,16 @@ Current M1 choice:
 - [x] Read block 2 directly from mounted `CFFA1.PO` image
 - [x] Verified first 64 bytes match CiderPress II `rb CFFA1.PO 2` output
 
+### M6: Interactive arbitrary-block inspector
+- [x] Added `HHLL` block prompt loop at `1810R` (`CR` exits)
+- [x] Reads requested block and dumps first `00-7F` bytes
+- [x] Verified block `0000` boot bytes and block `0002` directory bytes on hardware
+
+### M7: Minimal ProDOS-aware catalog parse
+- [x] Reads catalog block `0002` at startup
+- [x] Parses active entries and prints filename, key block, and EOF fields
+- [x] Verified `HELLORLD.BIN` entry on hardware: `KEY=0007 EOF=00001D`
+
 ## 7) Test Vectors
 
 ### Golden inputs
@@ -107,19 +117,25 @@ Current M1 choice:
 - Expected blocks:
 
 ### 6502 test programs
-- Program: `src/ram/neo1_cffa1_m2_blockdrv.s` (`1810R` entry, now M5 image-read)
+- Program: `src/ram/neo1_cffa1_m2_blockdrv.s` (`1810R` entry, now M7 catalog+inspect)
 - Command sequence: `1810R` from WozMon
 
-- M5 test flow:
+
+- M7 test flow:
 	1. Check signature ($CF/$FA)
 	2. STATUS command
-	3. READ block 2 from mounted image into $2200-$23FF
-	4. Print first 64 bytes (`00`-`3F`) as four 16-byte rows
+	3. READ and parse catalog block `0002`
+	4. Print active entries as `index: NAME KEY=hhhh EOF=hhhhhh`
+	5. Enter `BLK HHLL` interactive loop (`CR` exits)
+	6. READ requested block and print first `00-7F` bytes
 - Expected output:
-	- `NEO1 CFFA1 M5 READ TEST`
+	- `NEO1 CFFA1 M7 CATALOG+INSPECT`
 	- `SIG OK`
 	- `STATUS OK`
-	- `READ BLK2 OK HEX[00-3F]:`
+	- `CATALOG BLK 0002`
+	- `00: HELLORLD.BIN KEY=0007 EOF=00001D`
+	- `BLK HHLL (CR=EXIT)?`
+	- `READ BLK 0002 OK HEX[00-7F]:`
 	- `00 00 03 00 F7 4E 45 57 44 49 53 4B 00 00 00 00`
 	- `00 00 00 00 00 00 70 34 1C 14 00 00 70 34 1C 14`
 	- `05 00 C3 27 0D 01 00 06 00 40 06 1C 48 45 4C 4C`
@@ -140,18 +156,20 @@ Current M1 choice:
 The storage work is now intentionally split into two peripherals:
 
 ### Track A: CFFA1 (active focus)
-- `M6`: arbitrary block inspector
-	- monitor-driven or RAM-loaded tool to read any requested ProDOS block and dump bytes
-	- goal: inspect directory, sapling/tree, and data blocks without rebuilding per test
-- `M7`: minimal ProDOS-aware menu/load path
-	- parse enough ProDOS structures to list eligible files and load one into RAM
-	- this is the first milestone that starts to resemble original CFFA1 menu firmware behavior
+- `M6`: arbitrary block inspector (complete)
+	- monitor-driven tool reads any requested ProDOS block and dumps bytes
+- `M7`: minimal ProDOS-aware catalog parse (complete)
+	- parses directory entries in block `0002`
+	- prints filename + key block + EOF
+- `M7.1`: load one selected file by key block (next)
+	- target single-seedling style flow for tiny binaries like `HELLORLD.BIN`
+	- load file payload to a fixed RAM address and report entry/load pointers
 - `M8`: evaluate save/write scope
 	- decide whether to support raw block writes only, existing-file overwrite, or fuller ProDOS mutation
 
 Recommended next step:
 - Continue on the CFFA1 track while current context is fresh.
-- The next best milestone is `M6` because it improves our observability of the ProDOS image without committing us yet to a full menu/UI design.
+- The next best milestone is `M7.1`: file payload load using parsed catalog metadata.
 
 ### Track B: Neo1 filer / `VACI` / `NMI` (deferred)
 - Treat current `0400R` loader as a proof of concept.
@@ -173,4 +191,5 @@ Recommended next step:
 - 2026-03-16: Implemented M4 deterministic extension: RAM-backed write/read for blocks 1 and 2, negative write moved to block 3 (`$2D`), harness output updated to `NEO1 CFFA1 M4 TEST`.
 - 2026-03-17: Verified M4 on hardware from WozMon via `1810R`: `WRITE BLK1 OK`, `READ BLK1 OK` with matching `AA` lines, `WRITE BLK2 OK`, `READ BLK2 OK` with matching `55` lines, and `NEG WRITE OK BADBLOCK:2D`, followed by expected `BRK` return.
 - 2026-03-17: Implemented M5 real-image read path by removing deterministic RAM block read/write test overrides and validating `1810R` block-2 output against CiderPress II `rb CFFA1.PO 2` (including `NEWDISK` and `HELLORLD.BIN` directory bytes).
-- YYYY-MM-DD: 
+- 2026-03-21: Implemented and validated M6 interactive block inspector (`BLK HHLL`) with hardware reads of `0000` (boot code) and `0002` (directory block).
+- 2026-03-21: Implemented and validated M7 catalog parse from block `0002`; hardware output shows `00: HELLORLD.BIN KEY=0007 EOF=00001D`.
