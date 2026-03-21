@@ -114,6 +114,8 @@ CAT_TYPE     = $020E
 CAT_FILETYPE = $020F
 CAT_AUXLO    = $0210
 CAT_AUXHI    = $0211
+LOAD_NAME_LEN= $0212
+LOAD_NAME_BUF= $0213
 
         .org $1800
 
@@ -255,7 +257,7 @@ MenuDoCatalog:
         JMP MenuLoop
 
 MenuDoLoad:
-        JSR MenuLoadByIndex
+        JSR MenuLoadByName
         JMP MenuLoop
 
 MenuDoBlock:
@@ -547,63 +549,54 @@ CatDone:
         RTS
 
 ;------------------------------------------------------------------------------
-; FindCatalogEntryByIndex - fetch metadata for one entry index (00..0C)
-; In:  A = index (0..12)
-; Out: C=0 metadata loaded into CAT_*; C=1 on error/empty entry
+; FindCatalogEntryByName - fetch metadata for a matching filename in block 2
+; In:  LOAD_NAME_LEN / LOAD_NAME_BUF populated with uppercase filename
+; Out: C=0 metadata loaded into CAT_*; C=1 if not found / read error
 ;------------------------------------------------------------------------------
-FindCatalogEntryByIndex:
-        CMP #$0D
-        BCC FceRangeOk
-        SEC
-        RTS
-FceRangeOk:
-        STA TMP_N0
-
+FindCatalogEntryByName:
         JSR ReadCatalogBlock2
-        BCC FceReadOk
+        BCC FcnReadOk
         SEC
         RTS
-FceReadOk:
+FcnReadOk:
         LDA READ_VERIFY_BUFFER+$23
         STA TMP_E_LEN
         LDA READ_VERIFY_BUFFER+$24
         STA TMP_E_COUNT
 
-        LDA TMP_N0
-        CMP TMP_E_COUNT
-        BCC FceIdxOk
-        SEC
-        RTS
-FceIdxOk:
         LDA #<(READ_VERIFY_BUFFER+$2B)
         STA ZP_PTR_LO
         LDA #>(READ_VERIFY_BUFFER+$2B)
         STA ZP_PTR_HI
 
-        LDX TMP_N0
-FceAddLoop:
-        CPX #$00
-        BEQ FcePtrReady
-        CLC
-        LDA ZP_PTR_LO
-        ADC TMP_E_LEN
-        STA ZP_PTR_LO
-        BCC FceNoCarry
-        INC ZP_PTR_HI
-FceNoCarry:
-        DEX
-        JMP FceAddLoop
-FcePtrReady:
+FcnEntryLoop:
+        LDA TMP_E_COUNT
+        BNE FcnEntryDo
+        SEC
+        RTS
 
+FcnEntryDo:
         LDY #$00
         LDA (ZP_PTR_LO),Y
-        BEQ FceEmpty
-        STA TMP_N1
+        BEQ FcnAdvance
+        STA TMP_N0
         AND #$0F
-        BEQ FceEmpty
+        BEQ FcnAdvance
+        CMP LOAD_NAME_LEN
+        BNE FcnAdvance
 
-        ; Storage type in high nibble
-        LDA TMP_N1
+        STA TMP_N1
+        LDY #$01
+FcnCmpLoop:
+        LDA (ZP_PTR_LO),Y
+        CMP LOAD_NAME_BUF-1,Y
+        BNE FcnAdvance
+        INY
+        DEC TMP_N1
+        BNE FcnCmpLoop
+
+        ; Storage type in high nibble.
+        LDA TMP_N0
         LSR A
         LSR A
         LSR A
@@ -637,64 +630,65 @@ FcePtrReady:
         CLC
         RTS
 
-FceEmpty:
-        SEC
-        RTS
+FcnAdvance:
+        CLC
+        LDA ZP_PTR_LO
+        ADC TMP_E_LEN
+        STA ZP_PTR_LO
+        BCC FcnAdvanceNoCarry
+        INC ZP_PTR_HI
+FcnAdvanceNoCarry:
+        DEC TMP_E_COUNT
+        JMP FcnEntryLoop
 
 ;------------------------------------------------------------------------------
-; MenuLoadByIndex - M7.2 load command
+; MenuLoadByName - M7.3 load command
 ;------------------------------------------------------------------------------
-MenuLoadByIndex:
+MenuLoadByName:
         LDX #$00
-MliPromptLoop:
-        LDA TxtLoadIdxPrompt,X
-        BEQ MliPromptDone
+MlnPromptLoop:
+        LDA TxtLoadFilePrompt,X
+        BEQ MlnPromptDone
         JSR Putc
         INX
-        BNE MliPromptLoop
-MliPromptDone:
+        BNE MlnPromptLoop
+MlnPromptDone:
 
-        JSR GetHexNibble
-        STA TMP_N0
-        JSR GetHexNibble
-        STA TMP_N1
+        JSR ReadFilenameOrCR
         JSR PrintCR
-
-        LDA TMP_N0
-        ASL A
-        ASL A
-        ASL A
-        ASL A
-        ORA TMP_N1
-        JSR FindCatalogEntryByIndex
-        BCC MliHaveEntry
-
-        LDX #$00
-MliNoEntLoop:
-        LDA TxtLoadNoEntry,X
-        BEQ MliNoEntDone
-        JSR Putc
-        INX
-        BNE MliNoEntLoop
-MliNoEntDone:
+        BCC MlnHaveName
         RTS
 
-MliHaveEntry:
+MlnHaveName:
+        JSR FindCatalogEntryByName
+        BCC MlnHaveEntry
+
+        LDX #$00
+MlnNoFileLoop:
+        LDA TxtLoadNoFile,X
+        BEQ MlnNoFileDone
+        JSR Putc
+        INX
+        BNE MlnNoFileLoop
+MlnNoFileDone:
+        RTS
+
+MlnHaveEntry:
         ; BA1 special path intentionally deferred for now.
         LDA CAT_FILETYPE
         CMP #$F1
-        BNE MliNotBa1
+        BNE MlnNotBa1
         LDX #$00
-MliBa1Loop:
+MlnBa1Loop:
         LDA TxtLoadBa1NYI,X
-        BEQ MliBa1Done
+        BEQ MlnBa1Done
         JSR Putc
         INX
-        BNE MliBa1Loop
-MliBa1Done:
+        BNE MlnBa1Loop
+MlnBa1Done:
         RTS
 
-MliNotBa1:
+MlnNotBa1:
         ; Default addr from auxtype.
         LDA CAT_AUXLO
         STA TMP_N2
@@ -702,31 +696,31 @@ MliNotBa1:
         STA TMP_N3
 
         LDX #$00
-MliAddrLoop:
+MlnAddrLoop:
         LDA TxtAddrPromptA,X
-        BEQ MliAddrA_Done
+        BEQ MlnAddrA_Done
         JSR Putc
         INX
-        BNE MliAddrLoop
-MliAddrA_Done:
+        BNE MlnAddrLoop
+MlnAddrA_Done:
         LDA TMP_N3
         JSR PrintHex
         LDA TMP_N2
         JSR PrintHex
         LDX #$00
-MliAddrB_Loop:
+MlnAddrB_Loop:
         LDA TxtAddrPromptB,X
-        BEQ MliAddrB_Done
+        BEQ MlnAddrB_Done
         JSR Putc
         INX
-        BNE MliAddrB_Loop
-MliAddrB_Done:
+        BNE MlnAddrB_Loop
+MlnAddrB_Done:
 
         ; Enter keeps default; otherwise 4 hex digits override.
         JSR GetHexNibbleOrCR
-        BCC MliAddrN0
-        JMP MliDoLoad
-MliAddrN0:
+        BCC MlnAddrN0
+        JMP MlnDoLoad
+MlnAddrN0:
         STA TMP_N0
         JSR GetHexNibble
         STA TMP_N1
@@ -752,7 +746,7 @@ MliAddrN0:
         PLA
         STA TMP_N3            ; destination hi
 
-MliDoLoad:
+MlnDoLoad:
         JSR PrintCR
         JSR LoadCurrentEntryAtAddr
         RTS
@@ -1361,6 +1355,38 @@ KeyWait:
         RTS
 
 ;------------------------------------------------------------------------------
+; ReadFilenameOrCR - read uppercase filename (max 15 chars), echoing input
+; Returns: C=1 if CR pressed immediately, else C=0 and LOAD_NAME_* populated
+;------------------------------------------------------------------------------
+ReadFilenameOrCR:
+        LDA #$00
+        STA LOAD_NAME_LEN
+ReadNameLoop:
+        JSR GetKey
+        CMP #$0D
+        BEQ ReadNameDone
+        JSR ToUpper
+        CMP #$21
+        BCC ReadNameLoop
+        LDX LOAD_NAME_LEN
+        CPX #$0F
+        BCS ReadNameLoop
+        STA LOAD_NAME_BUF,X
+        PHX
+        JSR Putc
+        PLX
+        INC LOAD_NAME_LEN
+        JMP ReadNameLoop
+ReadNameDone:
+        LDA LOAD_NAME_LEN
+        BNE ReadNameOk
+        SEC
+        RTS
+ReadNameOk:
+        CLC
+        RTS
+
+;------------------------------------------------------------------------------
 ; ToUpper - normalize lowercase ASCII letter to uppercase
 ;------------------------------------------------------------------------------
 ToUpper:
@@ -1506,7 +1532,7 @@ IsDigit:
 ;------------------------------------------------------------------------------
 TxtBanner:
         .byte $0D
-        .asciiz "NEO1 CFFA1 M7.2 MINI MENU"
+        .asciiz "NEO1 CFFA1 M7.3 LOAD FILE"
 TxtSigOk:
         .byte $0D
         .asciiz "SIG OK"
@@ -1531,12 +1557,12 @@ TxtMenuPrompt:
 TxtMenuUnknown:
         .byte $0D
         .asciiz "?"
-TxtLoadIdxPrompt:
+TxtLoadFilePrompt:
         .byte $0D
-        .asciiz "LOAD INDEX (00-0C): "
-TxtLoadNoEntry:
+        .asciiz "LOAD FILE: "
+TxtLoadNoFile:
         .byte $0D
-        .asciiz "LOAD ERR:NO ENTRY"
+        .asciiz "LOAD ERR:NO FILE"
 TxtLoadBa1NYI:
         .byte $0D
         .asciiz "LOAD BA1 NYI"
