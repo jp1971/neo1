@@ -1,11 +1,12 @@
 ; neo1_cffa1_m2_blockdrv.s
 ;
-; M7 CFFA1 catalog + arbitrary-block inspector for Neo1-23.
+; M7.1 CFFA1 catalog + first-entry load + arbitrary-block inspector for Neo1-23.
 ;
 ; Provides:
 ;   CFBlockDriver  ($1800) - ProDOS block driver with STATUS, READ, WRITE
 ;   TestMain       ($1810) - exerciser:
-;                            reads/parses catalog block 2 then enters block inspector loop
+;                            reads/parses catalog block 2, loads first seedling entry to $0300,
+;                            then enters block inspector loop
 ;
 ; CFBlockDriver call protocol (from CFFA1_API.s):
 ;   $42  pdCommandCode     0=STATUS, 1=READ, 2=WRITE
@@ -99,6 +100,14 @@ TMP_E_LEN    = $F6
 TMP_E_COUNT  = $F7
 TMP_NLEN     = $F8
 
+CAT_FOUND    = $0208
+CAT_KEY_LO   = $0209
+CAT_KEY_HI   = $020A
+CAT_EOF0     = $020B
+CAT_EOF1     = $020C
+CAT_EOF2     = $020D
+CAT_TYPE     = $020E
+
         .org $1800
 
 ;------------------------------------------------------------------------------
@@ -117,10 +126,11 @@ CFBlockDriver:
 ; 2. Check CFFA1 signature bytes
 ; 3. Call CFBlockDriver with STATUS
 ; 4. Read/parse ProDOS catalog block 2 and print entries
-; 5. Prompt for block HHLL (CR exits)
-; 6. Call CFBlockDriver with READ from requested block into READ_VERIFY_BUFFER
-; 7. Print first 128 bytes (hex, 16 bytes per line)
-; 8. Loop back to prompt
+; 5. Attempt first-entry seedling payload load to $0300
+; 6. Prompt for block HHLL (CR exits)
+; 7. Call CFBlockDriver with READ from requested block into READ_VERIFY_BUFFER
+; 8. Print first 128 bytes (hex, 16 bytes per line)
+; 9. Loop back to prompt
 ;------------------------------------------------------------------------------
 TestMain:
         ; --- Print banner ---
@@ -194,6 +204,7 @@ StOkLoop:
         BNE StOkLoop
 StOkDone:
         JSR ShowCatalog
+        JSR LoadFirstEntry
 
 MainLoop:
         ; Prompt: BLK? HHLL, CR exits
@@ -283,6 +294,9 @@ NoRowBreak:
 ; ShowCatalog - read block 2 and print active directory entries
 ;------------------------------------------------------------------------------
 ShowCatalog:
+        LDA #$00
+        STA CAT_FOUND
+
         LDX #$00
 CatHdrLoop:
         LDA TxtCatHdr,X
@@ -343,10 +357,43 @@ CatEntryDo:
 
         LDY #$00
         LDA (ZP_PTR_LO),Y
-        BEQ CatAdvance
+        BNE CatEntryNonZero
+        JMP CatAdvance
+CatEntryNonZero:
+        STA TMP_N0
         AND #$0F
-        BEQ CatAdvance
+        BNE CatEntryHasName
+        JMP CatAdvance
+CatEntryHasName:
         STA TMP_NLEN
+
+        ; Capture first active entry metadata for M7.1 loader.
+        LDA CAT_FOUND
+        BNE CatFirstDone
+        LDA TMP_N0
+        LSR A
+        LSR A
+        LSR A
+        LSR A
+        STA CAT_TYPE
+        LDY #$11
+        LDA (ZP_PTR_LO),Y
+        STA CAT_KEY_LO
+        LDY #$12
+        LDA (ZP_PTR_LO),Y
+        STA CAT_KEY_HI
+        LDY #$15
+        LDA (ZP_PTR_LO),Y
+        STA CAT_EOF0
+        LDY #$16
+        LDA (ZP_PTR_LO),Y
+        STA CAT_EOF1
+        LDY #$17
+        LDA (ZP_PTR_LO),Y
+        STA CAT_EOF2
+        LDA #$01
+        STA CAT_FOUND
+CatFirstDone:
 
         ; Print entry index (hex 00..)
         TXA
@@ -422,6 +469,204 @@ CatAdvanceNoCarry:
         JMP CatEntryLoop
 
 CatDone:
+        RTS
+
+;------------------------------------------------------------------------------
+; LoadFirstEntry - load first parsed catalog entry payload to $0300
+; M7.1 scope: seedling files only, EOF <= 512 bytes.
+;------------------------------------------------------------------------------
+LoadFirstEntry:
+        LDA CAT_FOUND
+        BNE LfeHaveEntry
+        LDX #$00
+LfeNoneLoop:
+        LDA TxtLoadNone,X
+        BEQ LfeNoneDone
+        JSR Putc
+        INX
+        BNE LfeNoneLoop
+LfeNoneDone:
+        RTS
+
+LfeHaveEntry:
+        LDX #$00
+LfeHdrLoop:
+        LDA TxtLoadHdr,X
+        BEQ LfeHdrDone
+        JSR Putc
+        INX
+        BNE LfeHdrLoop
+LfeHdrDone:
+
+        ; Seedling storage type expected (type=1)
+        LDA CAT_TYPE
+        CMP #$01
+        BEQ LfeTypeOk
+        LDX #$00
+LfeTypeErrLoop:
+        LDA TxtTypeErr,X
+        BEQ LfeTypeErrDone
+        JSR Putc
+        INX
+        BNE LfeTypeErrLoop
+LfeTypeErrDone:
+        LDA CAT_TYPE
+        JSR PrintHex
+        JSR PrintCR
+        RTS
+
+LfeTypeOk:
+        ; Bounds check: support EOF <= 512 bytes (CAT_EOF2 must be 0)
+        LDA CAT_EOF2
+        BEQ LfeSizeHiOk
+        JMP LfeTooBig
+LfeSizeHiOk:
+        LDA CAT_EOF1
+        CMP #$02
+        BCC LfeSizeOk
+        BEQ LfeSizeEq2
+        JMP LfeTooBig
+LfeSizeEq2:
+        LDA CAT_EOF0
+        BEQ LfeSizeOk
+        JMP LfeTooBig
+
+LfeSizeOk:
+        ; READ key block into READ_VERIFY_BUFFER
+        LDA #CMD_READ
+        STA pdCommandCode
+        LDA #$00
+        STA pdUnitNumber
+        LDA CAT_KEY_LO
+        STA pdBlockNumberLow
+        LDA CAT_KEY_HI
+        STA pdBlockNumberHigh
+        LDA #<READ_VERIFY_BUFFER
+        STA pdIOBufferLow
+        LDA #>READ_VERIFY_BUFFER
+        STA pdIOBufferHigh
+        JSR CFBlockDriver
+        BCC LfeReadOk
+
+        PHA
+        LDX #$00
+LfeReadErrLoop:
+        LDA TxtLoadReadErr,X
+        BEQ LfeReadErrDone
+        JSR Putc
+        INX
+        BNE LfeReadErrLoop
+LfeReadErrDone:
+        PLA
+        JSR PrintHex
+        JSR PrintCR
+        RTS
+
+LfeReadOk:
+        ; Copy payload to $0300 (and $0400 for bytes >255)
+        LDA CAT_EOF1
+        BEQ LfeCopyLowOnly
+        CMP #$01
+        BEQ LfeCopyOnePlus
+        ; here CAT_EOF1 == $02 and CAT_EOF0 == 0 by prior check
+
+        ; Copy first 256 to $0300
+        LDX #$00
+LfeCopy256a:
+        LDA READ_VERIFY_BUFFER,X
+        STA $0300,X
+        INX
+        BNE LfeCopy256a
+
+        ; Copy second 256 to $0400
+        LDX #$00
+LfeCopy256b:
+        LDA READ_VERIFY_BUFFER+$100,X
+        STA $0400,X
+        INX
+        BNE LfeCopy256b
+        JMP LfeDone
+
+LfeCopyOnePlus:
+        ; Copy first 256 to $0300
+        LDX #$00
+LfeCopy1stPage:
+        LDA READ_VERIFY_BUFFER,X
+        STA $0300,X
+        INX
+        BNE LfeCopy1stPage
+
+        ; Copy remaining CAT_EOF0 bytes to $0400
+        LDA CAT_EOF0
+        BEQ LfeDone
+        STA TMP_N1
+        LDX #$00
+LfeCopy2ndPart:
+        LDA READ_VERIFY_BUFFER+$100,X
+        STA $0400,X
+        INX
+        DEC TMP_N1
+        BNE LfeCopy2ndPart
+        JMP LfeDone
+
+LfeCopyLowOnly:
+        LDA CAT_EOF0
+        BEQ LfeDone
+        STA TMP_N1
+        LDX #$00
+LfeCopyLowPart:
+        LDA READ_VERIFY_BUFFER,X
+        STA $0300,X
+        INX
+        DEC TMP_N1
+        BNE LfeCopyLowPart
+
+LfeDone:
+        LDX #$00
+LfeOkLoop:
+        LDA TxtLoadOk,X
+        BEQ LfeOkDone
+        JSR Putc
+        INX
+        BNE LfeOkLoop
+LfeOkDone:
+        LDA #$03
+        JSR PrintHex
+        LDA #$00
+        JSR PrintHex
+        LDA #$20
+        JSR Putc
+        LDX #$00
+LfeLenLoop:
+        LDA TxtLen,X
+        BEQ LfeLenDone
+        JSR Putc
+        INX
+        BNE LfeLenLoop
+LfeLenDone:
+        LDA CAT_EOF1
+        JSR PrintHex
+        LDA CAT_EOF0
+        JSR PrintHex
+        JSR PrintCR
+        RTS
+
+LfeTooBig:
+        LDX #$00
+LfeBigLoop:
+        LDA TxtLoadBig,X
+        BEQ LfeBigDone
+        JSR Putc
+        INX
+        BNE LfeBigLoop
+LfeBigDone:
+        LDA CAT_EOF2
+        JSR PrintHex
+        LDA CAT_EOF1
+        JSR PrintHex
+        LDA CAT_EOF0
+        JSR PrintHex
+        JSR PrintCR
         RTS
 
 ;------------------------------------------------------------------------------
@@ -739,7 +984,7 @@ IsDigit:
 ;------------------------------------------------------------------------------
 TxtBanner:
         .byte $0D
-        .asciiz "NEO1 CFFA1 M7 CATALOG+INSPECT"
+        .asciiz "NEO1 CFFA1 M7.1 CATALOG+LOAD+INSPECT"
 TxtSigOk:
         .byte $0D
         .asciiz "SIG OK"
@@ -758,6 +1003,26 @@ TxtCatHdr:
 TxtCatErr:
         .byte $0D
         .asciiz "CAT READ ERR:"
+TxtLoadHdr:
+        .byte $0D
+        .asciiz "M7.1 LOAD FIRST ENTRY"
+TxtLoadNone:
+        .byte $0D
+        .asciiz "LOAD SKIP:NO ENTRY"
+TxtTypeErr:
+        .byte $0D
+        .asciiz "LOAD SKIP:TYPE="
+TxtLoadReadErr:
+        .byte $0D
+        .asciiz "LOAD READ ERR:"
+TxtLoadBig:
+        .byte $0D
+        .asciiz "LOAD SKIP:EOF>0200 EOF="
+TxtLoadOk:
+        .byte $0D
+        .asciiz "LOAD OK ADDR="
+TxtLen:
+        .asciiz "LEN="
 TxtPrompt:
         .byte $0D
         .asciiz "BLK HHLL (CR=EXIT)? "
