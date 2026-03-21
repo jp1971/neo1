@@ -85,6 +85,7 @@ KBD          = $D010
 KBDCR        = $D011
 DSP          = $D012
 DSPCR        = $D013
+WOZMON_ENTRY = $FF00
 
 ; Read buffer for 512-byte block reads.
 READ_VERIFY_BUFFER= $2200
@@ -220,7 +221,7 @@ PromptDone:
         ; Read 4 hex digits, high byte first. CR on first key exits.
         JSR ReadHexWordOrCR
         BCC HaveBlock
-        BRK
+        JMP WOZMON_ENTRY
 
 HaveBlock:
         JSR PrintCR
