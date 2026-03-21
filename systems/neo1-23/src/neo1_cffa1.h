@@ -45,6 +45,7 @@ extern "C" {
 #define NEO1_CFFA1_ERR_BADCMD             (0x01)
 #define NEO1_CFFA1_ERR_IO                 (0x27)
 #define NEO1_CFFA1_ERR_NODEV              (0x28)
+#define NEO1_CFFA1_ERR_WRITE_PROTECT      (0x2B)
 #define NEO1_CFFA1_ERR_BADBLOCK           (0x2D)
 
 // ATA-like status bits used by this bridge.

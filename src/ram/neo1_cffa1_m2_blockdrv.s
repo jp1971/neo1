@@ -1,6 +1,7 @@
 ; neo1_cffa1_m2_blockdrv.s
 ;
-; M7.2 CFFA1 mini-menu: catalog, load-by-index, block inspect.
+; M8.0 CFFA1 mini-menu: catalog, load-by-name, block inspect,
+; explicit read-only write policy.
 ;
 ; Provides:
 ;   CFBlockDriver  ($1800) - ProDOS block driver with STATUS, READ, WRITE
@@ -9,6 +10,7 @@
 ;                              C = catalog block 2 parse/list
 ;                              L = load selected entry by index with ADDR default
 ;                              B = block inspector (HHLL)
+;                              W = write/save status (read-only for now)
 ;                              Q = quit to WozMon
 ;
 ; CFBlockDriver call protocol (from CFFA1_API.s):
@@ -73,6 +75,7 @@ ERR_OK       = $00
 ERR_BADCMD   = $01
 ERR_IO       = $27
 ERR_NODEV    = $28
+ERR_WPROTECT = $2B
 ERR_BADBLOCK = $2D
 
 ; ProDOS ZP parameter block (from CFFA1_API.s)
@@ -237,11 +240,14 @@ MenuPromptDone:
         BEQ MenuDoLoad
         CMP #'B'
         BEQ MenuDoBlock
+        CMP #'W'
+        BEQ MenuDoWrite
         CMP #'Q'
         BEQ MenuDoQuit
         CMP #'?'
-        BEQ MenuDoCatalog
+        BEQ MenuDoHelp
 
+MenuDoHelp:
         LDX #$00
 MenuUnknownLoop:
         LDA TxtMenuUnknown,X
@@ -262,6 +268,17 @@ MenuDoLoad:
 
 MenuDoBlock:
         JSR RunBlockInspector
+        JMP MenuLoop
+
+MenuDoWrite:
+        LDX #$00
+MenuWriteLoop:
+        LDA TxtWritePolicy,X
+        BEQ MenuWriteDone
+        JSR Putc
+        INX
+        BNE MenuWriteLoop
+MenuWriteDone:
         JMP MenuLoop
 
 MenuDoQuit:
@@ -1532,7 +1549,7 @@ IsDigit:
 ;------------------------------------------------------------------------------
 TxtBanner:
         .byte $0D
-        .asciiz "NEO1 CFFA1 M7.3 LOAD FILE"
+        .asciiz "NEO1 CFFA1 M8 READ ONLY"
 TxtSigOk:
         .byte $0D
         .asciiz "SIG OK"
@@ -1556,7 +1573,7 @@ TxtMenuPrompt:
         .asciiz "CFFA1> "
 TxtMenuUnknown:
         .byte $0D
-        .asciiz "?"
+        .asciiz "C L B W Q ?"
 TxtLoadFilePrompt:
         .byte $0D
         .asciiz "LOAD FILE: "
@@ -1566,6 +1583,9 @@ TxtLoadNoFile:
 TxtLoadBa1NYI:
         .byte $0D
         .asciiz "LOAD BA1 NYI"
+TxtWritePolicy:
+        .byte $0D
+        .asciiz "WRITE PROTECT:2B"
 TxtAddrPromptA:
         .byte $0D
         .asciiz "ADDR ($"

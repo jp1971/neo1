@@ -175,7 +175,7 @@ static void do_cmd_read(void) {
 }
 
 static void do_cmd_write(void) {
-    set_error(NEO1_CFFA1_ERR_BADCMD);
+    set_error(NEO1_CFFA1_ERR_WRITE_PROTECT);
 }
 
 static void handle_command(uint8_t cmd) {
