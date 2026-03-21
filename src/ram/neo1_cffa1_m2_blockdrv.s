@@ -1,16 +1,16 @@
 ; neo1_cffa1_m2_blockdrv.s
 ;
-; M8.0 CFFA1 mini-menu: catalog, load-by-name, block inspect,
-; explicit read-only write policy.
+; M8.1 CFFA1 mini-menu: catalog, load-by-name, block inspect,
+; driver-level write probe, and opt-in write-gated backend.
 ;
 ; Provides:
 ;   CFBlockDriver  ($1800) - ProDOS block driver with STATUS, READ, WRITE
 ;   TestMain       ($1810) - exerciser:
 ;                            CFFA1-style command loop with:
 ;                              C = catalog block 2 parse/list
-;                              L = load selected entry by index with ADDR default
+;                              L = load selected entry by name with ADDR default
 ;                              B = block inspector (HHLL)
-;                              W = write/save status (read-only for now)
+;                              W = driver-level write probe
 ;                              Q = quit to WozMon
 ;
 ; CFBlockDriver call protocol (from CFFA1_API.s):
@@ -271,14 +271,36 @@ MenuDoBlock:
         JMP MenuLoop
 
 MenuDoWrite:
+        ; Non-destructive probe: attempt PRODOS_WRITE to invalid block $FFFF.
+        ; Read-only images should return $2B, while opt-in writable images
+        ; should reject the out-of-range block with $2D before any data phase.
+        LDA #CMD_WRITE
+        STA pdCommandCode
+        LDA #$00
+        STA pdUnitNumber
+        LDA #$FF
+        STA pdBlockNumberLow
+        STA pdBlockNumberHigh
+        LDA #<READ_VERIFY_BUFFER
+        STA pdIOBufferLow
+        LDA #>READ_VERIFY_BUFFER
+        STA pdIOBufferHigh
+        JSR CFBlockDriver
+        PHP
+        PHA
+
         LDX #$00
 MenuWriteLoop:
-        LDA TxtWritePolicy,X
+        LDA TxtWriteProbe,X
         BEQ MenuWriteDone
         JSR Putc
         INX
         BNE MenuWriteLoop
 MenuWriteDone:
+        PLA
+        JSR PrintHex
+        JSR PrintCR
+        PLP
         JMP MenuLoop
 
 MenuDoQuit:
@@ -1549,7 +1571,7 @@ IsDigit:
 ;------------------------------------------------------------------------------
 TxtBanner:
         .byte $0D
-        .asciiz "NEO1 CFFA1 M8 READ ONLY"
+        .asciiz "NEO1 CFFA1 M8 WRITE GATED"
 TxtSigOk:
         .byte $0D
         .asciiz "SIG OK"
@@ -1583,9 +1605,9 @@ TxtLoadNoFile:
 TxtLoadBa1NYI:
         .byte $0D
         .asciiz "LOAD BA1 NYI"
-TxtWritePolicy:
+TxtWriteProbe:
         .byte $0D
-        .asciiz "WRITE PROTECT:2B"
+        .asciiz "WRITE:"
 TxtAddrPromptA:
         .byte $0D
         .asciiz "ADDR ($"

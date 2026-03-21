@@ -15,9 +15,12 @@ static uint8_t g_regs[NEO1_CFFA1_IO_SIZE];
 static FATFS g_fatfs;
 static FIL g_image;
 static bool g_image_open;
+static bool g_image_writable;
 static uint32_t g_image_blocks;
 static uint8_t g_block_buffer[NEO1_CFFA1_BLOCK_SIZE];
 static uint16_t g_block_offset;
+static bool g_write_pending;
+static uint32_t g_write_block;
 
 static void set_status(uint8_t status) {
     g_regs[NEO1_CFFA1_REG_STATUS_COMMAND] = status;
@@ -62,8 +65,28 @@ static void close_image_if_open(void) {
     if (g_image_open) {
         f_close(&g_image);
         g_image_open = false;
-        g_image_blocks = 0;
     }
+    g_image_writable = false;
+    g_image_blocks = 0;
+    g_write_pending = false;
+    g_write_block = 0;
+}
+
+static bool try_open_image(const char* name, BYTE mode, bool writable) {
+    if (f_open(&g_image, name, mode) != FR_OK) {
+        return false;
+    }
+
+    g_image_open = true;
+    g_image_writable = writable;
+    g_image_blocks = (uint32_t)(f_size(&g_image) / NEO1_CFFA1_BLOCK_SIZE);
+#if NEO1_CFFA1_DEBUG
+    printf("[cffa1] image '%s' blocks=%lu writable=%u\n",
+           name,
+           (unsigned long)g_image_blocks,
+           writable ? 1u : 0u);
+#endif
+    return true;
 }
 
 static bool open_first_image(void) {
@@ -75,6 +98,19 @@ static bool open_first_image(void) {
         return false;
     }
 
+    const char* preferred_rw[] = {
+        "CFFA1RW.PO",
+        "cffa1rw.po",
+        "CFFA1RW.HDV",
+        "cffa1rw.hdv",
+    };
+
+    for (unsigned i = 0; i < (unsigned)(sizeof(preferred_rw) / sizeof(preferred_rw[0])); i++) {
+        if (try_open_image(preferred_rw[i], (BYTE)(FA_READ | FA_WRITE), true)) {
+            return true;
+        }
+    }
+
     const char* preferred[] = {
         "CFFA1.PO",
         "cffa1.po",
@@ -83,12 +119,7 @@ static bool open_first_image(void) {
     };
 
     for (unsigned i = 0; i < (unsigned)(sizeof(preferred) / sizeof(preferred[0])); i++) {
-        if (f_open(&g_image, preferred[i], FA_READ) == FR_OK) {
-            g_image_open = true;
-            g_image_blocks = (uint32_t)(f_size(&g_image) / NEO1_CFFA1_BLOCK_SIZE);
-#if NEO1_CFFA1_DEBUG
-            printf("[cffa1] image '%s' blocks=%lu\n", preferred[i], (unsigned long)g_image_blocks);
-#endif
+        if (try_open_image(preferred[i], FA_READ, false)) {
             return true;
         }
     }
@@ -114,13 +145,8 @@ static bool open_first_image(void) {
         if (!filename_has_disk_ext(fno.fname)) {
             continue;
         }
-        if (f_open(&g_image, fno.fname, FA_READ) == FR_OK) {
-            g_image_open = true;
-            g_image_blocks = (uint32_t)(f_size(&g_image) / NEO1_CFFA1_BLOCK_SIZE);
+        if (try_open_image(fno.fname, FA_READ, false)) {
             opened = true;
-#if NEO1_CFFA1_DEBUG
-            printf("[cffa1] image '%s' blocks=%lu\n", fno.fname, (unsigned long)g_image_blocks);
-#endif
             break;
         }
     }
@@ -175,10 +201,33 @@ static void do_cmd_read(void) {
 }
 
 static void do_cmd_write(void) {
-    set_error(NEO1_CFFA1_ERR_WRITE_PROTECT);
+    const uint32_t block = get_requested_block();
+
+    if (!open_first_image()) {
+        set_error(NEO1_CFFA1_ERR_NODEV);
+        return;
+    }
+
+    if (!g_image_writable) {
+        set_error(NEO1_CFFA1_ERR_WRITE_PROTECT);
+        return;
+    }
+
+    if (block >= g_image_blocks) {
+        set_error(NEO1_CFFA1_ERR_BADBLOCK);
+        return;
+    }
+
+    g_write_pending = true;
+    g_write_block = block;
+    g_block_offset = 0;
+    set_ok(1);
 }
 
 static void handle_command(uint8_t cmd) {
+    g_write_pending = false;
+    g_block_offset = 0;
+
     switch (cmd) {
         case NEO1_CFFA1_CMD_PRODOS_STATUS:
             do_cmd_status();
@@ -241,6 +290,32 @@ void neo1_cffa1_io_write(uint16_t addr, uint8_t data) {
     if ((addr >= NEO1_CFFA1_IO_BASE) && (addr <= NEO1_CFFA1_IO_END)) {
         const uint16_t index = (uint16_t)(addr - NEO1_CFFA1_IO_BASE);
         g_regs[index] = data;
+
+        if ((index == NEO1_CFFA1_REG_DATA) && g_write_pending) {
+            if (g_block_offset < NEO1_CFFA1_BLOCK_SIZE) {
+                g_block_buffer[g_block_offset++] = data;
+            }
+
+            if (g_block_offset >= NEO1_CFFA1_BLOCK_SIZE) {
+                g_write_pending = false;
+
+                const FRESULT seek_res = f_lseek(&g_image, (DWORD)(g_write_block * NEO1_CFFA1_BLOCK_SIZE));
+                if (seek_res != FR_OK) {
+                    set_error(NEO1_CFFA1_ERR_IO);
+                    return;
+                }
+
+                UINT nwritten = 0;
+                const FRESULT write_res = f_write(&g_image, g_block_buffer, NEO1_CFFA1_BLOCK_SIZE, &nwritten);
+                if ((write_res != FR_OK) || (nwritten != NEO1_CFFA1_BLOCK_SIZE) || (f_sync(&g_image) != FR_OK)) {
+                    set_error(NEO1_CFFA1_ERR_IO);
+                    return;
+                }
+
+                set_ok(0);
+            }
+            return;
+        }
 
         if (index == NEO1_CFFA1_REG_STATUS_COMMAND) {
             handle_command(data);

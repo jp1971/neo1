@@ -176,14 +176,16 @@ The storage work is now intentionally split into two peripherals:
 - `M8`: evaluate save/write scope (in progress)
 	- initial policy chosen: explicit read-only / write-protect behavior
 	- backend `PRODOS_WRITE` currently returns `$2B` (`WRITE PROTECT`) rather than generic bad-command
-	- mini-menu exposes `W` status item so write support is a deliberate capability, not an invisible absence
-	- next step inside M8: decide whether first mutating step should be raw block write test path or existing-file overwrite only
+	- mini-menu `W` now issues a real `PRODOS_WRITE` probe against invalid block `$FFFF`, which is non-destructive and confirms low-level policy on hardware
+	- first mutating step chosen: opt-in raw block writes only when the mounted image is explicitly named `CFFA1RW.PO` or `CFFA1RW.HDV`
+	- default auto-mounted images (`CFFA1.PO`, `CFFA1.HDV`, discovered `*.po|*.hdv|*.2mg`) remain read-only
+	- existing-file overwrite remains a later step after raw block write behavior is validated on a sacrificial writable image
 
 - `M8.1`: BA1 compatibility branch (deferred)
 	- gated on capture of known-good CFFA1-generated BA1 artifact (see Section 11)
 
 Recommended next step:
-- `M8`: choose initial write policy (`read-only + explicit no-op` vs `existing-file overwrite`), then implement smallest safe command subset.
+- Hardware-validate `W` on the normal read-only image (`WRITE:2B` expected), then test real block writes using an explicit writable image name on sacrificial media.
 
 ### Track B: Neo1 filer / `VACI` / `NMI` (deferred)
 - Treat current `0400R` loader as a proof of concept.
@@ -211,6 +213,7 @@ Recommended next step:
 - 2026-03-21: Fixed CR exit: replaced `BRK` with `JMP WOZMON_ENTRY` (`$FF00`); confirmed returns cleanly to WozMon.
 - 2026-03-21: Implemented and validated M7.2 mini menu (`2eca8ef`); `C` re-catalogs, `L 00 0300` loads HELLORLD.BIN with address override and prints `00 SUCCESS`, `Q` exits to WozMon.
 - 2026-03-21: Started M8 with explicit read-only policy. Neo1 CFFA1 backend now returns ProDOS `WRITE PROTECT` (`$2B`) for `PRODOS_WRITE`, and the mini-menu advertises `W` as a visible write/save status stub.
+- 2026-03-21: Advanced M8 to a real driver-level write probe. `W` now executes `PRODOS_WRITE` against invalid block `$FFFF` so the normal image still proves `$2B` non-destructively, while explicitly named writable images (`CFFA1RW.PO` / `CFFA1RW.HDV`) unlock the first raw block-write path.
 
 ## 11) BA1 Format Notes (Paused)
 
