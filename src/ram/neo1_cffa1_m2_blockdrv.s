@@ -1,11 +1,11 @@
 ; neo1_cffa1_m2_blockdrv.s
 ;
-; M6 CFFA1 arbitrary-block inspector for Neo1-23.
+; M7 CFFA1 catalog + arbitrary-block inspector for Neo1-23.
 ;
 ; Provides:
 ;   CFBlockDriver  ($1800) - ProDOS block driver with STATUS, READ, WRITE
 ;   TestMain       ($1810) - exerciser:
-;                            prompts for block HHLL, reads it, prints first 128 bytes
+;                            reads/parses catalog block 2 then enters block inspector loop
 ;
 ; CFBlockDriver call protocol (from CFFA1_API.s):
 ;   $42  pdCommandCode     0=STATUS, 1=READ, 2=WRITE
@@ -95,6 +95,9 @@ TMP_N0       = $F2
 TMP_N1       = $F3
 TMP_N2       = $F4
 TMP_N3       = $F5
+TMP_E_LEN    = $F6
+TMP_E_COUNT  = $F7
+TMP_NLEN     = $F8
 
         .org $1800
 
@@ -113,10 +116,11 @@ CFBlockDriver:
 ; 1. Print banner
 ; 2. Check CFFA1 signature bytes
 ; 3. Call CFBlockDriver with STATUS
-; 4. Prompt for block HHLL (CR exits)
-; 5. Call CFBlockDriver with READ from requested block into READ_VERIFY_BUFFER
-; 6. Print first 128 bytes (hex, 16 bytes per line)
-; 7. Loop back to prompt
+; 4. Read/parse ProDOS catalog block 2 and print entries
+; 5. Prompt for block HHLL (CR exits)
+; 6. Call CFBlockDriver with READ from requested block into READ_VERIFY_BUFFER
+; 7. Print first 128 bytes (hex, 16 bytes per line)
+; 8. Loop back to prompt
 ;------------------------------------------------------------------------------
 TestMain:
         ; --- Print banner ---
@@ -189,6 +193,7 @@ StOkLoop:
         INX
         BNE StOkLoop
 StOkDone:
+        JSR ShowCatalog
 
 MainLoop:
         ; Prompt: BLK? HHLL, CR exits
@@ -273,6 +278,151 @@ NoRowBreak:
         BNE HexDumpRead
         JSR PrintCR
         JMP MainLoop
+
+;------------------------------------------------------------------------------
+; ShowCatalog - read block 2 and print active directory entries
+;------------------------------------------------------------------------------
+ShowCatalog:
+        LDX #$00
+CatHdrLoop:
+        LDA TxtCatHdr,X
+        BEQ CatHdrDone
+        JSR Putc
+        INX
+        BNE CatHdrLoop
+CatHdrDone:
+
+        LDA #CMD_READ
+        STA pdCommandCode
+        LDA #$00
+        STA pdUnitNumber
+        LDA #$02
+        STA pdBlockNumberLow
+        LDA #$00
+        STA pdBlockNumberHigh
+        LDA #<READ_VERIFY_BUFFER
+        STA pdIOBufferLow
+        LDA #>READ_VERIFY_BUFFER
+        STA pdIOBufferHigh
+        JSR CFBlockDriver
+        BCC CatReadOk
+        PHA
+        LDX #$00
+CatErrLoop:
+        LDA TxtCatErr,X
+        BEQ CatErrDone
+        JSR Putc
+        INX
+        BNE CatErrLoop
+CatErrDone:
+        PLA
+        JSR PrintHex
+        JSR PrintCR
+        RTS
+
+CatReadOk:
+        ; Entry length and entries-per-block from ProDOS directory header.
+        LDA READ_VERIFY_BUFFER+$23
+        STA TMP_E_LEN
+        LDA READ_VERIFY_BUFFER+$24
+        STA TMP_E_COUNT
+
+        ; Directory entries begin at offset $2B in the first catalog block.
+        LDA #<(READ_VERIFY_BUFFER+$2B)
+        STA ZP_PTR_LO
+        LDA #>(READ_VERIFY_BUFFER+$2B)
+        STA ZP_PTR_HI
+
+        LDX #$00
+CatEntryLoop:
+        CPX TMP_E_COUNT
+        BCC CatEntryDo
+        JMP CatDone
+
+CatEntryDo:
+
+        LDY #$00
+        LDA (ZP_PTR_LO),Y
+        BEQ CatAdvance
+        AND #$0F
+        BEQ CatAdvance
+        STA TMP_NLEN
+
+        ; Print entry index (hex 00..)
+        TXA
+        JSR PrintHex
+        LDA #$3A
+        JSR Putc
+        LDA #$20
+        JSR Putc
+
+        ; Print filename
+        LDY #$01
+        LDA TMP_NLEN
+        STA TMP_N0
+CatNameLoop:
+        LDA TMP_N0
+        BEQ CatNameDone
+        LDA (ZP_PTR_LO),Y
+        JSR Putc
+        INY
+        DEC TMP_N0
+        JMP CatNameLoop
+CatNameDone:
+        LDA #$20
+        JSR Putc
+
+        ; Print key block pointer (offsets +$11/$12, little-endian)
+        LDY #$00
+CatKeyLblLoop:
+        LDA TxtKey,Y
+        BEQ CatKeyLblDone
+        JSR Putc
+        INY
+        BNE CatKeyLblLoop
+CatKeyLblDone:
+        LDY #$12
+        LDA (ZP_PTR_LO),Y
+        JSR PrintHex
+        LDY #$11
+        LDA (ZP_PTR_LO),Y
+        JSR PrintHex
+        LDA #$20
+        JSR Putc
+
+        ; Print EOF (offset +$15..+$17, little-endian)
+        LDY #$00
+CatEofLblLoop:
+        LDA TxtEof,Y
+        BEQ CatEofLblDone
+        JSR Putc
+        INY
+        BNE CatEofLblLoop
+CatEofLblDone:
+        LDY #$17
+        LDA (ZP_PTR_LO),Y
+        JSR PrintHex
+        LDY #$16
+        LDA (ZP_PTR_LO),Y
+        JSR PrintHex
+        LDY #$15
+        LDA (ZP_PTR_LO),Y
+        JSR PrintHex
+        JSR PrintCR
+
+CatAdvance:
+        CLC
+        LDA ZP_PTR_LO
+        ADC TMP_E_LEN
+        STA ZP_PTR_LO
+        BCC CatAdvanceNoCarry
+        INC ZP_PTR_HI
+CatAdvanceNoCarry:
+        INX
+        JMP CatEntryLoop
+
+CatDone:
+        RTS
 
 ;------------------------------------------------------------------------------
 ; DriverImpl  - ProDOS block driver over Neo1 CFFA1 shim
@@ -589,7 +739,7 @@ IsDigit:
 ;------------------------------------------------------------------------------
 TxtBanner:
         .byte $0D
-        .asciiz "NEO1 CFFA1 M6 BLOCK INSPECTOR"
+        .asciiz "NEO1 CFFA1 M7 CATALOG+INSPECT"
 TxtSigOk:
         .byte $0D
         .asciiz "SIG OK"
@@ -602,9 +752,19 @@ TxtStatusOk:
 TxtStatusErr:
         .byte $0D
         .asciiz "STATUS ERR:"
+TxtCatHdr:
+        .byte $0D
+        .asciiz "CATALOG BLK 0002"
+TxtCatErr:
+        .byte $0D
+        .asciiz "CAT READ ERR:"
 TxtPrompt:
         .byte $0D
         .asciiz "BLK HHLL (CR=EXIT)? "
+TxtKey:
+        .asciiz "KEY="
+TxtEof:
+        .asciiz "EOF="
 TxtReadOkHead:
         .byte $0D
         .asciiz "READ BLK "
