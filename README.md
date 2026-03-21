@@ -108,12 +108,38 @@ Do **not** use Disk Utility's GUI — it defaults to GUID Partition Map (GPT), w
 ## Current storage/filer status
 
 - USB MSC (mass storage) is integrated through TinyUSB + FatFs.
-- The Neo1-23 Filer at `0400R` can enumerate files and load by index.
+- The Neo1-23 Filer at `0400R` is an intentionally primitive MSC byte-loader proof of concept.
+  - Today it can enumerate files and load by index.
+  - It should be thought of as an Apple-1 cassette-style peripheral, not a ProDOS-aware disk interface.
+  - Long-term this path may be renamed toward `VACI` (Virtual Apple Cassette Interface) or `NMI` (Neo1 MSC Interface).
 - CFFA1 compatibility layer exposes signature bytes at `$AFDC`/`$AFDD` and a read-only ProDOS block interface at `$AFF0`–`$AFFF`.
   - Auto-mounts first `CFFA1.PO`, `CFFA1.HDV`, or `*.po`/`*.hdv`/`*.2mg` image found in root.
   - Supports `PRODOS_STATUS` (`$00`) and `PRODOS_READ` (`$01`) commands via the `$AFFF` command register.
   - 512-byte block data streams out of `$AFF8` one byte per read.
+  - Real-image block reads are now hardware-validated against `cp2 rb CFFA1.PO 2`.
 - Existing bring-up loader and newer Phase 2 loader images are kept under `src/ram/`.
+
+## Storage roadmap (split tracks)
+
+Neo1 now has two separate storage directions, and they should remain distinct:
+
+- `0400R` filer track (`VACI` / `NMI` direction):
+  - primitive byte load/save peripheral, analogous to the Apple-1 ACI
+  - user selects a file and a target memory range/address
+  - no filesystem-aware menu logic required
+- CFFA1 track:
+  - ProDOS-aware smart storage peripheral
+  - block interface first, then higher-level menu/load/save behavior inspired by the original CFFA1 firmware
+
+Current status by track:
+
+- Filer / `VACI` / `NMI`:
+  - proof of concept only
+  - useful for simple `.BIN` bring-up
+  - not yet robust for arbitrary load addresses or save/write flows
+- CFFA1:
+  - M5 complete: status + real-image block read path validated on hardware
+  - next focus: continue CFFA1 until the first ProDOS-aware load/menu milestone is reached
 
 ## Repository layout (high-level)
 
@@ -125,8 +151,8 @@ Do **not** use Disk Utility's GUI — it defaults to GUID Partition Map (GPT), w
 
 ## Next planned work
 
-- M2: CFFA1 boot/software path (exercise a real CFFA1-side ProDOS workflow end-to-end)
-- M3: optional CFFA1 write path
-- Phase 3 (optional): directory navigation in filer
-- Phase 4: save/write flow from 6502-side tools
+- Recommended immediate next step: `CFFA1 M6` arbitrary-block inspector from monitor/harness
+- Then: `CFFA1 M7` minimal ProDOS-aware menu/load path inspired by original CFFA1 firmware
+- After that: evaluate `CFFA1` write/save scope and filesystem mutation strategy
+- Separately, when we want to return to the primitive MSC path: `VACI/NMI M1` should be a two-step loader (choose file `00-99`, then specify load address, no auto-run)
 - Longer-term: richer RAM-loaded tools (e.g. TaliForth 2, Applesoft Lite workflows)

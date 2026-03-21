@@ -131,11 +131,40 @@ Current M1 choice:
 
 ## 8) Open Questions
 
-- 
-- 
-- 
+- How closely should the eventual Neo1-side menu follow original CFFA1 firmware behavior versus using a Neo1-specific UI shell?
+- Should early CFFA1 save/write support be limited to pre-existing file overwrite flows before attempting full file create/delete semantics?
+- When we return to the separate MSC byte-loader path, do we want classic ACI-like address syntax, menu prompts, or both?
 
-## 9) Decision Log
+## 9) Near-Term Roadmap
+
+The storage work is now intentionally split into two peripherals:
+
+### Track A: CFFA1 (active focus)
+- `M6`: arbitrary block inspector
+	- monitor-driven or RAM-loaded tool to read any requested ProDOS block and dump bytes
+	- goal: inspect directory, sapling/tree, and data blocks without rebuilding per test
+- `M7`: minimal ProDOS-aware menu/load path
+	- parse enough ProDOS structures to list eligible files and load one into RAM
+	- this is the first milestone that starts to resemble original CFFA1 menu firmware behavior
+- `M8`: evaluate save/write scope
+	- decide whether to support raw block writes only, existing-file overwrite, or fuller ProDOS mutation
+
+Recommended next step:
+- Continue on the CFFA1 track while current context is fresh.
+- The next best milestone is `M6` because it improves our observability of the ProDOS image without committing us yet to a full menu/UI design.
+
+### Track B: Neo1 filer / `VACI` / `NMI` (deferred)
+- Treat current `0400R` loader as a proof of concept.
+- Future `M1`:
+	- choose file `00-99`
+	- enter explicit 16-bit load address
+	- load bytes to RAM
+	- return to monitor without auto-run
+- Future `M2`:
+	- save a chosen memory range back to MSC storage
+	- keep semantics primitive and ACI-like rather than ProDOS-aware
+
+## 10) Decision Log
 
 - 2026-03-16: Implemented M0 CFFA1 shim in Neo1 runtime. Added ID signature bytes at `$AFDC/$AFDD` and safe stub I/O window at `$AFF0-$AFFF` with mirrored status/alt-status.
 - 2026-03-16: Implemented M1 bridge subset in shim: command `$00` status + `$01` read, 512-byte DATA stream via `$AFF8`, single-image auto-open on mounted USB volume.
