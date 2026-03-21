@@ -1,7 +1,7 @@
 ; neo1_cffa1_m2_blockdrv.s
 ;
-; M8.1 CFFA1 mini-menu: catalog, load-by-name, block inspect,
-; driver-level write probe, and opt-in write-gated backend.
+; M8.2 CFFA1 mini-menu: catalog, load-by-name, block inspect,
+; and CFFA1-style Write File prompts (existing-file overwrite path).
 ;
 ; Provides:
 ;   CFBlockDriver  ($1800) - ProDOS block driver with STATUS, READ, WRITE
@@ -10,7 +10,7 @@
 ;                              C = catalog block 2 parse/list
 ;                              L = load selected entry by name with ADDR default
 ;                              B = block inspector (HHLL)
-;                              W = driver-level write probe
+;                              W = write file (CFFA1-style prompts)
 ;                              Q = quit to WozMon
 ;
 ; CFBlockDriver call protocol (from CFFA1_API.s):
@@ -93,8 +93,8 @@ DSP          = $D012
 DSPCR        = $D013
 WOZMON_ENTRY = $FF00
 
-; Read buffer for 512-byte block reads.
-READ_VERIFY_BUFFER= $2200
+; 512-byte staging buffer for block reads/writes.
+READ_VERIFY_BUFFER= $3000
 
 ; Scratch ZP
 ZP_PTR_LO    = $F0
@@ -119,6 +119,11 @@ CAT_AUXLO    = $0210
 CAT_AUXHI    = $0211
 LOAD_NAME_LEN= $0212
 LOAD_NAME_BUF= $0213
+WRITE_REQ_TYPE = $0223
+WRITE_LEN_LO = $0224
+WRITE_LEN_HI = $0225
+WRITE_SRC_LO = $0226
+WRITE_SRC_HI = $0227
 
         .org $1800
 
@@ -271,40 +276,508 @@ MenuDoBlock:
         JMP MenuLoop
 
 MenuDoWrite:
-        ; Non-destructive probe: attempt PRODOS_WRITE to invalid block $FFFF.
-        ; Read-only images should return $2B, while opt-in writable images
-        ; should reject the out-of-range block with $2D before any data phase.
-        LDA #CMD_WRITE
+        JSR MenuWriteFile
+        JMP MenuLoop
+
+MenuDoQuit:
+        JMP WOZMON_ENTRY
+
+;------------------------------------------------------------------------------
+; MenuWriteFile
+;
+; CFFA1-style prompts:
+;   WRITE FROM: $
+;    LENGTH: $
+;   TYPE (BIN): $   (CR accepts BIN default)
+;   NAME:
+;
+; Current scope:
+; - Overwrite existing seedling/sapling files only.
+; - File must already exist in catalog block 2.
+; - Requested TYPE must match existing filetype.
+;------------------------------------------------------------------------------
+MenuWriteFile:
+        LDX #$00
+MwfFromLoop:
+        LDA TxtWriteFrom,X
+        BEQ MwfFromDone
+        JSR Putc
+        INX
+        BNE MwfFromLoop
+MwfFromDone:
+
+        JSR ReadHexWordOrCR
+        BCC MwfFromOk
+        JSR PrintCR
+        RTS
+MwfFromOk:
+        ; Source pointer in TMP_N3:TMP_N2
+        LDA pdBlockNumberLow
+        STA TMP_N2
+        STA WRITE_SRC_LO
+        LDA pdBlockNumberHigh
+        STA TMP_N3
+        STA WRITE_SRC_HI
+        JSR PrintCR
+
+        LDX #$00
+MwfLenLoop:
+        LDA TxtWriteLen,X
+        BEQ MwfLenDone
+        JSR Putc
+        INX
+        BNE MwfLenLoop
+MwfLenDone:
+
+        JSR ReadHexWordOrCR
+        BCC MwfLenOk
+        JSR PrintCR
+        RTS
+MwfLenOk:
+        ; Remaining length in TMP_E_COUNT:TMP_E_LEN
+        LDA pdBlockNumberLow
+        STA TMP_E_LEN
+        STA WRITE_LEN_LO
+        LDA pdBlockNumberHigh
+        STA TMP_E_COUNT
+        STA WRITE_LEN_HI
+        JSR PrintCR
+
+        ; LENGTH 0000 -> treat as cancel.
+        LDA TMP_E_LEN
+        ORA TMP_E_COUNT
+        BNE MwfHaveLen
+        RTS
+MwfHaveLen:
+
+        ; TYPE prompt (default BIN=$06)
+        LDA #$06
+        STA WRITE_REQ_TYPE
+        LDX #$00
+MwfTypeLoop:
+        LDA TxtWriteType,X
+        BEQ MwfTypeDone
+        JSR Putc
+        INX
+        BNE MwfTypeLoop
+MwfTypeDone:
+
+        JSR GetHexNibbleOrCR
+        BCC MwfTypeN0
+        JMP MwfTypeAccept
+MwfTypeN0:
+        STA TMP_N1
+        JSR GetHexNibble
+        STA TMP_N0
+        LDA TMP_N1
+        ASL A
+        ASL A
+        ASL A
+        ASL A
+        ORA TMP_N0
+        STA WRITE_REQ_TYPE
+MwfTypeAccept:
+        JSR PrintCR
+
+        ; NAME prompt
+        LDX #$00
+MwfNameLoop:
+        LDA TxtWriteName,X
+        BEQ MwfNameDone
+        JSR Putc
+        INX
+        BNE MwfNameLoop
+MwfNameDone:
+
+        JSR ReadFilenameOrCR
+        JSR PrintCR
+        BCC MwfHaveName
+        RTS
+MwfHaveName:
+
+        ; Find existing file entry.
+        JSR FindCatalogEntryByName
+        BCC MwfHaveEntry
+        LDX #$00
+MwfNoFileLoop:
+        LDA TxtWriteNoFile,X
+        BEQ MwfNoFileDone
+        JSR Putc
+        INX
+        BNE MwfNoFileLoop
+MwfNoFileDone:
+        RTS
+
+MwfHaveEntry:
+        ; TYPE must match existing entry type for this stage.
+        ; Transitional compatibility: treat existing filetype $00 as BIN ($06).
+        LDA CAT_FILETYPE
+        BNE MwfTypeNormDone
+        LDA #$06
+        STA CAT_FILETYPE
+MwfTypeNormDone:
+
+        LDA WRITE_REQ_TYPE
+        CMP CAT_FILETYPE
+        BEQ MwfTypeMatch
+        LDX #$00
+MwfTypeErrLoop:
+        LDA TxtWriteTypeErr,X
+        BEQ MwfTypeErrDone
+        JSR Putc
+        INX
+        BNE MwfTypeErrLoop
+MwfTypeErrDone:
+        LDA CAT_FILETYPE
+        JSR PrintHex
+        JSR PrintCR
+        RTS
+
+MwfTypeMatch:
+        ; Restore write parameters that catalog lookup reuses as temporaries.
+        LDA WRITE_SRC_LO
+        STA TMP_N2
+        LDA WRITE_SRC_HI
+        STA TMP_N3
+        LDA WRITE_LEN_LO
+        STA TMP_E_LEN
+        LDA WRITE_LEN_HI
+        STA TMP_E_COUNT
+        JSR WriteCurrentEntryFromAddr
+        RTS
+
+;------------------------------------------------------------------------------
+; WriteCurrentEntryFromAddr
+;
+; Input:
+;   Source pointer in TMP_N3:TMP_N2
+;   Remaining byte length in TMP_E_COUNT:TMP_E_LEN
+;   CAT_* metadata populated from catalog entry
+;------------------------------------------------------------------------------
+WriteCurrentEntryFromAddr:
+        LDA CAT_TYPE
+        CMP #$01
+        BEQ WcaSeedling
+        CMP #$02
+        BEQ WcaSapling
+        LDX #$00
+WcaTypeLoop:
+        LDA TxtWriteTypeSkip,X
+        BEQ WcaTypeDone
+        JSR Putc
+        INX
+        BNE WcaTypeLoop
+WcaTypeDone:
+        LDA CAT_TYPE
+        JSR PrintHex
+        JSR PrintCR
+        RTS
+
+WcaSeedling:
+        ; up to 512 bytes
+        LDA TMP_E_COUNT
+        CMP #$02
+        BCC WcaSeedOk
+        BEQ WcaSeedEq2
+        JMP WcaTooBig
+WcaSeedEq2:
+        LDA TMP_E_LEN
+        BEQ WcaSeedOk
+        JMP WcaTooBig
+WcaSeedOk:
+        LDA CAT_KEY_LO
+        STA TMP_N0
+        LDA CAT_KEY_HI
+        STA TMP_N1
+        JSR StageAndWriteBlock
+        BCS WcaSeedWriteErr
+        JMP WcaDoneCheck
+WcaSeedWriteErr:
+        JMP WcaWriteErr
+
+WcaSapling:
+        ; up to 1024 bytes
+        LDA TMP_E_COUNT
+        CMP #$04
+        BCC WcaSapSizeOk
+        BEQ WcaSapEq0400
+        JMP WcaTooBig
+WcaSapEq0400:
+        LDA TMP_E_LEN
+        BEQ WcaSapSizeOk
+        JMP WcaTooBig
+WcaSapSizeOk:
+        ; Read index block from CAT_KEY
+        LDA #CMD_READ
         STA pdCommandCode
         LDA #$00
         STA pdUnitNumber
-        LDA #$FF
+        LDA CAT_KEY_LO
         STA pdBlockNumberLow
+        LDA CAT_KEY_HI
         STA pdBlockNumberHigh
         LDA #<READ_VERIFY_BUFFER
         STA pdIOBufferLow
         LDA #>READ_VERIFY_BUFFER
         STA pdIOBufferHigh
         JSR CFBlockDriver
-        PHP
-        PHA
+        BCC WcaIdxOk
+        JMP WcaWriteErr
 
+WcaIdxOk:
+        ; pointer #0
+        LDY #$00
+        LDA READ_VERIFY_BUFFER,Y
+        STA TMP_N0
+        LDA READ_VERIFY_BUFFER+$100,Y
+        STA TMP_N1
+        ; pointer #1
+        LDY #$01
+        LDA READ_VERIFY_BUFFER,Y
+        STA CAT_AUXLO
+        LDA READ_VERIFY_BUFFER+$100,Y
+        STA CAT_AUXHI
+
+        ; write block #0 if bytes remain
+        LDA TMP_E_LEN
+        ORA TMP_E_COUNT
+        BNE WcaNeedBlk0
+        JMP WcaDoneCheck
+WcaNeedBlk0:
+        LDA TMP_N0
+        ORA TMP_N1
+        BEQ WcaIdxErr0
+        JSR StageAndWriteBlock
+        BCC WcaNeedSecond
+        JMP WcaWriteErr
+
+WcaNeedSecond:
+        LDA TMP_E_LEN
+        ORA TMP_E_COUNT
+        BNE WcaNeedBlk1
+        JMP WcaDoneCheck
+WcaNeedBlk1:
+
+        LDA CAT_AUXLO
+        ORA CAT_AUXHI
+        BEQ WcaIdxErr1
+        LDA CAT_AUXLO
+        STA TMP_N0
+        LDA CAT_AUXHI
+        STA TMP_N1
+        JSR StageAndWriteBlock
+        BCS WcaSapWriteErr
+        JMP WcaDoneCheck
+WcaSapWriteErr:
+        JMP WcaWriteErr
+
+WcaDoneCheck:
+        LDA TMP_E_LEN
+        ORA TMP_E_COUNT
+        BEQ WcaSuccess
+WcaTooBig:
         LDX #$00
-MenuWriteLoop:
-        LDA TxtWriteProbe,X
-        BEQ MenuWriteDone
+WcaBigLoop:
+        LDA TxtWriteTooBig,X
+        BEQ WcaBigDone
         JSR Putc
         INX
-        BNE MenuWriteLoop
-MenuWriteDone:
+        BNE WcaBigLoop
+WcaBigDone:
+        RTS
+
+WcaSuccess:
+        LDX #$00
+WcaOkLoop:
+        LDA TxtSuccess,X
+        BEQ WcaOkDone
+        JSR Putc
+        INX
+        BNE WcaOkLoop
+WcaOkDone:
+        JSR PrintCR
+        RTS
+
+WcaWriteErr:
+        PHA
+        LDX #$00
+WcaWrErrLoop:
+        LDA TxtWriteErr,X
+        BEQ WcaWrErrDone
+        JSR Putc
+        INX
+        BNE WcaWrErrLoop
+WcaWrErrDone:
         PLA
         JSR PrintHex
         JSR PrintCR
-        PLP
-        JMP MenuLoop
+        RTS
 
-MenuDoQuit:
-        JMP WOZMON_ENTRY
+WcaIdxErr0:
+        LDX #$00
+WcaIdx0Loop:
+        LDA TxtWriteIdx0Err,X
+        BEQ WcaIdx0Done
+        JSR Putc
+        INX
+        BNE WcaIdx0Loop
+WcaIdx0Done:
+        JSR PrintCR
+        RTS
+
+WcaIdxErr1:
+        LDX #$00
+WcaIdx1Loop:
+        LDA TxtWriteIdx1Err,X
+        BEQ WcaIdx1Done
+        JSR Putc
+        INX
+        BNE WcaIdx1Loop
+WcaIdx1Done:
+        JSR PrintCR
+        RTS
+
+;------------------------------------------------------------------------------
+; StageAndWriteBlock
+;
+; Inputs:
+;   TMP_N0/TMP_N1 = destination block number (lo/hi)
+;   TMP_N2/TMP_N3 = source pointer (lo/hi)
+;   TMP_E_LEN/TMP_E_COUNT = remaining byte count (lo/hi)
+;
+; Outputs:
+;   Updates TMP_N2/TMP_N3 and TMP_E_LEN/TMP_E_COUNT.
+;   CLC on success, SEC/A on write error.
+;------------------------------------------------------------------------------
+StageAndWriteBlock:
+        ; Zero 512-byte staging buffer.
+        LDX #$00
+SabZero:
+        STZ READ_VERIFY_BUFFER,X
+        STZ READ_VERIFY_BUFFER+$100,X
+        INX
+        BNE SabZero
+
+        ; Set source pointer.
+        LDA TMP_N2
+        STA ZP_PTR_LO
+        LDA TMP_N3
+        STA ZP_PTR_HI
+
+        ; Copy up to 512 bytes from source into staging buffer.
+        LDA TMP_E_COUNT
+        CMP #$02
+        BCS SabCopy512
+        CMP #$01
+        BEQ SabCopy256Plus
+
+        ; 0..255 bytes
+        LDA TMP_E_LEN
+        BEQ SabWrite
+        STA TMP_NLEN
+        LDY #$00
+SabLow:
+        LDA (ZP_PTR_LO),Y
+        STA READ_VERIFY_BUFFER,Y
+        INY
+        DEC TMP_NLEN
+        BNE SabLow
+
+        ; advance source pointer by low-byte length
+        CLC
+        LDA TMP_N2
+        ADC TMP_E_LEN
+        STA TMP_N2
+        BCC SabLowNoCarry
+        INC TMP_N3
+SabLowNoCarry:
+        STZ TMP_E_LEN
+        STZ TMP_E_COUNT
+        JMP SabWrite
+
+SabCopy256Plus:
+        ; first 256 bytes
+        LDY #$00
+SabPg0:
+        LDA (ZP_PTR_LO),Y
+        STA READ_VERIFY_BUFFER,Y
+        INY
+        BNE SabPg0
+
+        ; advance source to next page
+        INC ZP_PTR_HI
+
+        ; copy remainder from second page (0..255)
+        LDA TMP_E_LEN
+        BEQ SabAfter256
+        STA TMP_NLEN
+        LDY #$00
+SabPg1Part:
+        LDA (ZP_PTR_LO),Y
+        STA READ_VERIFY_BUFFER+$100,Y
+        INY
+        DEC TMP_NLEN
+        BNE SabPg1Part
+SabAfter256:
+        ; source advanced by 256 + low
+        LDA TMP_E_LEN
+        STA TMP_N1
+        LDA TMP_N3
+        CLC
+        ADC #$01
+        STA TMP_N3
+        CLC
+        LDA TMP_N2
+        ADC TMP_N1
+        STA TMP_N2
+        BCC SabPg1NoCarry
+        INC TMP_N3
+SabPg1NoCarry:
+        STZ TMP_E_LEN
+        STZ TMP_E_COUNT
+        JMP SabWrite
+
+SabCopy512:
+        LDY #$00
+SabFull0:
+        LDA (ZP_PTR_LO),Y
+        STA READ_VERIFY_BUFFER,Y
+        INY
+        BNE SabFull0
+        INC ZP_PTR_HI
+        LDY #$00
+SabFull1:
+        LDA (ZP_PTR_LO),Y
+        STA READ_VERIFY_BUFFER+$100,Y
+        INY
+        BNE SabFull1
+
+        ; source += 512
+        LDA TMP_N3
+        CLC
+        ADC #$02
+        STA TMP_N3
+        ; remaining -= 512
+        SEC
+        LDA TMP_E_COUNT
+        SBC #$02
+        STA TMP_E_COUNT
+
+SabWrite:
+        LDA #CMD_WRITE
+        STA pdCommandCode
+        LDA #$00
+        STA pdUnitNumber
+        LDA TMP_N0
+        STA pdBlockNumberLow
+        LDA TMP_N1
+        STA pdBlockNumberHigh
+        LDA #<READ_VERIFY_BUFFER
+        STA pdIOBufferLow
+        LDA #>READ_VERIFY_BUFFER
+        STA pdIOBufferHigh
+        JSR CFBlockDriver
+        RTS
 
 ;------------------------------------------------------------------------------
 ; RunBlockInspector - existing M6-style HHLL block inspector
@@ -1571,7 +2044,7 @@ IsDigit:
 ;------------------------------------------------------------------------------
 TxtBanner:
         .byte $0D
-        .asciiz "NEO1 CFFA1 M8 WRITE GATED"
+        .asciiz "NEO1 CFFA1 M8.2 WRITE FILE"
 TxtSigOk:
         .byte $0D
         .asciiz "SIG OK"
@@ -1605,9 +2078,39 @@ TxtLoadNoFile:
 TxtLoadBa1NYI:
         .byte $0D
         .asciiz "LOAD BA1 NYI"
-TxtWriteProbe:
+TxtWriteFrom:
         .byte $0D
-        .asciiz "WRITE:"
+        .asciiz "WRITE FROM: $"
+TxtWriteLen:
+        .byte $0D
+        .asciiz " LENGTH: $"
+TxtWriteType:
+        .byte $0D
+        .asciiz "TYPE (BIN): $"
+TxtWriteName:
+        .byte $0D
+        .asciiz "      NAME: "
+TxtWriteNoFile:
+        .byte $0D
+        .asciiz "WRITE ERR:NO FILE"
+TxtWriteErr:
+        .byte $0D
+        .asciiz "WRITE ERR:"
+TxtWriteTypeErr:
+        .byte $0D
+        .asciiz "WRITE ERR:TYPE="
+TxtWriteTypeSkip:
+        .byte $0D
+        .asciiz "WRITE SKIP:TYPE="
+TxtWriteTooBig:
+        .byte $0D
+        .asciiz "WRITE SKIP:LEN>ALLOC"
+TxtWriteIdx0Err:
+        .byte $0D
+        .asciiz "WRITE ERR:SAPLING IDX0"
+TxtWriteIdx1Err:
+        .byte $0D
+        .asciiz "WRITE ERR:SAPLING IDX1"
 TxtAddrPromptA:
         .byte $0D
         .asciiz "ADDR ($"

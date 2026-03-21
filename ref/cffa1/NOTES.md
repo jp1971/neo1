@@ -179,13 +179,15 @@ The storage work is now intentionally split into two peripherals:
 	- mini-menu `W` now issues a real `PRODOS_WRITE` probe against invalid block `$FFFF`, which is non-destructive and confirms low-level policy on hardware
 	- first mutating step chosen: opt-in raw block writes only when the mounted image is explicitly named `CFFA1RW.PO` or `CFFA1RW.HDV`
 	- default auto-mounted images (`CFFA1.PO`, `CFFA1.HDV`, discovered `*.po|*.hdv|*.2mg`) remain read-only
-	- existing-file overwrite remains a later step after raw block write behavior is validated on a sacrificial writable image
+	- `M8.2` now adds CFFA1-style `W` prompts (`WRITE FROM`, `LENGTH`, `TYPE`, `NAME`) and existing-file overwrite path for seedling/sapling files
+	- transitional filetype compatibility: existing catalog type `$00` is treated as BIN-compatible for overwrite when user accepts default `TYPE (BIN)`
+	- hardware-validated byte-level persistence via single-byte overwrite + reload
 
 - `M8.1`: BA1 compatibility branch (deferred)
 	- gated on capture of known-good CFFA1-generated BA1 artifact (see Section 11)
 
 Recommended next step:
-- Hardware-validate `W` on the normal read-only image (`WRITE:2B` expected), then test real block writes using an explicit writable image name on sacrificial media.
+- Expand from existing-file overwrite toward true CFFA1 `$20` semantics (file create/replace policy, block allocation, directory mutation) while preserving monitor-first debuggability.
 
 ### Track B: Neo1 filer / `VACI` / `NMI` (deferred)
 - Treat current `0400R` loader as a proof of concept.
@@ -214,6 +216,8 @@ Recommended next step:
 - 2026-03-21: Implemented and validated M7.2 mini menu (`2eca8ef`); `C` re-catalogs, `L 00 0300` loads HELLORLD.BIN with address override and prints `00 SUCCESS`, `Q` exits to WozMon.
 - 2026-03-21: Started M8 with explicit read-only policy. Neo1 CFFA1 backend now returns ProDOS `WRITE PROTECT` (`$2B`) for `PRODOS_WRITE`, and the mini-menu advertises `W` as a visible write/save status stub.
 - 2026-03-21: Advanced M8 to a real driver-level write probe. `W` now executes `PRODOS_WRITE` against invalid block `$FFFF` so the normal image still proves `$2B` non-destructively, while explicitly named writable images (`CFFA1RW.PO` / `CFFA1RW.HDV`) unlock the first raw block-write path.
+- 2026-03-21: Implemented M8.2 CFFA1-style `W` prompt flow and existing-file overwrite path (seedling/sapling). Fixed parameter-lifetime bugs in TYPE/LENGTH handling and verified hardware success writing `HELLORLD.BIN`.
+- 2026-03-21: Regression validated on hardware: single-byte mutation persisted through `W` write + `L` reload + `0300R` execution, confirming byte-accurate media round-trip.
 
 ## 11) BA1 Format Notes (Paused)
 
