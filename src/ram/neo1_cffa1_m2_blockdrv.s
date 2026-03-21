@@ -1,11 +1,11 @@
 ; neo1_cffa1_m2_blockdrv.s
 ;
-; M5 CFFA1 image-read test for Neo1-23.
+; M6 CFFA1 arbitrary-block inspector for Neo1-23.
 ;
 ; Provides:
 ;   CFBlockDriver  ($1800) - ProDOS block driver with STATUS, READ, WRITE
 ;   TestMain       ($1810) - exerciser:
-;                            reads block 2 from CFFA1.PO and prints first 64 bytes
+;                            prompts for block HHLL, reads it, prints first 128 bytes
 ;
 ; CFBlockDriver call protocol (from CFFA1_API.s):
 ;   $42  pdCommandCode     0=STATUS, 1=READ, 2=WRITE
@@ -91,6 +91,10 @@ READ_VERIFY_BUFFER= $2200
 ; Scratch ZP
 ZP_PTR_LO    = $F0
 ZP_PTR_HI    = $F1
+TMP_N0       = $F2
+TMP_N1       = $F3
+TMP_N2       = $F4
+TMP_N3       = $F5
 
         .org $1800
 
@@ -109,8 +113,10 @@ CFBlockDriver:
 ; 1. Print banner
 ; 2. Check CFFA1 signature bytes
 ; 3. Call CFBlockDriver with STATUS
-; 4. Call CFBlockDriver with READ from block 2 into READ_VERIFY_BUFFER
-; 5. Print first 64 bytes (hex, 16 bytes per line)
+; 4. Prompt for block HHLL (CR exits)
+; 5. Call CFBlockDriver with READ from requested block into READ_VERIFY_BUFFER
+; 6. Print first 128 bytes (hex, 16 bytes per line)
+; 7. Loop back to prompt
 ;------------------------------------------------------------------------------
 TestMain:
         ; --- Print banner ---
@@ -184,15 +190,30 @@ StOkLoop:
         BNE StOkLoop
 StOkDone:
 
-        ; --- READ block 2 from image ---
+MainLoop:
+        ; Prompt: BLK? HHLL, CR exits
+        LDX #$00
+PromptLoop:
+        LDA TxtPrompt,X
+        BEQ PromptDone
+        JSR Putc
+        INX
+        BNE PromptLoop
+PromptDone:
+
+        ; Read 4 hex digits, high byte first. CR on first key exits.
+        JSR ReadHexWordOrCR
+        BCC HaveBlock
+        BRK
+
+HaveBlock:
+        JSR PrintCR
+
+        ; --- READ requested block from image ---
         LDA #CMD_READ
         STA pdCommandCode
         LDA #$00
         STA pdUnitNumber
-        LDA #$02            ; block 2 (directory block with HELLORLD.BIN entry)
-        STA pdBlockNumberLow
-        LDA #$00
-        STA pdBlockNumberHigh
         LDA #<READ_VERIFY_BUFFER
         STA pdIOBufferLow
         LDA #>READ_VERIFY_BUFFER
@@ -212,18 +233,30 @@ RdErrDone:
         PLA
         JSR PrintHex
         JSR PrintCR
-        BRK
+        JMP MainLoop
 ReadOk:
         LDX #$00
-RdOkLoop:
-        LDA TxtReadOk,X
-        BEQ RdOkDone
+RdHdrLoop:
+        LDA TxtReadOkHead,X
+        BEQ RdHdrDone
         JSR Putc
         INX
-        BNE RdOkLoop
-RdOkDone:
+        BNE RdHdrLoop
+RdHdrDone:
+        LDA pdBlockNumberHigh
+        JSR PrintHex
+        LDA pdBlockNumberLow
+        JSR PrintHex
+        LDX #$00
+RdTailLoop:
+        LDA TxtReadOkTail,X
+        BEQ RdTailDone
+        JSR Putc
+        INX
+        BNE RdTailLoop
+RdTailDone:
 
-        ; --- Print first 64 bytes of read buffer (16 bytes per line) ---
+        ; --- Print first 128 bytes of read buffer (16 bytes per line) ---
         LDX #$00
 HexDumpRead:
         LDA READ_VERIFY_BUFFER,X
@@ -236,9 +269,10 @@ HexDumpRead:
         BNE NoRowBreak
         JSR PrintCR
 NoRowBreak:
-        CPX #$40
+        CPX #$80
         BNE HexDumpRead
-        BRK
+        JSR PrintCR
+        JMP MainLoop
 
 ;------------------------------------------------------------------------------
 ; DriverImpl  - ProDOS block driver over Neo1 CFFA1 shim
@@ -399,6 +433,136 @@ PrintCR:
         JMP Putc
 
 ;------------------------------------------------------------------------------
+; GetKey - wait for key and return ASCII (bit7 stripped) in A
+;------------------------------------------------------------------------------
+GetKey:
+KeyWait:
+        LDA KBDCR
+        BPL KeyWait
+        LDA KBD
+        AND #$7F
+        RTS
+
+;------------------------------------------------------------------------------
+; ToUpper - normalize lowercase ASCII letter to uppercase
+;------------------------------------------------------------------------------
+ToUpper:
+        CMP #$61            ; 'a'
+        BCC ToUpperDone
+        CMP #$7B            ; 'z'+1
+        BCS ToUpperDone
+        AND #$DF
+ToUpperDone:
+        RTS
+
+;------------------------------------------------------------------------------
+; HexCharToNibble - convert ASCII hex char in A to nibble in A
+; Returns: C=0 valid, C=1 invalid
+;------------------------------------------------------------------------------
+HexCharToNibble:
+        CMP #$30            ; '0'
+        BCC HexBad
+        CMP #$3A            ; '9'+1
+        BCC HexDigit
+        CMP #$41            ; 'A'
+        BCC HexBad
+        CMP #$47            ; 'F'+1
+        BCS HexBad
+        SEC
+        SBC #$37            ; 'A' -> 10
+        CLC
+        RTS
+HexDigit:
+        SEC
+        SBC #$30
+        CLC
+        RTS
+HexBad:
+        SEC
+        RTS
+
+;------------------------------------------------------------------------------
+; GetHexNibble - read one valid hex nibble, echo accepted key
+; Returns nibble in A, C=0
+;------------------------------------------------------------------------------
+GetHexNibble:
+HexNibLoop:
+        JSR GetKey
+        JSR ToUpper
+        TAX
+        JSR HexCharToNibble
+        BCS HexNibLoop
+        PHA
+        TXA
+        JSR Putc
+        PLA
+        CLC
+        RTS
+
+;------------------------------------------------------------------------------
+; GetHexNibbleOrCR - like GetHexNibble, but CR exits at first position
+; Returns: C=1 if CR, else nibble in A and C=0
+;------------------------------------------------------------------------------
+GetHexNibbleOrCR:
+HexNibOrCrLoop:
+        JSR GetKey
+        CMP #$0D
+        BEQ HexNibOrCrExit
+        JSR ToUpper
+        TAX
+        JSR HexCharToNibble
+        BCS HexNibOrCrLoop
+        PHA
+        TXA
+        JSR Putc
+        PLA
+        CLC
+        RTS
+HexNibOrCrExit:
+        SEC
+        RTS
+
+;------------------------------------------------------------------------------
+; ReadHexWordOrCR - read block number as HHLL hex
+; Returns: C=1 if CR pressed at first prompt char (exit)
+;          C=0 and stores pdBlockNumberHigh/Low on success
+;------------------------------------------------------------------------------
+ReadHexWordOrCR:
+        JSR GetHexNibbleOrCR
+        BCC GotN0
+        SEC
+        RTS
+GotN0:
+        STA TMP_N0
+        JSR GetHexNibble
+        STA TMP_N1
+        JSR GetHexNibble
+        STA TMP_N2
+        JSR GetHexNibble
+        STA TMP_N3
+
+        ; High byte from N0:N1
+        LDA TMP_N0
+        ASL A
+        ASL A
+        ASL A
+        ASL A
+        ORA TMP_N1
+        STA pdBlockNumberHigh
+
+        ; Low byte from N2:N3
+        LDA TMP_N2
+        ASL A
+        ASL A
+        ASL A
+        ASL A
+        ORA TMP_N3
+        STA pdBlockNumberLow
+
+        CLC
+        RTS
+
+;------------------------------------------------------------------------------
 ; PrintHex - print byte in A as two hex digits
 ;------------------------------------------------------------------------------
 PrintHex:
@@ -425,7 +589,7 @@ IsDigit:
 ;------------------------------------------------------------------------------
 TxtBanner:
         .byte $0D
-        .asciiz "NEO1 CFFA1 M5 READ TEST"
+        .asciiz "NEO1 CFFA1 M6 BLOCK INSPECTOR"
 TxtSigOk:
         .byte $0D
         .asciiz "SIG OK"
@@ -438,9 +602,14 @@ TxtStatusOk:
 TxtStatusErr:
         .byte $0D
         .asciiz "STATUS ERR:"
-TxtReadOk:
+TxtPrompt:
         .byte $0D
-        .asciiz "READ BLK2 OK HEX[00-3F]:"
+        .asciiz "BLK HHLL (CR=EXIT)? "
+TxtReadOkHead:
+        .byte $0D
+        .asciiz "READ BLK "
+TxtReadOkTail:
+        .asciiz " OK HEX[00-7F]:"
 TxtReadErr:
         .byte $0D
         .asciiz "READ ERR:"
