@@ -182,6 +182,11 @@ The storage work is now intentionally split into two peripherals:
 	- `M8.2` now adds CFFA1-style `W` prompts (`WRITE FROM`, `LENGTH`, `TYPE`, `NAME`) and existing-file overwrite path for seedling/sapling files
 	- transitional filetype compatibility: existing catalog type `$00` is treated as BIN-compatible for overwrite when user accepts default `TYPE (BIN)`
 	- hardware-validated byte-level persistence via single-byte overwrite + reload
+	- mini-menu now uses hybrid selection model:
+		- `L` / `D` are index-based (`00-99`)
+		- `W` remains name-based for create/overwrite semantics
+	- index path validated on hardware including deletion of previously problematic entries
+	- UX polish validated: catalog header newline + `LOAD/DELETE ERR:EMPTY IDX` wording
 
 - `M8.1`: BA1 compatibility branch (deferred)
 	- gated on capture of known-good CFFA1-generated BA1 artifact (see Section 11)
@@ -218,6 +223,9 @@ Recommended next step:
 - 2026-03-21: Advanced M8 to a real driver-level write probe. `W` now executes `PRODOS_WRITE` against invalid block `$FFFF` so the normal image still proves `$2B` non-destructively, while explicitly named writable images (`CFFA1RW.PO` / `CFFA1RW.HDV`) unlock the first raw block-write path.
 - 2026-03-21: Implemented M8.2 CFFA1-style `W` prompt flow and existing-file overwrite path (seedling/sapling). Fixed parameter-lifetime bugs in TYPE/LENGTH handling and verified hardware success writing `HELLORLD.BIN`.
 - 2026-03-21: Regression validated on hardware: single-byte mutation persisted through `W` write + `L` reload + `0300R` execution, confirming byte-accurate media round-trip.
+- 2026-03-22: Shifted mini-menu to hybrid selection model for reliability and ergonomics: `L` and `D` now target decimal catalog index (`00-99`) while `W` stays filename-driven.
+- 2026-03-22: Fixed follow-on regressions in index path (`PrintDec2` register clobber, decimal input conversion under `Putc`, and parsed-index lifetime across `PrintCR`), then hardware-validated clean catalog, index-load, and index-delete flows.
+- 2026-03-22: Applied operator-facing UX cleanup: added blank line after `CATALOG BLK 0002` header and changed empty-slot errors to `LOAD ERR:EMPTY IDX` / `DELETE ERR:EMPTY IDX`.
 
 ## 11) BA1 Format Notes (Paused)
 
