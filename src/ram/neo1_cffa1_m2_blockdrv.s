@@ -1,6 +1,6 @@
 ; neo1_cffa1_m2_blockdrv.s
 ;
-; M8.2 CFFA1 mini-menu: catalog, load-by-name, block inspect,
+; M8.2 CFFA1 mini-menu: catalog, load-by-index, block inspect,
 ; and CFFA1-style Write File prompts (existing-file overwrite path).
 ;
 ; Provides:
@@ -8,9 +8,10 @@
 ;   TestMain       ($1810) - exerciser:
 ;                            CFFA1-style command loop with:
 ;                              C = catalog block 2 parse/list
-;                              L = load selected entry by name with ADDR default
+;                              L = load selected entry by index (00-99)
 ;                              B = block inspector (HHLL)
 ;                              W = write file (CFFA1-style prompts)
+;                              D = delete selected entry by index (00-99)
 ;                              Q = quit to WozMon
 ;
 ; CFBlockDriver call protocol (from CFFA1_API.s):
@@ -124,6 +125,17 @@ WRITE_LEN_LO = $0224
 WRITE_LEN_HI = $0225
 WRITE_SRC_LO = $0226
 WRITE_SRC_HI = $0227
+WRITE_NEED_BLOCKS = $0228
+WRITE_ALLOC0_LO = $0229
+WRITE_ALLOC0_HI = $022A
+WRITE_ALLOC1_LO = $022B
+WRITE_ALLOC1_HI = $022C
+WRITE_ALLOC2_LO = $022D
+WRITE_ALLOC2_HI = $022E
+WRITE_STORAGE_TYPE = $022F
+WRITE_BITMAP_LO = $0230
+WRITE_BITMAP_HI = $0231
+SEL_ENTRY_INDEX = $0232
 
         .org $1800
 
@@ -247,6 +259,8 @@ MenuPromptDone:
         BEQ MenuDoBlock
         CMP #'W'
         BEQ MenuDoWrite
+        CMP #'D'
+        BEQ MenuDoDelete
         CMP #'Q'
         BEQ MenuDoQuit
         CMP #'?'
@@ -268,7 +282,7 @@ MenuDoCatalog:
         JMP MenuLoop
 
 MenuDoLoad:
-        JSR MenuLoadByName
+        JSR MenuLoadByIndex
         JMP MenuLoop
 
 MenuDoBlock:
@@ -277,6 +291,10 @@ MenuDoBlock:
 
 MenuDoWrite:
         JSR MenuWriteFile
+        JMP MenuLoop
+
+MenuDoDelete:
+        JSR MenuDeleteFile
         JMP MenuLoop
 
 MenuDoQuit:
@@ -361,7 +379,6 @@ MwfTypeLoop:
         INX
         BNE MwfTypeLoop
 MwfTypeDone:
-
         JSR GetHexNibbleOrCR
         BCC MwfTypeN0
         JMP MwfTypeAccept
@@ -395,18 +412,17 @@ MwfNameDone:
         RTS
 MwfHaveName:
 
-        ; Find existing file entry.
+        ; Find existing entry, or create a new one.
         JSR FindCatalogEntryByName
         BCC MwfHaveEntry
-        LDX #$00
-MwfNoFileLoop:
-        LDA TxtWriteNoFile,X
-        BEQ MwfNoFileDone
-        JSR Putc
-        INX
-        BNE MwfNoFileLoop
-MwfNoFileDone:
+
+        ; Not found — create new directory entry and allocate blocks.
+        JSR CreateEntryForWrite
+        BCC MwfCreatedEntry
         RTS
+
+MwfCreatedEntry:
+        JMP MwfTypeMatch
 
 MwfHaveEntry:
         ; TYPE must match existing entry type for this stage.
@@ -444,6 +460,870 @@ MwfTypeMatch:
         LDA WRITE_LEN_HI
         STA TMP_E_COUNT
         JSR WriteCurrentEntryFromAddr
+        RTS
+
+;------------------------------------------------------------------------------
+; MenuDeleteFile
+;
+; CFFA1 D command: delete a file from the ProDOS root directory.
+; Frees all data blocks in the bitmap, zeroes the directory entry,
+; decrements the volume file count, and writes both blocks back.
+;
+; Supports seedling (type 1) and sapling (type 2) only.
+;------------------------------------------------------------------------------
+MenuDeleteFile:
+        ; -- Prompt: DELETE:
+        LDX #$00
+MdfPromptLoop:
+        LDA TxtDeletePrompt,X
+        BEQ MdfPromptDone
+        JSR Putc
+        INX
+        BNE MdfPromptLoop
+MdfPromptDone:
+        JSR ReadDec2OrCR
+        BCS MdfCancel
+        STA SEL_ENTRY_INDEX
+        JSR PrintCR
+        JMP MdfHaveIndex
+MdfCancel:
+        JSR PrintCR
+        RTS
+MdfHaveIndex:
+        ; -- Find catalog entry by index (also reads block 2 into READ_VERIFY_BUFFER).
+        LDA SEL_ENTRY_INDEX
+        STA TMP_N0
+        JSR FindCatalogEntryByIndex
+        BCC MdfFound
+        LDX #$00
+MdfNoFileLoop:
+        LDA TxtDeleteNoFile,X
+        BEQ MdfNoFileDone
+        JSR Putc
+        INX
+        BNE MdfNoFileLoop
+MdfNoFileDone:
+        RTS
+MdfFound:
+
+        ; -- Load bitmap block address from volume header ($27/$28).
+        ; (ZP_PTR_LO/HI already points at entry but we re-derive it later
+        ;  via a second FindCatalogEntryByName after the bitmap write.)
+        LDA READ_VERIFY_BUFFER+$27
+        STA WRITE_BITMAP_LO
+        LDA READ_VERIFY_BUFFER+$28
+        STA WRITE_BITMAP_HI
+
+        ; -- Save directory block contents to a second scratch area.
+        ; We only have one READ_VERIFY_BUFFER (512 bytes at $3000).
+        ; Strategy: free sapling index/data blocks first (needs buffer),
+        ; then reload dir block and zero the entry.
+
+        ; Save key block from CAT_KEY_LO/HI now, before buffer is reused.
+        LDA CAT_KEY_LO
+        STA WRITE_ALLOC0_LO
+        LDA CAT_KEY_HI
+        STA WRITE_ALLOC0_HI
+        LDA CAT_TYPE
+        STA WRITE_STORAGE_TYPE
+
+        ; -- For sapling: read index block, collect data-block addresses.
+        LDA WRITE_STORAGE_TYPE
+        CMP #$02
+        BNE MdfFreeSeedling
+
+        ; Read sapling index block into buffer.
+        LDA #CMD_READ
+        STA pdCommandCode
+        LDA #$00
+        STA pdUnitNumber
+        LDA WRITE_ALLOC0_LO
+        STA pdBlockNumberLow
+        LDA WRITE_ALLOC0_HI
+        STA pdBlockNumberHigh
+        LDA #<READ_VERIFY_BUFFER
+        STA pdIOBufferLow
+        LDA #>READ_VERIFY_BUFFER
+        STA pdIOBufferHigh
+        JSR CFBlockDriver
+        BCC MdfIdxOk
+        ; read error — still attempt dir cleanup
+        JMP MdfFreeIndexBlock
+MdfIdxOk:
+        ; data block 0 (lo byte from $00, hi byte from $100)
+        LDA READ_VERIFY_BUFFER+$00
+        STA WRITE_ALLOC1_LO
+        LDA READ_VERIFY_BUFFER+$100
+        STA WRITE_ALLOC1_HI
+        ; data block 1 (lo byte from $01, hi byte from $101)
+        LDA READ_VERIFY_BUFFER+$01
+        STA WRITE_ALLOC2_LO
+        LDA READ_VERIFY_BUFFER+$101
+        STA WRITE_ALLOC2_HI
+
+        ; Free data block 0 (if non-zero).
+        LDA WRITE_ALLOC1_LO
+        ORA WRITE_ALLOC1_HI
+        BEQ MdfSkipData0
+        LDA WRITE_ALLOC1_LO
+        STA TMP_N2
+        LDA WRITE_ALLOC1_HI
+        STA TMP_N3
+        JSR MdfFreeOneBlock
+MdfSkipData0:
+        ; Free data block 1 (if non-zero).
+        LDA WRITE_ALLOC2_LO
+        ORA WRITE_ALLOC2_HI
+        BEQ MdfSkipData1
+        LDA WRITE_ALLOC2_LO
+        STA TMP_N2
+        LDA WRITE_ALLOC2_HI
+        STA TMP_N3
+        JSR MdfFreeOneBlock
+MdfSkipData1:
+
+MdfFreeIndexBlock:
+        ; Free the index block itself.
+        LDA WRITE_ALLOC0_LO
+        STA TMP_N2
+        LDA WRITE_ALLOC0_HI
+        STA TMP_N3
+        JSR MdfFreeOneBlock
+        JMP MdfWriteBitmap
+
+MdfFreeSeedling:
+        ; Free the single data block.
+        LDA WRITE_ALLOC0_LO
+        STA TMP_N2
+        LDA WRITE_ALLOC0_HI
+        STA TMP_N3
+        JSR MdfFreeOneBlock
+
+MdfWriteBitmap:
+        ; -- Write updated bitmap block back to disk.
+        LDA #CMD_WRITE
+        STA pdCommandCode
+        LDA #$00
+        STA pdUnitNumber
+        LDA WRITE_BITMAP_LO
+        STA pdBlockNumberLow
+        LDA WRITE_BITMAP_HI
+        STA pdBlockNumberHigh
+        LDA #<READ_VERIFY_BUFFER
+        STA pdIOBufferLow
+        LDA #>READ_VERIFY_BUFFER
+        STA pdIOBufferHigh
+        JSR CFBlockDriver
+        ; ignore write error — proceed to zero dir entry
+
+        ; -- Reload directory block into buffer.
+        JSR ReadCatalogBlock2
+        BCC MdfDirReloaded
+        LDX #$00
+MdfDirErrLoop:
+        LDA TxtDeleteErr,X
+        BEQ MdfDirErrDone
+        JSR Putc
+        INX
+        BNE MdfDirErrLoop
+MdfDirErrDone:
+        RTS
+MdfDirReloaded:
+
+        ; -- Re-find the entry so ZP_PTR_LO/HI is valid in the fresh buffer.
+        LDA SEL_ENTRY_INDEX
+        STA TMP_N0
+        JSR FindCatalogEntryByIndex
+        BCC MdfFoundAgain
+        ; Entry vanished — already clean, done.
+        RTS
+MdfFoundAgain:
+
+        ; -- Zero all bytes of the entry (TMP_E_LEN bytes).
+        LDY #$00
+MdfZeroLoop:
+        LDA #$00
+        STA (ZP_PTR_LO),Y
+        INY
+        CPY TMP_E_LEN
+        BCC MdfZeroLoop
+
+        ; -- Decrement volume file count at header offset $25/$26.
+        LDA READ_VERIFY_BUFFER+$25
+        BNE MdfDecLo
+        DEC READ_VERIFY_BUFFER+$26
+MdfDecLo:
+        DEC READ_VERIFY_BUFFER+$25
+
+        ; -- Write directory block back.
+        LDA #CMD_WRITE
+        STA pdCommandCode
+        LDA #$00
+        STA pdUnitNumber
+        LDA #$02
+        STA pdBlockNumberLow
+        LDA #$00
+        STA pdBlockNumberHigh
+        LDA #<READ_VERIFY_BUFFER
+        STA pdIOBufferLow
+        LDA #>READ_VERIFY_BUFFER
+        STA pdIOBufferHigh
+        JSR CFBlockDriver
+        BCC MdfDone
+        LDX #$00
+MdfDirWrErrLoop:
+        LDA TxtDeleteErr,X
+        BEQ MdfDirWrErrDone
+        JSR Putc
+        INX
+        BNE MdfDirWrErrLoop
+MdfDirWrErrDone:
+        RTS
+MdfDone:
+        LDX #$00
+MdfOkLoop:
+        LDA TxtDeleteOk,X
+        BEQ MdfOkDone
+        JSR Putc
+        INX
+        BNE MdfOkLoop
+MdfOkDone:
+        RTS
+
+;------------------------------------------------------------------------------
+; MdfFreeOneBlock
+;
+; In:  TMP_N2/TMP_N3 = block number to free
+;      READ_VERIFY_BUFFER contains loaded bitmap block
+; Out: corresponding bit set (freed) in READ_VERIFY_BUFFER
+;      (caller must write bitmap back when done)
+;------------------------------------------------------------------------------
+MdfFreeOneBlock:
+        ; Byte index = block_number / 8.  High half if block >= 2048.
+        ; Bit mask: bit 7 is block 0 within byte (MSB first).
+        LDA TMP_N3
+        BEQ MfobLow            ; block < $0100 * 8 = 2048, stay in low half
+        ; High half (blocks 2048-4095): byte index = (block - 2048) / 8
+        ;   = (TMP_N2 / 8) + (TMP_N3-1)*32, offset into READ_VERIFY_BUFFER+$100
+        ; Simplified: TMP_N3 always 0 or 1 for volumes <=4096 blocks.
+        ; byte_in_half = TMP_N2 / 8 (upper 5 bits), bit_mask from low 3 bits
+        LDA TMP_N2
+        AND #$07
+        TAX                    ; bit index within byte (0=MSB)
+        LDA TMP_N2
+        LSR A
+        LSR A
+        LSR A
+        TAY                    ; byte index within the 256-byte half
+        LDA #$80
+MfobHiShift:
+        CPX #$00
+        BEQ MfobHiApply
+        LSR A
+        DEX
+        BNE MfobHiShift
+MfobHiApply:
+        ORA READ_VERIFY_BUFFER+$100,Y
+        STA READ_VERIFY_BUFFER+$100,Y
+        RTS
+MfobLow:
+        LDA TMP_N2
+        AND #$07
+        TAX
+        LDA TMP_N2
+        LSR A
+        LSR A
+        LSR A
+        TAY
+        LDA #$80
+MfobLoShift:
+        CPX #$00
+        BEQ MfobLoApply
+        LSR A
+        DEX
+        BNE MfobLoShift
+MfobLoApply:
+        ORA READ_VERIFY_BUFFER,Y
+        STA READ_VERIFY_BUFFER,Y
+        RTS
+
+;------------------------------------------------------------------------------
+; CreateEntryForWrite
+;
+; Create a new root-directory file entry for current NAME/TYPE/LENGTH/SOURCE.
+; Supports seedling (<=512 bytes) and sapling (<=1024 bytes) for now.
+;
+; Out: CLC on success (CAT_* populated for write path), SEC on error.
+;------------------------------------------------------------------------------
+CreateEntryForWrite:
+        ; Determine storage type and blocks needed from requested length.
+        LDA WRITE_LEN_HI
+        CMP #$02
+        BCC CefSeedling
+        BEQ CefSeedEq2
+        CMP #$04
+        BCC CefSapling
+        BEQ CefSapEq4
+        JMP CefTooBig
+
+CefSeedEq2:
+        LDA WRITE_LEN_LO
+        BEQ CefSeedling
+        JMP CefSapling
+
+CefSapEq4:
+        LDA WRITE_LEN_LO
+        BEQ CefSapling
+        JMP CefTooBig
+
+CefSeedling:
+        LDA #$01
+        STA WRITE_STORAGE_TYPE
+        LDA #$01
+        STA WRITE_NEED_BLOCKS
+        JMP CefAlloc
+
+CefSapling:
+        LDA #$02
+        STA WRITE_STORAGE_TYPE
+        LDA #$03
+        STA WRITE_NEED_BLOCKS
+
+CefAlloc:
+        JSR AllocateBlocksForCreate
+        BCC CefHaveBlocks
+        RTS
+
+CefHaveBlocks:
+        ; Read root directory block 2.
+        JSR ReadCatalogBlock2
+        BCC CefDirReadOk
+        PHA
+        LDX #$00
+CefDirReadErrLoop:
+        LDA TxtWriteDirErr,X
+        BEQ CefDirReadErrDone
+        JSR Putc
+        INX
+        BNE CefDirReadErrLoop
+CefDirReadErrDone:
+        PLA
+        JSR PrintHex
+        JSR PrintCR
+        SEC
+        RTS
+
+CefDirReadOk:
+        ; Locate first free entry in block 2.
+        LDA READ_VERIFY_BUFFER+$23
+        STA TMP_E_LEN
+        LDA READ_VERIFY_BUFFER+$24
+        STA TMP_E_COUNT
+        LDA #<(READ_VERIFY_BUFFER+$2B)
+        STA ZP_PTR_LO
+        LDA #>(READ_VERIFY_BUFFER+$2B)
+        STA ZP_PTR_HI
+
+CefFindSlotLoop:
+        LDA TMP_E_COUNT
+        BEQ CefNoSlot
+        LDY #$00
+        LDA (ZP_PTR_LO),Y
+        BEQ CefSlotFound
+        AND #$0F
+        BEQ CefSlotFound
+
+        CLC
+        LDA ZP_PTR_LO
+        ADC TMP_E_LEN
+        STA ZP_PTR_LO
+        BCC CefSlotNoCarry
+        INC ZP_PTR_HI
+CefSlotNoCarry:
+        DEC TMP_E_COUNT
+        JMP CefFindSlotLoop
+
+CefNoSlot:
+        LDX #$00
+CefNoSlotLoop:
+        LDA TxtWriteDirFull,X
+        BEQ CefNoSlotDone
+        JSR Putc
+        INX
+        BNE CefNoSlotLoop
+CefNoSlotDone:
+        SEC
+        RTS
+
+CefSlotFound:
+        ; Clear entry bytes.
+        LDY #$00
+CefClrLoop:
+        LDA #$00
+        STA (ZP_PTR_LO),Y
+        INY
+        CPY TMP_E_LEN
+        BCC CefClrLoop
+
+        ; Name length and storage nibble.
+        LDA WRITE_STORAGE_TYPE
+        ASL A
+        ASL A
+        ASL A
+        ASL A
+        ORA LOAD_NAME_LEN
+        LDY #$00
+        STA (ZP_PTR_LO),Y
+
+        ; Copy filename bytes.
+        LDY #$01
+CefNameLoop:
+        CPY LOAD_NAME_LEN
+        BEQ CefNameLast
+        BCS CefNameDone
+        LDA LOAD_NAME_BUF-1,Y
+        STA (ZP_PTR_LO),Y
+        INY
+        JMP CefNameLoop
+CefNameLast:
+        LDA LOAD_NAME_BUF-1,Y
+        STA (ZP_PTR_LO),Y
+CefNameDone:
+
+        ; Filetype.
+        LDY #$10
+        LDA WRITE_REQ_TYPE
+        STA (ZP_PTR_LO),Y
+
+        ; Key block and data pointers.
+        LDA WRITE_STORAGE_TYPE
+        CMP #$01
+        BEQ CefSetSeedling
+
+        ; Sapling: key block = alloc0 (index block)
+        LDY #$11
+        LDA WRITE_ALLOC0_LO
+        STA (ZP_PTR_LO),Y
+        INY
+        LDA WRITE_ALLOC0_HI
+        STA (ZP_PTR_LO),Y
+        JMP CefSetCounts
+
+CefSetSeedling:
+        ; Seedling: key block = alloc0 (data block)
+        LDY #$11
+        LDA WRITE_ALLOC0_LO
+        STA (ZP_PTR_LO),Y
+        INY
+        LDA WRITE_ALLOC0_HI
+        STA (ZP_PTR_LO),Y
+
+CefSetCounts:
+        ; Block count.
+        LDY #$13
+        LDA WRITE_NEED_BLOCKS
+        STA (ZP_PTR_LO),Y
+        INY
+        LDA #$00
+        STA (ZP_PTR_LO),Y
+
+        ; EOF (24-bit)
+        LDY #$15
+        LDA WRITE_LEN_LO
+        STA (ZP_PTR_LO),Y
+        INY
+        LDA WRITE_LEN_HI
+        STA (ZP_PTR_LO),Y
+        INY
+        LDA #$00
+        STA (ZP_PTR_LO),Y
+
+        ; Access
+        LDY #$1E
+        LDA #$C3
+        STA (ZP_PTR_LO),Y
+
+        ; Auxtype = source address
+        LDY #$1F
+        LDA WRITE_SRC_LO
+        STA (ZP_PTR_LO),Y
+        INY
+        LDA WRITE_SRC_HI
+        STA (ZP_PTR_LO),Y
+
+        ; Header pointer = root dir block 2
+        LDY #$25
+        LDA #$02
+        STA (ZP_PTR_LO),Y
+        INY
+        LDA #$00
+        STA (ZP_PTR_LO),Y
+
+        ; Increment volume file count in header.
+        INC READ_VERIFY_BUFFER+$25
+        BNE CefNoCarryFC
+        INC READ_VERIFY_BUFFER+$26
+CefNoCarryFC:
+
+        ; Write updated directory block.
+        LDA #CMD_WRITE
+        STA pdCommandCode
+        LDA #$00
+        STA pdUnitNumber
+        LDA #$02
+        STA pdBlockNumberLow
+        LDA #$00
+        STA pdBlockNumberHigh
+        LDA #<READ_VERIFY_BUFFER
+        STA pdIOBufferLow
+        LDA #>READ_VERIFY_BUFFER
+        STA pdIOBufferHigh
+        JSR CFBlockDriver
+        BCC CefDirWriteOk
+        PHA
+        LDX #$00
+CefDirWrErrLoop:
+        LDA TxtWriteDirErr,X
+        BEQ CefDirWrErrDone
+        JSR Putc
+        INX
+        BNE CefDirWrErrLoop
+CefDirWrErrDone:
+        PLA
+        JSR PrintHex
+        JSR PrintCR
+        SEC
+        RTS
+
+CefDirWriteOk:
+        ; For sapling, initialize index block with data pointers.
+        LDA WRITE_STORAGE_TYPE
+        CMP #$02
+        BNE CefPopulateCat
+
+        LDX #$00
+CefIdxZero:
+        STZ READ_VERIFY_BUFFER,X
+        STZ READ_VERIFY_BUFFER+$100,X
+        INX
+        BNE CefIdxZero
+
+        ; pointer 0 -> alloc1
+        LDA WRITE_ALLOC1_LO
+        STA READ_VERIFY_BUFFER+$00
+        LDA WRITE_ALLOC1_HI
+        STA READ_VERIFY_BUFFER+$100
+        ; pointer 1 -> alloc2
+        LDA WRITE_ALLOC2_LO
+        STA READ_VERIFY_BUFFER+$01
+        LDA WRITE_ALLOC2_HI
+        STA READ_VERIFY_BUFFER+$101
+
+        LDA #CMD_WRITE
+        STA pdCommandCode
+        LDA #$00
+        STA pdUnitNumber
+        LDA WRITE_ALLOC0_LO
+        STA pdBlockNumberLow
+        LDA WRITE_ALLOC0_HI
+        STA pdBlockNumberHigh
+        LDA #<READ_VERIFY_BUFFER
+        STA pdIOBufferLow
+        LDA #>READ_VERIFY_BUFFER
+        STA pdIOBufferHigh
+        JSR CFBlockDriver
+        BCC CefPopulateCat
+        PHA
+        LDX #$00
+CefIdxErrLoop:
+        LDA TxtWriteAllocErr,X
+        BEQ CefIdxErrDone
+        JSR Putc
+        INX
+        BNE CefIdxErrLoop
+CefIdxErrDone:
+        PLA
+        JSR PrintHex
+        JSR PrintCR
+        SEC
+        RTS
+
+CefPopulateCat:
+        LDA WRITE_STORAGE_TYPE
+        STA CAT_TYPE
+        LDA WRITE_REQ_TYPE
+        STA CAT_FILETYPE
+        LDA WRITE_LEN_LO
+        STA CAT_EOF0
+        LDA WRITE_LEN_HI
+        STA CAT_EOF1
+        LDA #$00
+        STA CAT_EOF2
+        LDA WRITE_SRC_LO
+        STA CAT_AUXLO
+        LDA WRITE_SRC_HI
+        STA CAT_AUXHI
+
+        ; key block for write path
+        LDA WRITE_ALLOC0_LO
+        STA CAT_KEY_LO
+        LDA WRITE_ALLOC0_HI
+        STA CAT_KEY_HI
+
+        CLC
+        RTS
+
+CefTooBig:
+        LDX #$00
+CefTooBigLoop:
+        LDA TxtWriteTooBig,X
+        BEQ CefTooBigDone
+        JSR Putc
+        INX
+        BNE CefTooBigLoop
+CefTooBigDone:
+        SEC
+        RTS
+
+;------------------------------------------------------------------------------
+; AllocateBlocksForCreate
+;
+; In:  WRITE_NEED_BLOCKS = 1(seedling) or 3(sapling)
+; Out: WRITE_ALLOC0..2 set, bitmap updated on disk.
+;------------------------------------------------------------------------------
+AllocateBlocksForCreate:
+        ; Read block 2 to find bitmap start block.
+        JSR ReadCatalogBlock2
+        BCC AbfcDirOk
+        PHA
+        LDX #$00
+AbfcDirErrLoop:
+        LDA TxtWriteDirErr,X
+        BEQ AbfcDirErrDone
+        JSR Putc
+        INX
+        BNE AbfcDirErrLoop
+AbfcDirErrDone:
+        PLA
+        JSR PrintHex
+        JSR PrintCR
+        SEC
+        RTS
+
+AbfcDirOk:
+        ; Bitmap block pointer from volume header offsets $27/$28.
+        LDA READ_VERIFY_BUFFER+$27
+        STA WRITE_BITMAP_LO
+        STA TMP_N0
+        LDA READ_VERIFY_BUFFER+$28
+        STA WRITE_BITMAP_HI
+        STA TMP_N1
+
+        ; Read first bitmap block.
+        LDA #CMD_READ
+        STA pdCommandCode
+        LDA #$00
+        STA pdUnitNumber
+        LDA TMP_N0
+        STA pdBlockNumberLow
+        LDA TMP_N1
+        STA pdBlockNumberHigh
+        LDA #<READ_VERIFY_BUFFER
+        STA pdIOBufferLow
+        LDA #>READ_VERIFY_BUFFER
+        STA pdIOBufferHigh
+        JSR CFBlockDriver
+        BCC AbfcBmpOk
+        PHA
+        LDX #$00
+AbfcBmpErrLoop:
+        LDA TxtWriteAllocErr,X
+        BEQ AbfcBmpErrDone
+        JSR Putc
+        INX
+        BNE AbfcBmpErrLoop
+AbfcBmpErrDone:
+        PLA
+        JSR PrintHex
+        JSR PrintCR
+        SEC
+        RTS
+
+AbfcBmpOk:
+        ; clear allocation outputs
+        STZ WRITE_ALLOC0_LO
+        STZ WRITE_ALLOC0_HI
+        STZ WRITE_ALLOC1_LO
+        STZ WRITE_ALLOC1_HI
+        STZ WRITE_ALLOC2_LO
+        STZ WRITE_ALLOC2_HI
+
+        ; candidate block number in TMP_N2/TMP_N3, allocated count in TMP_N1
+        STZ TMP_N2
+        STZ TMP_N3
+        STZ TMP_N1
+
+        ; scan first 256 bytes (blocks 0..2047)
+        LDY #$00
+AbfcScanLoByte:
+        LDA READ_VERIFY_BUFFER,Y
+        STA TMP_N0
+        LDA #$80
+        STA TMP_NLEN
+AbfcScanLoBit:
+        LDA TMP_N0
+        AND TMP_NLEN
+        BEQ AbfcLoNoAlloc
+
+        ; allocate current candidate block
+        LDA TMP_NLEN
+        EOR #$FF
+        AND TMP_N0
+        STA TMP_N0
+        LDA TMP_N0
+        STA READ_VERIFY_BUFFER,Y
+
+        LDA TMP_N1
+        BEQ AbfcStore0
+        CMP #$01
+        BEQ AbfcStore1
+        ; else store2
+        LDA TMP_N2
+        STA WRITE_ALLOC2_LO
+        LDA TMP_N3
+        STA WRITE_ALLOC2_HI
+        JMP AbfcStored
+AbfcStore0:
+        LDA TMP_N2
+        STA WRITE_ALLOC0_LO
+        LDA TMP_N3
+        STA WRITE_ALLOC0_HI
+        JMP AbfcStored
+AbfcStore1:
+        LDA TMP_N2
+        STA WRITE_ALLOC1_LO
+        LDA TMP_N3
+        STA WRITE_ALLOC1_HI
+AbfcStored:
+        INC TMP_N1
+        LDA TMP_N1
+        CMP WRITE_NEED_BLOCKS
+        BEQ AbfcWriteBitmap
+
+AbfcLoNoAlloc:
+        ; candidate++
+        INC TMP_N2
+        BNE AbfcLoCandOk
+        INC TMP_N3
+AbfcLoCandOk:
+
+        LSR TMP_NLEN
+        BNE AbfcScanLoBit
+        INY
+        BNE AbfcScanLoByte
+
+        ; scan second 256 bytes (blocks 2048..4095)
+        LDY #$00
+AbfcScanHiByte:
+        LDA READ_VERIFY_BUFFER+$100,Y
+        STA TMP_N0
+        LDA #$80
+        STA TMP_NLEN
+AbfcScanHiBit:
+        LDA TMP_N0
+        AND TMP_NLEN
+        BEQ AbfcHiNoAlloc
+
+        ; allocate current candidate block
+        LDA TMP_NLEN
+        EOR #$FF
+        AND TMP_N0
+        STA TMP_N0
+        LDA TMP_N0
+        STA READ_VERIFY_BUFFER+$100,Y
+
+        LDA TMP_N1
+        BEQ AbfcStore0H
+        CMP #$01
+        BEQ AbfcStore1H
+        LDA TMP_N2
+        STA WRITE_ALLOC2_LO
+        LDA TMP_N3
+        STA WRITE_ALLOC2_HI
+        JMP AbfcStoredH
+AbfcStore0H:
+        LDA TMP_N2
+        STA WRITE_ALLOC0_LO
+        LDA TMP_N3
+        STA WRITE_ALLOC0_HI
+        JMP AbfcStoredH
+AbfcStore1H:
+        LDA TMP_N2
+        STA WRITE_ALLOC1_LO
+        LDA TMP_N3
+        STA WRITE_ALLOC1_HI
+AbfcStoredH:
+        INC TMP_N1
+        LDA TMP_N1
+        CMP WRITE_NEED_BLOCKS
+        BEQ AbfcWriteBitmap
+
+AbfcHiNoAlloc:
+        INC TMP_N2
+        BNE AbfcHiCandOk
+        INC TMP_N3
+AbfcHiCandOk:
+        LSR TMP_NLEN
+        BNE AbfcScanHiBit
+        INY
+        BNE AbfcScanHiByte
+
+        ; out of allocatable bits in first bitmap block
+        LDX #$00
+AbfcFullLoop:
+        LDA TxtWriteAllocFull,X
+        BEQ AbfcFullDone
+        JSR Putc
+        INX
+        BNE AbfcFullLoop
+AbfcFullDone:
+        SEC
+        RTS
+
+AbfcWriteBitmap:
+        ; Write updated bitmap block back.
+        LDA #CMD_WRITE
+        STA pdCommandCode
+        LDA #$00
+        STA pdUnitNumber
+        LDA WRITE_BITMAP_LO
+        STA pdBlockNumberLow
+        LDA WRITE_BITMAP_HI
+        STA pdBlockNumberHigh
+        LDA #<READ_VERIFY_BUFFER
+        STA pdIOBufferLow
+        LDA #>READ_VERIFY_BUFFER
+        STA pdIOBufferHigh
+        JSR CFBlockDriver
+        BCC AbfcOk
+
+        PHA
+        LDX #$00
+AbfcWrErrLoop:
+        LDA TxtWriteAllocErr,X
+        BEQ AbfcWrErrDone
+        JSR Putc
+        INX
+        BNE AbfcWrErrLoop
+AbfcWrErrDone:
+        PLA
+        JSR PrintHex
+        JSR PrintCR
+        SEC
+        RTS
+
+AbfcOk:
+        CLC
         RTS
 
 ;------------------------------------------------------------------------------
@@ -793,12 +1673,15 @@ PromptLoop:
         BNE PromptLoop
 PromptDone:
 
-        JSR ReadHexWordOrCR
-        BCC HaveBlock
+        BCS MlnCancel
+        STA TMP_N0
+        JSR PrintCR
+        JMP MlnHaveIndex
+MlnCancel:
+        JSR PrintCR
         JSR PrintCR
         RTS
 
-HaveBlock:
         JSR PrintCR
 
         LDA #CMD_READ
@@ -897,6 +1780,7 @@ CatHdrLoop:
         INX
         BNE CatHdrLoop
 CatHdrDone:
+        JSR PrintCR
 
         JSR ReadCatalogBlock2
         BCC CatReadOk
@@ -984,9 +1868,9 @@ CatEntryHasName:
         STA CAT_FOUND
 CatFirstDone:
 
-        ; Print entry index (hex 00..)
+        ; Print entry index (decimal 00..99)
         TXA
-        JSR PrintHex
+        JSR PrintDec2
         LDA #$3A
         JSR Putc
         LDA #$20
@@ -1058,6 +1942,96 @@ CatAdvanceNoCarry:
         JMP CatEntryLoop
 
 CatDone:
+        RTS
+
+;------------------------------------------------------------------------------
+; FindCatalogEntryByIndex - fetch metadata for matching directory slot index
+; In:  TMP_N0 = requested entry index (00-99 decimal value)
+; Out: C=0 metadata loaded into CAT_*; C=1 if not found / inactive / read error
+;------------------------------------------------------------------------------
+FindCatalogEntryByIndex:
+        JSR ReadCatalogBlock2
+        BCC FciReadOk
+        SEC
+        RTS
+FciReadOk:
+        LDA TMP_N0
+        STA TMP_N1
+
+        LDA READ_VERIFY_BUFFER+$23
+        STA TMP_E_LEN
+        LDA READ_VERIFY_BUFFER+$24
+        STA TMP_E_COUNT
+
+        LDA #<(READ_VERIFY_BUFFER+$2B)
+        STA ZP_PTR_LO
+        LDA #>(READ_VERIFY_BUFFER+$2B)
+        STA ZP_PTR_HI
+
+        LDX #$00
+FciEntryLoop:
+        LDA TMP_E_COUNT
+        BEQ FciNotFound
+        CPX TMP_N1
+        BEQ FciAtTarget
+
+FciAdvance:
+        CLC
+        LDA ZP_PTR_LO
+        ADC TMP_E_LEN
+        STA ZP_PTR_LO
+        BCC FciAdvanceNoCarry
+        INC ZP_PTR_HI
+FciAdvanceNoCarry:
+        INX
+        DEC TMP_E_COUNT
+        JMP FciEntryLoop
+
+FciAtTarget:
+        LDY #$00
+        LDA (ZP_PTR_LO),Y
+        BEQ FciNotFound
+        STA TMP_N0
+        AND #$0F
+        BEQ FciNotFound
+
+        ; Storage type in high nibble.
+        LDA TMP_N0
+        LSR A
+        LSR A
+        LSR A
+        LSR A
+        STA CAT_TYPE
+
+        LDY #$10
+        LDA (ZP_PTR_LO),Y
+        STA CAT_FILETYPE
+        LDY #$11
+        LDA (ZP_PTR_LO),Y
+        STA CAT_KEY_LO
+        LDY #$12
+        LDA (ZP_PTR_LO),Y
+        STA CAT_KEY_HI
+        LDY #$15
+        LDA (ZP_PTR_LO),Y
+        STA CAT_EOF0
+        LDY #$16
+        LDA (ZP_PTR_LO),Y
+        STA CAT_EOF1
+        LDY #$17
+        LDA (ZP_PTR_LO),Y
+        STA CAT_EOF2
+        LDY #$1F
+        LDA (ZP_PTR_LO),Y
+        STA CAT_AUXLO
+        LDY #$20
+        LDA (ZP_PTR_LO),Y
+        STA CAT_AUXHI
+        CLC
+        RTS
+
+FciNotFound:
+        SEC
         RTS
 
 ;------------------------------------------------------------------------------
@@ -1154,9 +2128,9 @@ FcnAdvanceNoCarry:
         JMP FcnEntryLoop
 
 ;------------------------------------------------------------------------------
-; MenuLoadByName - M7.3 load command
+; MenuLoadByIndex - load command (00-99 index)
 ;------------------------------------------------------------------------------
-MenuLoadByName:
+MenuLoadByIndex:
         LDX #$00
 MlnPromptLoop:
         LDA TxtLoadFilePrompt,X
@@ -1166,13 +2140,14 @@ MlnPromptLoop:
         BNE MlnPromptLoop
 MlnPromptDone:
 
-        JSR ReadFilenameOrCR
+        JSR ReadDec2OrCR
         JSR PrintCR
-        BCC MlnHaveName
+        BCC MlnHaveIndex
         RTS
 
-MlnHaveName:
-        JSR FindCatalogEntryByName
+MlnHaveIndex:
+        STA TMP_N0
+        JSR FindCatalogEntryByIndex
         BCC MlnHaveEntry
 
         LDX #$00
@@ -1899,6 +2874,56 @@ ReadNameOk:
         RTS
 
 ;------------------------------------------------------------------------------
+; ReadDec2OrCR - read exactly two decimal digits (00..99), echoing input
+; Returns: C=1 if CR pressed at first char, else C=0 and A=index (00..99)
+;------------------------------------------------------------------------------
+ReadDec2OrCR:
+Rd2First:
+        JSR GetKey
+        CMP #$0D
+        BEQ Rd2Exit
+        CMP #$30
+        BCC Rd2First
+        CMP #$3A
+        BCS Rd2First
+        PHA
+        JSR Putc
+        PLA
+        SEC
+        SBC #$30
+        STA TMP_N0
+
+Rd2Second:
+        JSR GetKey
+        CMP #$30
+        BCC Rd2Second
+        CMP #$3A
+        BCS Rd2Second
+        PHA
+        JSR Putc
+        PLA
+        SEC
+        SBC #$30
+        STA TMP_N1
+
+        ; A = (tens * 10) + ones
+        LDA TMP_N0
+        ASL A
+        STA TMP_N2           ; 2*tens
+        ASL A                ; 4*tens
+        ASL A                ; 8*tens
+        CLC
+        ADC TMP_N2           ; 10*tens
+        CLC
+        ADC TMP_N1
+        CLC
+        RTS
+
+Rd2Exit:
+        SEC
+        RTS
+
+;------------------------------------------------------------------------------
 ; ToUpper - normalize lowercase ASCII letter to uppercase
 ;------------------------------------------------------------------------------
 ToUpper:
@@ -2040,6 +3065,32 @@ IsDigit:
         JMP Putc
 
 ;------------------------------------------------------------------------------
+; PrintDec2 - print A (0..99) as two decimal digits
+;------------------------------------------------------------------------------
+PrintDec2:
+        PHX
+        LDX #$00
+Pd2Loop:
+        CMP #$0A
+        BCC Pd2Done
+        SEC
+        SBC #$0A
+        INX
+        JMP Pd2Loop
+Pd2Done:
+        PHA
+        TXA
+        CLC
+        ADC #$30
+        JSR Putc
+        PLA
+        CLC
+        ADC #$30
+        JSR Putc
+        PLX
+        RTS
+
+;------------------------------------------------------------------------------
 ; Strings
 ;------------------------------------------------------------------------------
 TxtBanner:
@@ -2068,13 +3119,13 @@ TxtMenuPrompt:
         .asciiz "CFFA1> "
 TxtMenuUnknown:
         .byte $0D
-        .asciiz "C L B W Q ?"
+        .asciiz "C L B W D Q ?"
 TxtLoadFilePrompt:
         .byte $0D
-        .asciiz "LOAD FILE: "
+        .asciiz "LOAD IDX (00-99): "
 TxtLoadNoFile:
         .byte $0D
-        .asciiz "LOAD ERR:NO FILE"
+        .asciiz "LOAD ERR:EMPTY IDX"
 TxtLoadBa1NYI:
         .byte $0D
         .asciiz "LOAD BA1 NYI"
@@ -2090,9 +3141,33 @@ TxtWriteType:
 TxtWriteName:
         .byte $0D
         .asciiz "      NAME: "
+TxtDeletePrompt:
+        .byte $0D
+        .asciiz "DELETE IDX (00-99): "
+TxtDeleteNoFile:
+        .byte $0D
+        .asciiz "DELETE ERR:EMPTY IDX"
+TxtDeleteErr:
+        .byte $0D
+        .asciiz "DELETE ERR:"
+TxtDeleteOk:
+        .byte $0D
+        .asciiz "DELETE OK"
 TxtWriteNoFile:
         .byte $0D
         .asciiz "WRITE ERR:NO FILE"
+TxtWriteDirErr:
+        .byte $0D
+        .asciiz "WRITE ERR:DIR:"
+TxtWriteDirFull:
+        .byte $0D
+        .asciiz "WRITE ERR:DIR FULL"
+TxtWriteAllocErr:
+        .byte $0D
+        .asciiz "WRITE ERR:ALLOC:"
+TxtWriteAllocFull:
+        .byte $0D
+        .asciiz "WRITE ERR:ALLOC FULL"
 TxtWriteErr:
         .byte $0D
         .asciiz "WRITE ERR:"
