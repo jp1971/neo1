@@ -2141,12 +2141,14 @@ MlnPromptLoop:
 MlnPromptDone:
 
         JSR ReadDec2OrCR
-        JSR PrintCR
-        BCC MlnHaveIndex
+        BCC MlnHaveIndex_Save
         RTS
 
-MlnHaveIndex:
+MlnHaveIndex_Save:
         STA TMP_N0
+        JSR PrintCR
+
+MlnHaveIndex:
         JSR FindCatalogEntryByIndex
         BCC MlnHaveEntry
 
