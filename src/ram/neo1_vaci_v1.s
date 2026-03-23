@@ -106,7 +106,9 @@ PromptDone:
         PLA
         CMP #'Q'
         BEQ MenuQuit
+        PHA
         JSR PrintCR
+        PLA
         
         CMP #'R'
         BEQ MenuRead
