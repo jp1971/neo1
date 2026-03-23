@@ -143,6 +143,10 @@ MenuQuit:
 ;   7. Return to caller
 ;------------------------------------------------------------------------------
 VaciRead:
+        ; Initialize index counter
+        LDA #$00
+        STA ZP_INDEX
+
         ; Open directory
         LDA #CMD_DIR_OPEN
         STA MSC_CMD
@@ -152,7 +156,6 @@ VaciRead:
 
 VrOpenOk:
         ; List files
-        LDX #$00
 ListLoop:
         LDA ZP_INDEX
         CMP #$64            ; 100 files max
@@ -225,8 +228,7 @@ AddrPromptDone:
         BCC VrAddrOk
         JMP VrAddrCancel
 VrAddrOk:
-        STA ZP_ADDR_HI
-        STX ZP_ADDR_LO      ; ReadHexWord returns lo in X, hi in A
+        ; ZP_ADDR_HI:ZP_ADDR_LO already set by ReadHexWord
         JSR PrintCR
         
         ; Display ACI command: "HHLL . HHLLR"
@@ -545,18 +547,18 @@ TuDone:
         RTS
 
 ;------------------------------------------------------------------------------
-; WaitReady - Poll MSC_STATUS until ready (bit 7 clear)
+; WaitReady - Poll MSC_STATUS until ready
+; STATUS: $00=BUSY, $01=READY, $80+=ERROR
 ; Returns: C=0 if ready, C=1 if error
 ;------------------------------------------------------------------------------
 WaitReady:
 WrPoll:
         LDA MSC_STATUS
-        BEQ WrReady
-        AND #$80
-        BEQ WrReady
-        JMP WrPoll
-        
-WrReady:
+        BEQ WrPoll          ; $00 = BUSY, keep polling
+        BPL WrOk            ; bit 7 clear = READY ($01..$7F)
+        SEC                 ; bit 7 set   = ERROR ($80+)
+        RTS
+WrOk:
         CLC
         RTS
 
