@@ -194,14 +194,18 @@ ListDone:
         LDX #$00
 IdxPromptLoop:
         LDA TxtIdxPrompt,X
-        BEQ IdxPromptDone
+        BNE IdxPromptNext
+        JMP IdxPromptDone
+IdxPromptNext:
         JSR Putc
         INX
         JMP IdxPromptLoop
         
 IdxPromptDone:
         JSR ReadDec2
-        BCS VrIndexCancel
+        BCC VrIndexOk
+        JMP VrIndexCancel
+VrIndexOk:
         STA ZP_INDEX
         JSR PrintCR
         
@@ -209,14 +213,18 @@ IdxPromptDone:
         LDX #$00
 AddrPromptLoop:
         LDA TxtAddrPrompt,X
-        BEQ AddrPromptDone
+        BNE AddrPromptNext
+        JMP AddrPromptDone
+AddrPromptNext:
         JSR Putc
         INX
         JMP AddrPromptLoop
         
 AddrPromptDone:
         JSR ReadHexWord
-        BCS VrAddrCancel
+        BCC VrAddrOk
+        JMP VrAddrCancel
+VrAddrOk:
         STA ZP_ADDR_HI
         STX ZP_ADDR_LO      ; ReadHexWord returns lo in X, hi in A
         JSR PrintCR

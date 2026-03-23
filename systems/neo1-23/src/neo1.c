@@ -54,6 +54,7 @@
 #include "roms/neo1_roms.h"
 #include "ram/neo1_msc_phase2_loader.h"
 #include "ram/neo1_cffa1_m2_blockdrv.h"
+#include "ram/neo1_vaci_v1.h"
 
 #include "hardware/vreg.h"
 #include "hardware/clocks.h"
@@ -92,6 +93,15 @@ static void neo1_install_msc_boot_loader(neo1_t* sys) {
            (unsigned)m2_addr,
            (unsigned long)m2_size,
             (unsigned)NEO1_CFFA1_M2_TESTMAIN_ADDR);
+
+    const uint32_t vaci_size = (uint32_t)sizeof(neo1_vaci_v1);
+    const uint32_t vaci_addr = NEO1_VACI_V1_ADDR;
+    CHIPS_ASSERT((vaci_addr + vaci_size) <= NEO1_ROM_BASE);
+    memcpy(&sys->ram[vaci_addr], neo1_vaci_v1, vaci_size);
+    printf("[neo1] vaci v1 installed at $%04X (%lu bytes), run with C %04XR\n",
+           (unsigned)vaci_addr,
+           (unsigned long)vaci_size,
+           (unsigned)vaci_addr);
 }
 
 //
