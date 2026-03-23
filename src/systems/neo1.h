@@ -232,6 +232,8 @@ static inline uint8_t _neo1_mem_read(neo1_t* sys, uint16_t addr) {
         case NEO1_IO_MSC_DATA:
         case NEO1_IO_MSC_INDEX:
         case NEO1_IO_MSC_INFO:
+        case NEO1_IO_MSC_SIZE_LO:
+        case NEO1_IO_MSC_SIZE_HI:
             return neo1_msc_io_read(addr);
 
         default:

@@ -28,6 +28,8 @@ extern "C" {
 #define NEO1_IO_MSC_STATUS     (0xD018)
 #define NEO1_IO_MSC_INDEX      (0xD019)
 #define NEO1_IO_MSC_INFO       (0xD01A)
+#define NEO1_IO_MSC_SIZE_LO    (0xD01B)
+#define NEO1_IO_MSC_SIZE_HI    (0xD01C)
 
 // Command opcodes written to NEO1_IO_MSC_CMD.
 #define NEO1_MSC_CMD_OPEN      (0x01)

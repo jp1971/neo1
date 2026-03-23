@@ -37,6 +37,8 @@ MSC_DATA     = $D017
 MSC_STATUS   = $D018
 MSC_INDEX    = $D019
 MSC_INFO     = $D01A
+MSC_SIZE_LO  = $D01B
+MSC_SIZE_HI  = $D01C
 
 KBD          = $D010
 KBDCR        = $D011
@@ -45,6 +47,7 @@ DSP          = $D012
 CMD_DIR_OPEN = $10
 CMD_DIR_NEXT = $11
 CMD_OPEN_IND = $12
+CMD_CLOSE    = $02
 CMD_READ     = $03
 INFO_VALID   = $01
 
@@ -62,6 +65,8 @@ ZP_TEMPLO    = $F7
 ZP_TEMPHI    = $F8
 ZP_TENS      = $F9
 ZP_ONES      = $FA
+ZP_END_LO    = $FB
+ZP_END_HI    = $FC
 
         .org $C100
 
@@ -212,6 +217,17 @@ IdxPromptDone:
 VrIndexOk:
         STA ZP_INDEX
         JSR PrintCR
+
+        ; Open selected file now so size metadata is available for range echo
+        LDA ZP_INDEX
+        STA MSC_INDEX
+        LDA #CMD_OPEN_IND
+        STA MSC_CMD
+        JSR WaitReady
+        BCC VrOpenIndexOk
+        RTS
+
+VrOpenIndexOk:
         
         ; Prompt for address
         LDX #$00
@@ -230,6 +246,40 @@ AddrPromptDone:
         JMP VrAddrCancel
 VrAddrOk:
         ; ZP_ADDR_HI:ZP_ADDR_LO already set by ReadHexWord
+
+        ; Compute end address for ACI-style echo:
+        ;   end = start + (file_size - 1), if size>0
+        LDA ZP_ADDR_LO
+        STA ZP_END_LO
+        LDA ZP_ADDR_HI
+        STA ZP_END_HI
+
+        LDA MSC_SIZE_LO
+        STA ZP_B0
+        LDA MSC_SIZE_HI
+        STA ZP_B1
+
+        LDA ZP_B0
+        ORA ZP_B1
+        BEQ VrEndReady
+
+        ; size = size - 1
+        LDA ZP_B0
+        BNE VrDecLenLo
+        DEC ZP_B1
+VrDecLenLo:
+        DEC ZP_B0
+
+        ; end += (size - 1)
+        CLC
+        LDA ZP_END_LO
+        ADC ZP_B0
+        STA ZP_END_LO
+        LDA ZP_END_HI
+        ADC ZP_B1
+        STA ZP_END_HI
+
+VrEndReady:
         JSR PrintVaciPrefix
         
         ; Display ACI command: "HHLL . HHLLR"
@@ -247,9 +297,9 @@ AciCmdLoop:
         BNE AciCmdLoop
         
 AciCmdDone:
-        LDA ZP_ADDR_HI
+        LDA ZP_END_HI
         JSR PrintHex
-        LDA ZP_ADDR_LO
+        LDA ZP_END_LO
         JSR PrintHex
         
         LDA #'R'
@@ -261,17 +311,7 @@ AciCmdDone:
         CMP #$0D
         BNE VrExecuteCancel
         JSR PrintCR
-        
-        ; Open file by index
-        LDA ZP_INDEX
-        STA MSC_INDEX
-        LDA #CMD_OPEN_IND
-        STA MSC_CMD
-        JSR WaitReady
-        BCC VrFileOpen
-        RTS
-        
-VrFileOpen:
+
         ; Read file (512 bytes = 2 pages at 256 bytes each)
         LDA #$00
         STA MSC_SECT_LO
@@ -320,8 +360,13 @@ SuccessDone:
         RTS
         
 VrIndexCancel:
+        RTS
+
 VrAddrCancel:
 VrExecuteCancel:
+        LDA #CMD_CLOSE
+        STA MSC_CMD
+        JSR WaitReady
         RTS
 
 ;------------------------------------------------------------------------------

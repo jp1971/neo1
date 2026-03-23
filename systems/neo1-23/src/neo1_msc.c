@@ -28,6 +28,7 @@ static uint8_t g_status = NEO1_MSC_STATUS_READY;
 static uint8_t g_index = 0;
 static uint8_t g_info = 0;
 static uint8_t g_last_dir_index = 0xFF;
+static uint16_t g_file_size = 0;
 static uint8_t g_buffer[512];
 
 // During an OPEN command, we buffer the filename bytes written to the DATA port
@@ -97,6 +98,10 @@ static void do_open(void) {
 #endif
 
     g_file_open = true;
+    {
+        const FSIZE_t size = f_size(&g_file);
+        g_file_size = (size > 0xFFFFu) ? 0xFFFFu : (uint16_t)size;
+    }
     set_ready();
 }
 
@@ -105,6 +110,7 @@ static void do_close(void) {
         f_close(&g_file);
         g_file_open = false;
     }
+    g_file_size = 0;
     close_dir_if_open();
     set_ready();
 }
@@ -129,6 +135,7 @@ static void do_dir_open(void) {
     g_dir_open = true;
     g_info = 0;
     g_last_dir_index = 0xFF;
+    g_file_size = 0;
 #if NEO1_MSC_DEBUG
     printf("[msc] dir open ok\n");
 #endif
@@ -152,6 +159,7 @@ static void do_dir_next(void) {
         if (fno.fname[0] == '\0') {
             g_info = 0;
             g_data_offset = 0;
+            g_file_size = 0;
             g_buffer[0] = '\0';
             set_ready();
             return;
@@ -168,6 +176,7 @@ static void do_dir_next(void) {
         g_data_offset = 0;
         g_last_dir_index = (uint8_t)(g_last_dir_index + 1u);
         g_info = NEO1_MSC_INFO_VALID;
+        g_file_size = (fno.fsize > 0xFFFFu) ? 0xFFFFu : (uint16_t)fno.fsize;
 #if NEO1_MSC_DEBUG
         printf("[msc] dir[%u] '%s'\n", (unsigned)g_last_dir_index, (char*)g_buffer);
 #endif
@@ -310,6 +319,7 @@ void neo1_msc_init(void) {
     g_index = 0;
     g_info = 0;
     g_last_dir_index = 0xFF;
+    g_file_size = 0;
     g_open_filename_pos = 0;
     g_open_filename[0] = '\0';
     set_ready();
@@ -328,6 +338,10 @@ uint8_t neo1_msc_io_read(uint16_t addr) {
             return g_index;
         case NEO1_IO_MSC_INFO:
             return g_info;
+        case NEO1_IO_MSC_SIZE_LO:
+            return (uint8_t)(g_file_size & 0x00FFu);
+        case NEO1_IO_MSC_SIZE_HI:
+            return (uint8_t)((g_file_size >> 8) & 0x00FFu);
         default:
             return 0x00;
     }
