@@ -98,15 +98,15 @@ PromptDone:
         JSR ToUpper
         PHA
         JSR Putc
-        JSR PrintCR
         PLA
+        CMP #'Q'
+        BEQ MenuQuit
+        JSR PrintCR
         
         CMP #'R'
         BEQ MenuRead
         CMP #'W'
         BEQ MenuWrite
-        CMP #'Q'
-        BEQ MenuQuit
         
         ; Unknown command, loop
         JMP MenuLoop
@@ -173,6 +173,7 @@ VrNextOk:
         BEQ ListDone
         
         ; Print index (00-99)
+        JSR PrintStarSpace
         LDA ZP_INDEX
         JSR PrintDec2
         LDA #$3A            ; ':'
@@ -229,7 +230,7 @@ AddrPromptDone:
         JMP VrAddrCancel
 VrAddrOk:
         ; ZP_ADDR_HI:ZP_ADDR_LO already set by ReadHexWord
-        JSR PrintCR
+        JSR PrintVaciPrefix
         
         ; Display ACI command: "HHLL . HHLLR"
         LDA ZP_ADDR_HI
@@ -532,6 +533,23 @@ PrintCR:
         JMP Putc
 
 ;------------------------------------------------------------------------------
+; PrintStarSpace - Print "* "
+;------------------------------------------------------------------------------
+PrintStarSpace:
+        LDA #'*'
+        JSR Putc
+        LDA #$20
+        JMP Putc
+
+;------------------------------------------------------------------------------
+; PrintVaciPrefix - New line + "* "
+;------------------------------------------------------------------------------
+PrintVaciPrefix:
+        JSR PrintCR
+        JSR PrintStarSpace
+        RTS
+
+;------------------------------------------------------------------------------
 ; ToUpper - Convert A to uppercase (if A-Z range, already upper)
 ;------------------------------------------------------------------------------
 ToUpper:
@@ -583,7 +601,7 @@ GkWait:
 ; Strings
 ;------------------------------------------------------------------------------
 TxtBanner:
-        .asciiz "NEO1 VACI V1"
+        .asciiz "* NEO1 VACI V1"
 
 TxtPrompt:
         .byte $0D
@@ -591,18 +609,18 @@ TxtPrompt:
 
 TxtIdxPrompt:
         .byte $0D
-        .asciiz "INDEX (00-99): "
+        .asciiz "* INDEX (00-99): "
 
 TxtAddrPrompt:
         .byte $0D
-        .asciiz "ADDR ($XXXX): "
+        .asciiz "* ADDR ($XXXX): "
 
 TxtAciCmd:
         .asciiz " . "
 
 TxtSuccess:
-        .asciiz "READ OK"
+        .asciiz "* READ OK"
 
 TxtWriteDefer:
         .byte $0D
-        .asciiz "WRITE: DEFERRED (V2)"
+        .asciiz "* WRITE: DEFERRED (V2)"
