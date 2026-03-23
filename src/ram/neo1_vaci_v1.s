@@ -306,7 +306,6 @@ CopyPage1:
         BNE CopyPage1
         
         ; Success
-        JSR PrintCR
         LDX #$00
 SuccessLoop:
         LDA TxtSuccess,X
@@ -588,7 +587,7 @@ TxtBanner:
 
 TxtPrompt:
         .byte $0D
-        .asciiz "VACI> R/W/Q? "
+        .asciiz "* R/W/Q? "
 
 TxtIdxPrompt:
         .byte $0D
@@ -596,13 +595,12 @@ TxtIdxPrompt:
 
 TxtAddrPrompt:
         .byte $0D
-        .asciiz "ADDR ($"
+        .asciiz "ADDR ($XXXX): "
 
 TxtAciCmd:
-        .asciiz ") . "
+        .asciiz " . "
 
 TxtSuccess:
-        .byte $0D
         .asciiz "READ OK"
 
 TxtWriteDefer:
