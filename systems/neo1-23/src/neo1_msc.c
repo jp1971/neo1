@@ -30,6 +30,7 @@ static uint8_t g_info = 0;
 static uint8_t g_last_dir_index = 0xFF;
 static uint16_t g_file_size = 0;
 static uint8_t g_buffer[512];
+static bool g_open_pending = false;
 
 // During an OPEN command, we buffer the filename bytes written to the DATA port
 // until we receive a null terminator.
@@ -286,20 +287,44 @@ static void do_write(void) {
 
     g_data_offset = 0;
     UINT bw;
+    uint16_t write_len = g_file_size;
+    if (write_len == 0 || write_len > sizeof(g_buffer)) {
+        write_len = (uint16_t)sizeof(g_buffer);
+    }
     FRESULT res = f_lseek(&g_file, (DWORD)g_sector * 512);
     if (res != FR_OK) {
         set_error((uint8_t)res);
         return;
     }
 
-    res = f_write(&g_file, g_buffer, sizeof(g_buffer), &bw);
+    res = f_write(&g_file, g_buffer, write_len, &bw);
     if (res != FR_OK) {
         set_error((uint8_t)res);
         return;
     }
-    if (bw != sizeof(g_buffer)) {
+    if (bw != write_len) {
         set_error(1);
         return;
+    }
+
+    // Keep file length consistent with bytes intentionally written.
+    {
+        const DWORD target_size = ((DWORD)g_sector * 512u) + (DWORD)write_len;
+        res = f_lseek(&g_file, target_size);
+        if (res != FR_OK) {
+            set_error((uint8_t)res);
+            return;
+        }
+        res = f_truncate(&g_file);
+        if (res != FR_OK) {
+            set_error((uint8_t)res);
+            return;
+        }
+    }
+
+    {
+        const FSIZE_t size = f_size(&g_file);
+        g_file_size = (size > 0xFFFFu) ? 0xFFFFu : (uint16_t)size;
     }
 
     // Ensure data hits disk.
@@ -322,6 +347,7 @@ void neo1_msc_init(void) {
     g_info = 0;
     g_last_dir_index = 0xFF;
     g_file_size = 0;
+    g_open_pending = false;
     g_open_filename_pos = 0;
     g_open_filename[0] = '\0';
     set_ready();
@@ -357,6 +383,8 @@ void neo1_msc_io_write(uint16_t addr, uint8_t data) {
                     // Prepare to receive filename via DATA port writes.
                     g_open_filename_pos = 0;
                     g_open_filename[0] = '\0';
+                    g_open_pending = true;
+                    g_data_offset = 0;
                     set_busy();
                     break;
 
@@ -399,16 +427,21 @@ void neo1_msc_io_write(uint16_t addr, uint8_t data) {
             break;
 
         case NEO1_IO_MSC_DATA:
-            // During an OPEN command we receive the filename here.
-            if (g_open_filename_pos < (sizeof(g_open_filename) - 1)) {
-                g_open_filename[g_open_filename_pos++] = (char)data;
-                g_open_filename[g_open_filename_pos] = '\0';
-                if (data == '\0') {
-                    // Null-terminator indicates filename is complete.
+            // During an active OPEN command we receive filename bytes here.
+            if (g_open_pending) {
+                if (g_open_filename_pos < (sizeof(g_open_filename) - 1)) {
+                    g_open_filename[g_open_filename_pos++] = (char)data;
+                    g_open_filename[g_open_filename_pos] = '\0';
+                }
+                if (data == '\0' || g_open_filename_pos >= (sizeof(g_open_filename) - 1)) {
+                    // Filename complete (or max length reached): perform OPEN once.
+                    g_open_pending = false;
                     do_open();
                 }
+                break;
             }
-            // Also allow direct access to the sector buffer for read/write operations.
+
+            // Otherwise DATA targets the sector buffer for read/write operations.
             if (g_data_offset < sizeof(g_buffer)) {
                 g_buffer[g_data_offset++] = data;
             }
@@ -416,6 +449,14 @@ void neo1_msc_io_write(uint16_t addr, uint8_t data) {
 
         case NEO1_IO_MSC_INDEX:
             g_index = data;
+            break;
+
+        case NEO1_IO_MSC_SIZE_LO:
+            g_file_size = (uint16_t)((g_file_size & 0xFF00u) | (uint16_t)data);
+            break;
+
+        case NEO1_IO_MSC_SIZE_HI:
+            g_file_size = (uint16_t)((g_file_size & 0x00FFu) | ((uint16_t)data << 8));
             break;
 
         default:

@@ -322,28 +322,48 @@ AciCmdDone:
         RTS
         
 VrReadOk:
-        ; Copy 512 bytes from MSC_DATA to destination
+        ; Copy exactly file_size bytes from MSC_DATA to destination.
         LDA ZP_ADDR_LO
         STA ZP_PTR_LO
         LDA ZP_ADDR_HI
         STA ZP_PTR_HI
+
+        LDA MSC_SIZE_LO
+        STA ZP_B0
+        LDA MSC_SIZE_HI
+        STA ZP_B1
+
+        LDA ZP_B0
+        ORA ZP_B1
+        BEQ VrCopyDone
         
-        ; First 256 bytes (Y = 0..255)
+VrFullPageCheck:
+        LDA ZP_B1
+        BEQ VrPartial
         LDY #$00
-CopyPage0:
+VrCopyPage:
         LDA MSC_DATA
         STA (ZP_PTR_LO),Y
         INY
-        BNE CopyPage0
-        
-        ; Second 256 bytes
+        BNE VrCopyPage
         INC ZP_PTR_HI
+        DEC ZP_B1
+        JMP VrFullPageCheck
+
+VrPartial:
+        LDA ZP_B0
+        BEQ VrCopyDone
+        STA ZP_TEMPLO
         LDY #$00
-CopyPage1:
+VrCopyTail:
         LDA MSC_DATA
         STA (ZP_PTR_LO),Y
+        DEC ZP_TEMPLO
+        BEQ VrCopyDone
         INY
-        BNE CopyPage1
+        JMP VrCopyTail
+
+VrCopyDone:
         
         ; Success
         LDX #$00
@@ -528,6 +548,11 @@ VwOpenFnDone:
         BCC VwOpenOk
         JMP VwWriteErr          ; open failed
 VwOpenOk:
+        ; Tell backend how many bytes are intentionally valid for this write.
+        LDA ZP_B0
+        STA MSC_SIZE_LO
+        LDA ZP_B1
+        STA MSC_SIZE_HI
 
         ; ---- Stream payload to MSC_DATA (page 0 then page 1 of sector) ----
         ; ZP_B1 = full 256-byte pages from RAM (0, 1, or 2)

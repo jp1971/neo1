@@ -280,6 +280,8 @@ static inline void _neo1_mem_write(neo1_t* sys, uint16_t addr, uint8_t data) {
         case NEO1_IO_MSC_SECTOR_HI:
         case NEO1_IO_MSC_DATA:
         case NEO1_IO_MSC_INDEX:
+        case NEO1_IO_MSC_SIZE_LO:
+        case NEO1_IO_MSC_SIZE_HI:
             neo1_msc_io_write(addr, data);
             break;
 
