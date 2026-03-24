@@ -53,7 +53,14 @@
 #include "neo1_usb.h"
 #include "roms/neo1_roms.h"
 #include "ram/neo1_cffa1_m2_blockdrv.h"
+
+#ifndef NEO1_ENABLE_VACI
+#define NEO1_ENABLE_VACI (1)
+#endif
+
+#if NEO1_ENABLE_VACI
 #include "ram/neo1_vaci_v1.h"
+#endif
 
 #include "hardware/vreg.h"
 #include "hardware/clocks.h"
@@ -84,6 +91,7 @@ static void neo1_install_ram_tools(neo1_t* sys) {
            (unsigned long)m2_size,
             (unsigned)NEO1_CFFA1_M2_TESTMAIN_ADDR);
 
+#if NEO1_ENABLE_VACI
     const uint32_t vaci_size = (uint32_t)sizeof(neo1_vaci_v1);
     const uint32_t vaci_addr = NEO1_VACI_V1_ADDR;
     CHIPS_ASSERT((vaci_addr + vaci_size) <= NEO1_ROM_BASE);
@@ -92,6 +100,9 @@ static void neo1_install_ram_tools(neo1_t* sys) {
            (unsigned)vaci_addr,
            (unsigned long)vaci_size,
            (unsigned)vaci_addr);
+#else
+    printf("[neo1] vaci v1 disabled; $C100 remains free for monitor or hardware ACI use\n");
+#endif
 }
 
 //
