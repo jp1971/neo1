@@ -44,6 +44,7 @@ extern "C" {
 #define NEO1_MSC_CMD_DIR_OPEN   (0x10)
 #define NEO1_MSC_CMD_DIR_NEXT   (0x11)
 #define NEO1_MSC_CMD_OPEN_INDEX (0x12)
+#define NEO1_MSC_CMD_DELETE_INDEX (0x13)
 
 // Status values read from NEO1_IO_MSC_STATUS.
 // - 0x00 means busy (command in progress).

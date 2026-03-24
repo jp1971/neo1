@@ -48,6 +48,7 @@ CMD_OPEN     = $01
 CMD_DIR_OPEN = $10
 CMD_DIR_NEXT = $11
 CMD_OPEN_IND = $12
+CMD_DELETE_IND = $13
 CMD_CLOSE    = $02
 CMD_READ     = $03
 CMD_WRITE    = $04
@@ -107,6 +108,8 @@ PromptDone:
         
         CMP #'R'
         BEQ MenuRead
+        CMP #'D'
+        BEQ MenuDelete
         CMP #'W'
         BEQ MenuWrite
         
@@ -115,6 +118,10 @@ PromptDone:
 
 MenuRead:
         JSR VaciRead
+        JMP MenuLoop
+
+MenuDelete:
+        JSR VaciDelete
         JMP MenuLoop
 
 MenuWrite:
@@ -360,6 +367,91 @@ VrAddrCancel:
         LDA #CMD_CLOSE
         STA MSC_CMD
         JSR WaitReady
+        RTS
+
+;------------------------------------------------------------------------------
+; VaciDelete - Hidden delete-by-index path
+;
+; Flow:
+;   1. Enumerate files (DIR_OPEN, then DIR_NEXT loop)
+;   2. Prompt for file index (00-99)
+;   3. CMD_DELETE_IND executes immediately
+;   4. Print CR and return to WozMon on success
+;------------------------------------------------------------------------------
+VaciDelete:
+        LDA #$00
+        STA ZP_INDEX
+
+        LDA #CMD_DIR_OPEN
+        STA MSC_CMD
+        JSR WaitReady
+        BCC VdOpenOk
+        RTS
+
+VdOpenOk:
+VdListLoop:
+        LDA ZP_INDEX
+        CMP #$64
+        BCS VdListDone
+
+        LDA #CMD_DIR_NEXT
+        STA MSC_CMD
+        JSR WaitReady
+        BCC VdNextOk
+        RTS
+
+VdNextOk:
+        LDA MSC_INFO
+        AND #INFO_VALID
+        BEQ VdListDone
+
+        LDA ZP_INDEX
+        JSR PrintDec2
+        LDA #$3A
+        JSR Putc
+        LDA #$20
+        JSR Putc
+
+VdNameLoop:
+        LDA MSC_DATA
+        BEQ VdNameDone
+        JSR Putc
+        JMP VdNameLoop
+
+VdNameDone:
+        JSR PrintCR
+        INC ZP_INDEX
+        JMP VdListLoop
+
+VdListDone:
+        LDX #$00
+VdPromptLoop:
+        LDA TxtDeletePrompt,X
+        BNE VdPromptNext
+        JMP VdPromptDone
+VdPromptNext:
+        JSR Putc
+        INX
+        JMP VdPromptLoop
+
+VdPromptDone:
+        JSR ReadDec2
+        BCC VdIndexOk
+        RTS
+VdIndexOk:
+        STA ZP_INDEX
+        JSR PrintCR
+
+        LDA ZP_INDEX
+        STA MSC_INDEX
+        LDA #CMD_DELETE_IND
+        STA MSC_CMD
+        JSR WaitReady
+        BCS VdDeleteErr
+
+        JMP WOZMON_ENTRY
+
+VdDeleteErr:
         RTS
 
 ;------------------------------------------------------------------------------
@@ -935,6 +1027,10 @@ TxtPrompt:
 
 TxtIdxPrompt:
         .byte $0D, $22, "CASSETTE", $22, " (00-99): ", $00
+
+TxtDeletePrompt:
+        .byte $0D
+        .asciiz "FILE (00-99): "
 
 TxtAddrPrompt:
         .byte $0D

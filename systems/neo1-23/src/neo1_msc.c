@@ -188,29 +188,26 @@ static void do_dir_next(void) {
     }
 }
 
-static void do_open_index(void) {
-    FRESULT res = ensure_mounted();
-    if (res != FR_OK) {
-        set_error((uint8_t)res);
-        return;
-    }
-
+static bool find_indexed_file(uint8_t index, char* out_name, size_t out_name_size, FRESULT* out_res) {
     DIR dir;
     FILINFO fno;
-    res = f_opendir(&dir, "0:");
+    FRESULT res = f_opendir(&dir, "0:");
     if (res != FR_OK) {
-        set_error((uint8_t)res);
-        return;
+        if (out_res) {
+            *out_res = res;
+        }
+        return false;
     }
 
     uint8_t current = 0;
-    bool found = false;
     while (true) {
         res = f_readdir(&dir, &fno);
         if (res != FR_OK) {
             f_closedir(&dir);
-            set_error((uint8_t)res);
-            return;
+            if (out_res) {
+                *out_res = res;
+            }
+            return false;
         }
         if (fno.fname[0] == '\0') {
             break;
@@ -218,20 +215,36 @@ static void do_open_index(void) {
         if (!is_loadable_entry(&fno)) {
             continue;
         }
-        if (current == g_index) {
+        if (current == index) {
             const size_t name_len = strlen(fno.fname);
-            const size_t copy_len = (name_len < (sizeof(g_open_filename) - 1)) ? name_len : (sizeof(g_open_filename) - 1);
-            memcpy(g_open_filename, fno.fname, copy_len);
-            g_open_filename[copy_len] = '\0';
-            found = true;
-            break;
+            const size_t copy_len = (name_len < (out_name_size - 1)) ? name_len : (out_name_size - 1);
+            memcpy(out_name, fno.fname, copy_len);
+            out_name[copy_len] = '\0';
+            f_closedir(&dir);
+            if (out_res) {
+                *out_res = FR_OK;
+            }
+            return true;
         }
         current++;
     }
 
     f_closedir(&dir);
-    if (!found) {
-        set_error((uint8_t)FR_NO_FILE);
+    if (out_res) {
+        *out_res = FR_NO_FILE;
+    }
+    return false;
+}
+
+static void do_open_index(void) {
+    FRESULT res = ensure_mounted();
+    if (res != FR_OK) {
+        set_error((uint8_t)res);
+        return;
+    }
+
+    if (!find_indexed_file(g_index, g_open_filename, sizeof(g_open_filename), &res)) {
+        set_error((uint8_t)res);
         return;
     }
 
@@ -239,6 +252,40 @@ static void do_open_index(void) {
     printf("[msc] open index %u -> '%s'\n", (unsigned)g_index, g_open_filename);
 #endif
     do_open();
+}
+
+static void do_delete_index(void) {
+    FRESULT res = ensure_mounted();
+    if (res != FR_OK) {
+        set_error((uint8_t)res);
+        return;
+    }
+
+    if (!find_indexed_file(g_index, g_open_filename, sizeof(g_open_filename), &res)) {
+        set_error((uint8_t)res);
+        return;
+    }
+
+#if NEO1_MSC_DEBUG
+    printf("[msc] delete index %u -> '%s'\n", (unsigned)g_index, g_open_filename);
+#endif
+
+    if (g_file_open) {
+        f_close(&g_file);
+        g_file_open = false;
+    }
+    close_dir_if_open();
+
+    res = f_unlink(g_open_filename);
+    if (res != FR_OK) {
+        set_error((uint8_t)res);
+        return;
+    }
+
+    g_info = 0;
+    g_file_size = 0;
+    g_data_offset = 0;
+    set_ready();
 }
 
 static void do_read(void) {
@@ -410,6 +457,10 @@ void neo1_msc_io_write(uint16_t addr, uint8_t data) {
 
                 case NEO1_MSC_CMD_OPEN_INDEX:
                     do_open_index();
+                    break;
+
+                case NEO1_MSC_CMD_DELETE_INDEX:
+                    do_delete_index();
                     break;
 
                 default:
