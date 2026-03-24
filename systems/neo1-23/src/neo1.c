@@ -52,7 +52,6 @@
 #include "neo1_cffa1.h"
 #include "neo1_usb.h"
 #include "roms/neo1_roms.h"
-#include "ram/neo1_msc_phase2_loader.h"
 #include "ram/neo1_cffa1_m2_blockdrv.h"
 #include "ram/neo1_vaci_v1.h"
 
@@ -75,16 +74,7 @@ typedef struct {
 static state_t __not_in_flash() state;
 static bool msc_listed = false;
 
-static void neo1_install_msc_boot_loader(neo1_t* sys) {
-    const uint32_t loader_size = (uint32_t)sizeof(neo1_msc_phase2_loader);
-    const uint32_t loader_addr = NEO1_MSC_PHASE2_LOADER_ADDR;
-    CHIPS_ASSERT((loader_addr + loader_size) <= NEO1_ROM_BASE);
-    memcpy(&sys->ram[loader_addr], neo1_msc_phase2_loader, loader_size);
-    printf("[neo1] msc phase2 loader installed at $%04X (%lu bytes), run with G %04X\n",
-           (unsigned)loader_addr,
-           (unsigned long)loader_size,
-           (unsigned)loader_addr);
-
+static void neo1_install_ram_tools(neo1_t* sys) {
     const uint32_t m2_size = (uint32_t)sizeof(neo1_cffa1_m2_blockdrv);
     const uint32_t m2_addr = NEO1_CFFA1_M2_BLOCKDRV_ADDR;
     CHIPS_ASSERT((m2_addr + m2_size) <= NEO1_ROM_BASE);
@@ -224,7 +214,7 @@ static void app_init(void) {
     neo1_desc_t desc = neo1_desc();
     neo1_init(&state.neo1, &desc);
     neo1_reset(&state.neo1);
-    neo1_install_msc_boot_loader(&state.neo1);
+    neo1_install_ram_tools(&state.neo1);
 
     neo1_cffa1_init();
     neo1_msc_init();
