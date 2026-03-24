@@ -102,6 +102,8 @@ static void do_open(void) {
         const FSIZE_t size = f_size(&g_file);
         g_file_size = (size > 0xFFFFu) ? 0xFFFFu : (uint16_t)size;
     }
+    // Reset data offset so the write buffer is clean after filename streaming.
+    g_data_offset = 0;
     set_ready();
 }
 

@@ -44,12 +44,17 @@ KBD          = $D010
 KBDCR        = $D011
 DSP          = $D012
 
+CMD_OPEN     = $01
 CMD_DIR_OPEN = $10
 CMD_DIR_NEXT = $11
 CMD_OPEN_IND = $12
 CMD_CLOSE    = $02
 CMD_READ     = $03
+CMD_WRITE    = $04
 INFO_VALID   = $01
+
+; Filename buffer in page 2 (writable, WozMon input area — safe while VACI runs)
+VACI_FNAME_BUF = $0200
 
 WOZMON_ENTRY = $FF00
 
@@ -123,15 +128,7 @@ MenuRead:
         JMP MenuLoop
 
 MenuWrite:
-        LDX #$00
-WriteDeferLoop:
-        LDA TxtWriteDefer,X
-        BEQ WriteDeferDone
-        JSR Putc
-        INX
-        BNE WriteDeferLoop
-WriteDeferDone:
-        JSR PrintCR
+        JSR VaciWrite
         JMP MenuLoop
 
 MenuQuit:
@@ -369,6 +366,300 @@ VrExecuteCancel:
         LDA #CMD_CLOSE
         STA MSC_CMD
         JSR WaitReady
+        RTS
+
+;------------------------------------------------------------------------------
+; VaciWrite - Write a RAM region to a named file on USB (ACI-style)
+;
+; Flow:
+;   1. Prompt "* FILENAME: " - read up to 15 chars into VACI_FNAME_BUF
+;   2. Prompt "* START ($XXXX): " - ReadHexWord -> start addr (ZP_PTR)
+;   3. Prompt "* END ($XXXX): "   - ReadHexWord -> end addr  (ZP_END)
+;   4. Compute length = end - start + 1, cap at 512
+;   5. Echo "* AAAA . EEEEW", wait for CR (other key = cancel)
+;   6. CMD_OPEN, stream filename+NUL to MSC_DATA (triggers do_open())
+;   7. WaitReady; stream ZP_B1:ZP_B0 payload bytes, pad remainder to 512
+;   8. Set sector 0, CMD_WRITE, WaitReady
+;   9. CMD_CLOSE, WaitReady
+;  10. Print "* WRITE OK", RTS
+;
+; ZP usage: ZP_PTR_LO/HI=start, ZP_END_LO/HI=end, ZP_B0/B1=length(lo/hi)
+;------------------------------------------------------------------------------
+VaciWrite:
+        ; ---- Filename prompt ----
+        LDX #$00
+VwFnPrLoop:
+        LDA TxtWrFnamePrompt,X
+        BEQ VwFnPrDone
+        JSR Putc
+        INX
+        JMP VwFnPrLoop
+VwFnPrDone:
+        ; Read up to 15 chars (uppercase), stop on CR, NUL-terminate
+        LDX #$00
+VwFnReadLoop:
+        CPX #$0F
+        BCS VwFnEnd
+        JSR GetKey
+        CMP #$0D
+        BEQ VwFnEnd
+        JSR ToUpper
+        JSR Putc
+        STA VACI_FNAME_BUF,X
+        INX
+        JMP VwFnReadLoop
+VwFnEnd:
+        TXA
+        BNE VwFnNotEmpty
+        JMP VwCancel            ; empty filename: cancel
+VwFnNotEmpty:
+        LDA #$00
+        STA VACI_FNAME_BUF,X   ; NUL-terminate
+
+        ; ---- Start address ----
+        LDX #$00
+VwStartPrLoop:
+        LDA TxtWrStartPrompt,X
+        BEQ VwStartPrDone
+        JSR Putc
+        INX
+        JMP VwStartPrLoop
+VwStartPrDone:
+        JSR ReadHexWord
+        BCS VwCancel
+        LDA ZP_ADDR_LO
+        STA ZP_PTR_LO
+        LDA ZP_ADDR_HI
+        STA ZP_PTR_HI
+
+        ; ---- End address ----
+        LDX #$00
+VwEndPrLoop:
+        LDA TxtWrEndPrompt,X
+        BEQ VwEndPrDone
+        JSR Putc
+        INX
+        JMP VwEndPrLoop
+VwEndPrDone:
+        JSR ReadHexWord
+        BCS VwCancel
+        LDA ZP_ADDR_LO
+        STA ZP_END_LO
+        LDA ZP_ADDR_HI
+        STA ZP_END_HI
+
+        ; ---- Compute length = (end - start) + 1, cap at 512 ($0200) ----
+        SEC
+        LDA ZP_END_LO
+        SBC ZP_PTR_LO
+        STA ZP_B0
+        LDA ZP_END_HI
+        SBC ZP_PTR_HI
+        STA ZP_B1
+        ; +1
+        INC ZP_B0
+        BNE VwLenNoCarry
+        INC ZP_B1
+VwLenNoCarry:
+        ; Cap: if ZP_B1 > 2, or ZP_B1 == 2 and ZP_B0 > 0 -> length > 512
+        LDA ZP_B1
+        CMP #$02
+        BCC VwLenOk
+        BEQ VwChkB0
+        JMP VwCapLen
+VwChkB0:
+        LDA ZP_B0
+        BEQ VwLenOk
+VwCapLen:
+        LDA #$02
+        STA ZP_B1
+        LDA #$00
+        STA ZP_B0
+VwLenOk:
+        ; ---- ACI echo: CR "* AAAA . EEEEW" ----
+        JSR PrintVaciPrefix     ; CR + "* "
+        LDA ZP_PTR_HI
+        JSR PrintHex
+        LDA ZP_PTR_LO
+        JSR PrintHex
+        LDX #$00
+VwAciMidLoop:
+        LDA TxtAciCmd,X
+        BEQ VwAciMidDone
+        JSR Putc
+        INX
+        JMP VwAciMidLoop
+VwAciMidDone:
+        LDA ZP_END_HI
+        JSR PrintHex
+        LDA ZP_END_LO
+        JSR PrintHex
+        LDA #'W'
+        JSR Putc
+
+        ; ---- Wait for CR to execute; any other key cancels ----
+VwExecute:
+        JSR GetKey
+        CMP #$0D
+        BEQ VwDoExecute
+VwCancel:
+        JSR PrintCR
+        RTS
+
+VwDoExecute:
+        ; ---- Open file: CMD_OPEN then stream filename+NUL to MSC_DATA ----
+        ; Writing to MSC_DATA during OPEN fills g_open_filename; the NUL byte
+        ; triggers do_open() which (after our g_data_offset=0 fix) leaves the
+        ; write buffer clean and ready.
+        LDA #CMD_OPEN
+        STA MSC_CMD
+        LDX #$00
+VwOpenFnLoop:
+        LDA VACI_FNAME_BUF,X
+        STA MSC_DATA
+        BEQ VwOpenFnDone        ; NUL sent -> do_open() triggered internally
+        INX
+        CPX #$10                ; safety: 16-byte limit
+        BCC VwOpenFnLoop
+        LDA #$00                ; force NUL after 16 bytes
+        STA MSC_DATA
+VwOpenFnDone:
+        JSR WaitReady
+        BCC VwOpenOk
+        JMP VwWriteErr          ; open failed
+VwOpenOk:
+
+        ; ---- Stream payload to MSC_DATA (page 0 then page 1 of sector) ----
+        ; ZP_B1 = full 256-byte pages from RAM (0, 1, or 2)
+        ; ZP_B0 = remaining bytes in partial last page (0-255)
+        ; ZP_PTR = source address
+
+        ; Page 0
+        LDY #$00
+        LDA ZP_B1
+        BEQ VwPg0Partial        ; ZP_B1==0: only ZP_B0 bytes in page 0
+        ; ZP_B1>=1: full 256 bytes from RAM
+VwPg0Full:
+        LDA (ZP_PTR_LO),Y
+        STA MSC_DATA
+        INY
+        BNE VwPg0Full
+        INC ZP_PTR_HI
+        JMP VwPage1
+
+VwPg0Partial:
+        LDA ZP_B0
+        BEQ VwPg0PadAll         ; zero bytes: pad entire page 0
+        STA ZP_TEMPLO
+VwPg0PayLoop:
+        LDA (ZP_PTR_LO),Y
+        STA MSC_DATA
+        INY
+        DEC ZP_TEMPLO
+        BNE VwPg0PayLoop
+        ; Pad page 0 remainder with zeros (Y..255)
+        LDA #$00
+VwPg0PadRestLoop:
+        STA MSC_DATA
+        INY
+        BNE VwPg0PadRestLoop
+        JMP VwPage1
+
+VwPg0PadAll:
+        LDA #$00
+VwPg0PadAllLoop:
+        STA MSC_DATA
+        INY
+        BNE VwPg0PadAllLoop
+        ; fall through to VwPage1
+
+        ; Page 1
+VwPage1:
+        LDY #$00
+        LDA ZP_B1
+        CMP #$02
+        BEQ VwPg1Full           ; 2 full pages: both from RAM
+        CMP #$01
+        BEQ VwPg1Partial        ; 1 full page: page 1 has ZP_B0 bytes + pad
+        ; ZP_B1==0: page 1 all zeros
+VwPg1PadAll:
+        LDA #$00
+VwPg1PadAllLoop:
+        STA MSC_DATA
+        INY
+        BNE VwPg1PadAllLoop
+        JMP VwDataDone
+
+VwPg1Full:
+        LDA (ZP_PTR_LO),Y
+        STA MSC_DATA
+        INY
+        BNE VwPg1Full
+        JMP VwDataDone
+
+VwPg1Partial:
+        LDA ZP_B0
+        BEQ VwPg1PadAll         ; ZP_B1==1, ZP_B0==0 means exactly 256 bytes
+        STA ZP_TEMPLO
+VwPg1PayLoop:
+        LDA (ZP_PTR_LO),Y
+        STA MSC_DATA
+        INY
+        DEC ZP_TEMPLO
+        BNE VwPg1PayLoop
+        LDA #$00
+VwPg1PadRestLoop:
+        STA MSC_DATA
+        INY
+        BNE VwPg1PadRestLoop
+        JMP VwDataDone
+
+VwDataDone:
+        ; ---- CMD_WRITE sector 0 ----
+        LDA #$00
+        STA MSC_SECT_LO
+        STA MSC_SECT_HI
+        LDA #CMD_WRITE
+        STA MSC_CMD
+        JSR WaitReady
+        BCC VwWriteOk
+        ; Write failed: attempt close then report error
+        PHA
+        LDA #CMD_CLOSE
+        STA MSC_CMD
+        JSR WaitReady
+        PLA
+        JMP VwWriteErr
+
+VwWriteOk:
+        ; ---- CMD_CLOSE ----
+        LDA #CMD_CLOSE
+        STA MSC_CMD
+        JSR WaitReady
+        BCS VwWriteErr
+
+        ; ---- WRITE OK ----
+        LDX #$00
+VwOkLoop:
+        LDA TxtWrSuccess,X
+        BEQ VwOkDone
+        JSR Putc
+        INX
+        JMP VwOkLoop
+VwOkDone:
+        JSR PrintCR
+        RTS
+
+VwWriteErr:
+        LDX #$00
+VwErLoop:
+        LDA TxtWrError,X
+        BEQ VwErDone
+        JSR Putc
+        INX
+        JMP VwErLoop
+VwErDone:
+        JSR PrintCR
         RTS
 
 ;------------------------------------------------------------------------------
@@ -668,6 +959,20 @@ TxtAciCmd:
 TxtSuccess:
         .asciiz "* READ OK"
 
-TxtWriteDefer:
+TxtWrFnamePrompt:
         .byte $0D
-        .asciiz "* WRITE: DEFERRED (V2)"
+        .asciiz "* FILENAME: "
+
+TxtWrStartPrompt:
+        .byte $0D
+        .asciiz "* START ($XXXX): "
+
+TxtWrEndPrompt:
+        .byte $0D
+        .asciiz "* END ($XXXX): "
+
+TxtWrSuccess:
+        .asciiz "* WRITE OK"
+
+TxtWrError:
+        .asciiz "* WRITE ERR"
