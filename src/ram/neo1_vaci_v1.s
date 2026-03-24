@@ -79,22 +79,13 @@ ZP_END_HI    = $FC
 ; VaciMain - VACI entry point at $C100
 ;------------------------------------------------------------------------------
 VaciMain:
-        ; Print banner
-        LDA #$0D
+        ; Print '*' immediately — sit on WozMon's "C100: A9" line
+        LDA #'*'
         JSR Putc
-        
-        LDX #$00
-BannerLoop:
-        LDA TxtBanner,X
-        BEQ BannerDone
-        JSR Putc
-        INX
-        BNE BannerLoop
-BannerDone:
-        JSR PrintCR
 
         ; Main menu loop
 MenuLoop:
+        JSR PrintCR
         LDX #$00
 PromptLoop:
         LDA TxtPrompt,X
@@ -103,7 +94,6 @@ PromptLoop:
         INX
         BNE PromptLoop
 PromptDone:
-        
         JSR GetKey
         JSR ToUpper
         PHA
@@ -132,6 +122,7 @@ MenuWrite:
         JMP MenuLoop
 
 MenuQuit:
+        JSR PrintCR
         JMP WOZMON_ENTRY
 
 ;------------------------------------------------------------------------------
@@ -177,7 +168,6 @@ VrNextOk:
         BEQ ListDone
         
         ; Print index (00-99)
-        JSR PrintStarSpace
         LDA ZP_INDEX
         JSR PrintDec2
         LDA #$3A            ; ':'
@@ -279,9 +269,9 @@ VrDecLenLo:
         STA ZP_END_HI
 
 VrEndReady:
-        JSR PrintVaciPrefix
+        JSR PrintCR
         
-        ; Display ACI command: "HHLL . HHLLR"
+        ; Display ACI command: "HHLL.HHLLR"
         LDA ZP_ADDR_HI
         JSR PrintHex
         LDA ZP_ADDR_LO
@@ -289,7 +279,7 @@ VrEndReady:
         
         LDX #$00
 AciCmdLoop:
-        LDA TxtAciCmd,X
+        LDA TxtReadAciCmd,X
         BEQ AciCmdDone
         JSR Putc
         INX
@@ -303,13 +293,6 @@ AciCmdDone:
         
         LDA #'R'
         JSR Putc
-        JSR PrintCR
-        
-        ; Wait for CR to execute
-        JSR GetKey
-        CMP #$0D
-        BNE VrExecuteCancel
-        JSR PrintCR
 
         ; Read file (512 bytes = 2 pages at 256 bytes each)
         LDA #$00
@@ -319,6 +302,9 @@ AciCmdDone:
         STA MSC_CMD
         JSR WaitReady
         BCC VrReadOk
+        LDA #CMD_CLOSE
+        STA MSC_CMD
+        JSR WaitReady
         RTS
         
 VrReadOk:
@@ -364,25 +350,13 @@ VrCopyTail:
         JMP VrCopyTail
 
 VrCopyDone:
-        
-        ; Success
-        LDX #$00
-SuccessLoop:
-        LDA TxtSuccess,X
-        BEQ SuccessDone
-        JSR Putc
-        INX
-        BNE SuccessLoop
-        
-SuccessDone:
         JSR PrintCR
-        RTS
+        JMP WOZMON_ENTRY
         
 VrIndexCancel:
         RTS
 
 VrAddrCancel:
-VrExecuteCancel:
         LDA #CMD_CLOSE
         STA MSC_CMD
         JSR WaitReady
@@ -446,7 +420,9 @@ VwStartPrLoop:
         JMP VwStartPrLoop
 VwStartPrDone:
         JSR ReadHexWord
-        BCS VwCancel
+        BCC VwStartOk
+        JMP VwCancel
+VwStartOk:
         LDA ZP_ADDR_LO
         STA ZP_PTR_LO
         LDA ZP_ADDR_HI
@@ -462,7 +438,9 @@ VwEndPrLoop:
         JMP VwEndPrLoop
 VwEndPrDone:
         JSR ReadHexWord
-        BCS VwCancel
+        BCC VwEndOk
+        JMP VwCancel
+VwEndOk:
         LDA ZP_ADDR_LO
         STA ZP_END_LO
         LDA ZP_ADDR_HI
@@ -496,15 +474,15 @@ VwCapLen:
         LDA #$00
         STA ZP_B0
 VwLenOk:
-        ; ---- ACI echo: CR "* AAAA . EEEEW" ----
-        JSR PrintVaciPrefix     ; CR + "* "
+        ; ---- ACI echo: CR "AAAA.EEEEW" ----
+        JSR PrintCR
         LDA ZP_PTR_HI
         JSR PrintHex
         LDA ZP_PTR_LO
         JSR PrintHex
         LDX #$00
 VwAciMidLoop:
-        LDA TxtAciCmd,X
+        LDA TxtReadAciCmd,X
         BEQ VwAciMidDone
         JSR Putc
         INX
@@ -517,16 +495,9 @@ VwAciMidDone:
         LDA #'W'
         JSR Putc
 
-        ; ---- Wait for CR to execute; any other key cancels ----
-VwExecute:
-        JSR GetKey
-        CMP #$0D
-        BEQ VwDoExecute
-VwCancel:
-        JSR PrintCR
-        RTS
-
+        ; ---- Auto execute immediately after echo ----
 VwDoExecute:
+
         ; ---- Open file: CMD_OPEN then stream filename+NUL to MSC_DATA ----
         ; Writing to MSC_DATA during OPEN fills g_open_filename; the NUL byte
         ; triggers do_open() which (after our g_data_offset=0 fix) leaves the
@@ -663,17 +634,9 @@ VwWriteOk:
         JSR WaitReady
         BCS VwWriteErr
 
-        ; ---- WRITE OK ----
-        LDX #$00
-VwOkLoop:
-        LDA TxtWrSuccess,X
-        BEQ VwOkDone
-        JSR Putc
-        INX
-        JMP VwOkLoop
-VwOkDone:
+        ; ---- Success: return quietly ----
         JSR PrintCR
-        RTS
+        JMP WOZMON_ENTRY
 
 VwWriteErr:
         LDX #$00
@@ -684,6 +647,10 @@ VwErLoop:
         INX
         JMP VwErLoop
 VwErDone:
+        JSR PrintCR
+        RTS
+
+VwCancel:
         JSR PrintCR
         RTS
 
@@ -963,41 +930,33 @@ GkWait:
 ;------------------------------------------------------------------------------
 ; Strings
 ;------------------------------------------------------------------------------
-TxtBanner:
-        .asciiz "* NEO1 VACI V1"
-
 TxtPrompt:
-        .byte $0D
-        .asciiz "* R/W/Q? "
+        .asciiz "R/W/Q?: "
 
 TxtIdxPrompt:
-        .byte $0D
-        .asciiz "* INDEX (00-99): "
+        .byte $0D, $22, "CASSETTE", $22, " (00-99): ", $00
 
 TxtAddrPrompt:
         .byte $0D
-        .asciiz "* ADDR ($XXXX): "
+        .asciiz "START ($XXXX): "
+
+TxtReadAciCmd:
+        .asciiz "."
 
 TxtAciCmd:
         .asciiz " . "
 
-TxtSuccess:
-        .asciiz "* READ OK"
-
 TxtWrFnamePrompt:
         .byte $0D
-        .asciiz "* FILENAME: "
+        .asciiz "FILENAME: "
 
 TxtWrStartPrompt:
         .byte $0D
-        .asciiz "* START ($XXXX): "
+        .asciiz "START ($XXXX): "
 
 TxtWrEndPrompt:
         .byte $0D
-        .asciiz "* END ($XXXX): "
-
-TxtWrSuccess:
-        .asciiz "* WRITE OK"
+        .asciiz "END ($XXXX): "
 
 TxtWrError:
-        .asciiz "* WRITE ERR"
+        .asciiz "WRITE ERR"
