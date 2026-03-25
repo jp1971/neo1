@@ -9,8 +9,8 @@ On reset, the machine boots into Woz Monitor.
 From WozMon:
 - `E000R` → Integer BASIC
 - `F000R` → Krusader assembler/editor
-- `0400R` → Neo1-23 Filer (simple MSC/USB file loader)
-- `1810R` → VCFFA1 (full-featured MSC/USB file utility)
+- `C100R` → VACI (Virtual Apple-1 Cassette Interface)
+- `1810R` → VCFFA1 (Virtual CFFA1)
 
 ## Neo1-x memory map (current)
 
@@ -37,7 +37,7 @@ From WozMon:
 +-----------------------+
 | CFFF                  |
 |                       |
-|                       |
+| C100  VACI (RAM)      |
 |                       |
 | 0200  program RAM     |
 |                       |
@@ -83,35 +83,27 @@ Without one of those, firmware reset control may not fully reset the external 65
 
 Neo1-x uses FatFs over TinyUSB MSC. FatFs requires an **MBR-partitioned FAT32** volume.
 
-**macOS formatting (required procedure):**
-
-```sh
-# Find your USB drive identifier first:
-diskutil list
-
-# Format with MBR (replace diskN with your actual disk number):
-diskutil eraseDisk FAT32 NEO1 MBR /dev/diskN
-```
-
-Do **not** use Disk Utility's GUI — it defaults to GUID Partition Map (GPT), which FatFs does not support and produces `FatFs mount failed: 13` (`FR_NO_FILESYSTEM`).
-
 **Files to place in the root of the volume:**
-- `HELLORLD.BIN` or any `.BIN` — loadable programs for the filer
-- `CFFA1.PO` (optional) — ProDOS disk image for CFFA1 compatibility layer
+- Any `.BIN` — loadable programs for VACI
+- `CFFA1.PO` (optional) — ProDOS disk image for VCFFA1
 
-## Current storage/filer status
+## Storage interfaces
 
-- USB MSC (mass storage) is integrated through TinyUSB + FatFs.
-- The Neo1-x Filer at `0400R` is an intentionally primitive MSC byte-loader proof of concept.
-  - Today it can enumerate files and load by index.
-  - It should be thought of as an Apple-1 cassette-style peripheral, not a ProDOS-aware disk interface.
-  - Long-term this path may be renamed toward `VACI` (Virtual Apple Cassette Interface) or `NMI` (Neo1 MSC Interface).
-- CFFA1 compatibility layer exposes signature bytes at `$AFDC`/`$AFDD` and a read-only ProDOS block interface at `$AFF0`–`$AFFF`.
-  - Auto-mounts first `CFFA1.PO`, `CFFA1.HDV`, or `*.po`/`*.hdv`/`*.2mg` image found in root.
-  - Supports `PRODOS_STATUS` (`$00`) and `PRODOS_READ` (`$01`) commands via the `$AFFF` command register.
-  - 512-byte block data streams out of `$AFF8` one byte per read.
-  - Real-image block reads are now hardware-validated against `cp2 rb CFFA1.PO 2`.
-- Existing bring-up loader and newer Phase 2 loader images are kept under `src/ram/`.
+### VACI — Virtual Apple-1 Cassette Interface (`C100R`)
+
+Installed at `$C100`. Provides indexed file listing, load, and save modeled on the Apple-1 cassette interface.
+
+- `R` — list files by index, prompt for selection and load address, load binary to RAM
+- `W` — prompt for filename, start address, and end address, save memory range to file
+- `D` — list files by index, delete selected file (hidden command)
+
+### VCFFA1 — Virtual CFFA1 (`1810R`)
+
+Exposes CFFA1 signature bytes at `$AFDC`/`$AFDD` and a ProDOS block interface at `$AFF0`–`$AFFF`.
+
+- Auto-mounts first `CFFA1.PO`, `CFFA1.HDV`, or `*.po`/`*.hdv`/`*.2mg` image found in root.
+- Supports `PRODOS_STATUS` (`$00`) and `PRODOS_READ` (`$01`) commands via the `$AFFF` command register.
+- 512-byte block data streams out of `$AFF8` one byte per read.
 
 ## Repository layout (high-level)
 

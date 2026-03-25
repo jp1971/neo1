@@ -78,21 +78,21 @@ Treat the following as current, verified project state:
 - MSC register model currently includes:
 	- command/status/data/sector registers at `$D014`-`$D018`
 	- filer-support registers at `$D019`-`$D01A` (index/info)
-- Neo1-23 filer is now in a practical phase:
-	- directory enumeration
-	- open-by-index
-	- 00-99 selection flow in the RAM-loaded phase-2 loader
-- RAM-loaded software artifacts are intentionally tracked under `src/ram/`.
+- VACI (Virtual Apple-1 Cassette Interface) at `$C100` is the active RAM-loaded storage tool.
+- VCFFA1 (Virtual CFFA1) at `$1810` provides ProDOS block-device emulation over USB MSC.
+- RAM-loaded software artifacts are tracked under `src/ram/`.
 
 ## RAM Program Workflow (Important)
 
 Use `src/ram/` as the home for RAM-loaded utilities and experiments.
 
 Current examples include:
-- `neo1_msc_boot_loader.h` (earlier bring-up loader kept for reference)
-- `neo1_msc_phase2_loader.h` (active boot-installed filer image)
-- `neo1_msc_phase2_loader_00_99.s` (authoritative source for current phase-2 loader)
-- `neo1_loader.cfg` (ld65 linker config for RAM image generation)
+- `neo1_vaci_v1.s` (authoritative VACI assembly source)
+- `neo1_vaci_v1.h` (generated binary header, installed at `$C100`)
+- `neo1_vaci_v1.cfg` (ld65 linker config for VACI)
+- `neo1_cffa1_m2_blockdrv.s` (VCFFA1 m2 block driver source)
+- `neo1_cffa1_m2_blockdrv.h` (generated binary header)
+- `neo1_cffa1_m2.cfg` (ld65 linker config for VCFFA1 block driver)
 
 When updating RAM tools:
 1. edit assembly source in `src/ram/*.s`
