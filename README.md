@@ -1,11 +1,6 @@
-# Neo1-23
+# Neo1-x
 
-Neo1-23 is a modern 65C02 system running on the Olimex Neo6502 platform: a Replica 1 / Apple-1-inspired machine, rebuilt on RP2040-era hardware about 23 years later.
-
-The design goal is simple and educational:
-- keep the 6502 memory/bus model visible,
-- keep software monitor-first,
-- and evolve from Apple-1-compatible bring-up into a distinct Neo1 machine.
+Neo1-x is a modern 65C02 system running on the Olimex Neo6502 platform: It can be configured as a Neo1-50 to emulate an Apple-1 50 years after it was first demoed at the Homebrew Computer Club in April 1976 or a Neo1-23 to emulate a Replica 1 23 years after its initial release in 2003.
 
 ## What boots and where
 
@@ -14,9 +9,10 @@ On reset, the machine boots into Woz Monitor.
 From WozMon:
 - `E000R` → Integer BASIC
 - `F000R` → Krusader assembler/editor
-- `0400R` → Neo1-23 Filer (MSC/USB file loader)
+- `0400R` → Neo1-23 Filer (simple MSC/USB file loader)
+- `1810R` → VCFFA1 (full-featured MSC/USB file utility)
 
-## Neo1-23 memory map (current)
+## Neo1-x memory map (current)
 
 ```
 +-----------------------+
@@ -56,8 +52,6 @@ From WozMon:
 
 ## Quickstart
 
-Adapted from Reload:
-
 ```sh
 # Checkout pico-sdk & PicoDVI & tinyusb as git submodules
 cd lib
@@ -87,7 +81,7 @@ Without one of those, firmware reset control may not fully reset the external 65
 
 ## USB storage requirements
 
-Neo1-23 uses FatFs over TinyUSB MSC. FatFs requires an **MBR-partitioned FAT32** volume.
+Neo1-x uses FatFs over TinyUSB MSC. FatFs requires an **MBR-partitioned FAT32** volume.
 
 **macOS formatting (required procedure):**
 
@@ -108,7 +102,7 @@ Do **not** use Disk Utility's GUI — it defaults to GUID Partition Map (GPT), w
 ## Current storage/filer status
 
 - USB MSC (mass storage) is integrated through TinyUSB + FatFs.
-- The Neo1-23 Filer at `0400R` is an intentionally primitive MSC byte-loader proof of concept.
+- The Neo1-x Filer at `0400R` is an intentionally primitive MSC byte-loader proof of concept.
   - Today it can enumerate files and load by index.
   - It should be thought of as an Apple-1 cassette-style peripheral, not a ProDOS-aware disk interface.
   - Long-term this path may be renamed toward `VACI` (Virtual Apple Cassette Interface) or `NMI` (Neo1 MSC Interface).
@@ -119,40 +113,10 @@ Do **not** use Disk Utility's GUI — it defaults to GUID Partition Map (GPT), w
   - Real-image block reads are now hardware-validated against `cp2 rb CFFA1.PO 2`.
 - Existing bring-up loader and newer Phase 2 loader images are kept under `src/ram/`.
 
-## Storage roadmap (split tracks)
-
-Neo1 now has two separate storage directions, and they should remain distinct:
-
-- `0400R` filer track (`VACI` / `NMI` direction):
-  - primitive byte load/save peripheral, analogous to the Apple-1 ACI
-  - user selects a file and a target memory range/address
-  - no filesystem-aware menu logic required
-- CFFA1 track:
-  - ProDOS-aware smart storage peripheral
-  - block interface first, then higher-level menu/load/save behavior inspired by the original CFFA1 firmware
-
-Current status by track:
-
-- Filer / `VACI` / `NMI`:
-  - proof of concept only
-  - useful for simple `.BIN` bring-up
-  - not yet robust for arbitrary load addresses or save/write flows
-- CFFA1:
-  - M5 complete: status + real-image block read path validated on hardware
-  - next focus: continue CFFA1 until the first ProDOS-aware load/menu milestone is reached
-
 ## Repository layout (high-level)
 
-- `systems/neo1-23/` — machine build target and RP2040-side platform code
+- `systems/neo1-x/` — machine build target and RP2040-side platform code
 - `src/systems/` — core Neo1 runtime/memory model
 - `src/roms/` — ROM images/assets
 - `src/ram/` — RAM-loaded helper programs (filer/loader images)
 - `lib/` — Pico SDK, TinyUSB, PicoDVI, FatFs
-
-## Next planned work
-
-- Recommended immediate next step: `CFFA1 M6` arbitrary-block inspector from monitor/harness
-- Then: `CFFA1 M7` minimal ProDOS-aware menu/load path inspired by original CFFA1 firmware
-- After that: evaluate `CFFA1` write/save scope and filesystem mutation strategy
-- Separately, when we want to return to the primitive MSC path: `VACI/NMI M1` should be a two-step loader (choose file `00-99`, then specify load address, no auto-run)
-- Longer-term: richer RAM-loaded tools (e.g. TaliForth 2, Applesoft Lite workflows)
