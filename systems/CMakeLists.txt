@@ -1,1 +1,1 @@
-add_subdirectory(neo1-23)
+add_subdirectory(neo1-x)

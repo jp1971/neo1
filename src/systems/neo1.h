@@ -47,8 +47,8 @@
 #include <stddef.h>
 #include <string.h>
 
-#include "../../systems/neo1-23/src/neo1_msc.h"
-#include "../../systems/neo1-23/src/neo1_cffa1.h"
+#include "../../systems/neo1-x/src/neo1_msc.h"
+#include "../../systems/neo1-x/src/neo1_cffa1.h"
 
 #ifdef __cplusplus
 extern "C" {
