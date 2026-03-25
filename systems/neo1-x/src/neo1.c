@@ -49,10 +49,12 @@
 #include "neo1_terminal.h"
 #include "neo1_video.h"
 #include "neo1_msc.h"
+#if NEO1_ENABLE_VCFFA1
 #include "neo1_cffa1.h"
+#include "ram/neo1_cffa1_m2_blockdrv.h"
+#endif
 #include "neo1_usb.h"
 #include "roms/neo1_roms.h"
-#include "ram/neo1_cffa1_m2_blockdrv.h"
 
 #ifndef NEO1_ENABLE_VACI
 #define NEO1_ENABLE_VACI (1)
@@ -82,6 +84,7 @@ static state_t __not_in_flash() state;
 static bool msc_listed = false;
 
 static void neo1_install_ram_tools(neo1_t* sys) {
+#if NEO1_ENABLE_VCFFA1
     const uint32_t m2_size = (uint32_t)sizeof(neo1_cffa1_m2_blockdrv);
     const uint32_t m2_addr = NEO1_CFFA1_M2_BLOCKDRV_ADDR;
     CHIPS_ASSERT((m2_addr + m2_size) <= NEO1_ROM_BASE);
@@ -90,6 +93,10 @@ static void neo1_install_ram_tools(neo1_t* sys) {
            (unsigned)m2_addr,
            (unsigned long)m2_size,
             (unsigned)NEO1_CFFA1_M2_TESTMAIN_ADDR);
+#else
+    printf("[neo1] vcffa1 disabled; $AFF0-$AFFF and $AFDC-$AFDD remain free\n");
+    (void)sys;
+#endif
 
 #if NEO1_ENABLE_VACI
     const uint32_t vaci_size = (uint32_t)sizeof(neo1_vaci_v1);
@@ -227,7 +234,9 @@ static void app_init(void) {
     neo1_reset(&state.neo1);
     neo1_install_ram_tools(&state.neo1);
 
+#if NEO1_ENABLE_VCFFA1
     neo1_cffa1_init();
+#endif
     neo1_msc_init();
     neo1_usb_init(neo1_usb_char_in, 0);
 

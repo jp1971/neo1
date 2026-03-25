@@ -47,8 +47,14 @@
 #include <stddef.h>
 #include <string.h>
 
+#ifndef NEO1_ENABLE_VCFFA1
+#define NEO1_ENABLE_VCFFA1 (1)
+#endif
+
 #include "../../systems/neo1-x/src/neo1_msc.h"
+#if NEO1_ENABLE_VCFFA1
 #include "../../systems/neo1-x/src/neo1_cffa1.h"
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -194,9 +200,11 @@ static inline void _neo1_capture_trace(neo1_t* sys, uint16_t addr, uint8_t data,
 }
 
 static inline uint8_t _neo1_mem_read(neo1_t* sys, uint16_t addr) {
+#if NEO1_ENABLE_VCFFA1
     if (neo1_cffa1_handles_addr(addr)) {
         return neo1_cffa1_io_read(addr);
     }
+#endif
 
     switch (addr) {
         case NEO1_IO_KBD:
@@ -242,10 +250,12 @@ static inline uint8_t _neo1_mem_read(neo1_t* sys, uint16_t addr) {
 }
 
 static inline void _neo1_mem_write(neo1_t* sys, uint16_t addr, uint8_t data) {
+#if NEO1_ENABLE_VCFFA1
     if (neo1_cffa1_handles_addr(addr)) {
         neo1_cffa1_io_write(addr, data);
         return;
     }
+#endif
 
     switch (addr) {
         case NEO1_IO_KBD:
