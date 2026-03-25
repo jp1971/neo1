@@ -71,7 +71,8 @@ Treat the following as current, verified project state:
 	- WozMon boots by default.
 	- `E000R` enters Integer BASIC.
 	- `F000R` enters Krusader.
-	- `0400R` runs the Neo1-23 filer/loader.
+	- `C100R` runs VACI (Virtual Apple-1 Cassette Interface).
+	- `1810R` runs VCFFA1 (Virtual CFFA1).
 - USB storage path is working end-to-end:
 	- TinyUSB host MSC + FatFs integrated.
 	- 6502 can enumerate files and load binaries through memory-mapped MSC registers.
@@ -237,10 +238,10 @@ Goal:
 Use RP2040 firmware to load programs into memory or communicate with external systems.
 
 Current status:
-- basic MSC bring-up complete
-- command-based file open/read path complete
-- phase-2 filer (`0400R`) complete for listing and 00-99 index selection
-- next major storage milestone is transitioning from raw bin nuances to CFFA1-oriented disk workflows
+- VACI (`C100R`) complete: indexed load, save, and hidden delete; ACI-style operator flow
+- VCFFA1 (`1810R`) complete: indexed load/delete, ProDOS block interface; write/overwrite deferred
+- MSC register model stable at `$D014`-`$D01C`
+- next major storage milestone: WozMon-only ROM selection for Neo1-50 personality
 
 Possible approaches:
 - USB storage
