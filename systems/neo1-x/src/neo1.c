@@ -134,6 +134,18 @@ static void neo1_video_sync_terminal(void) {
    neo1_video_set_terminal(&state.term);
 }
 
+#if NEO1_PERSONALITY == NEO1_PERSONALITY_50
+static void neo1_install_neo150_entry_stubs(neo1_t* sys) {
+    // In Neo1-50, E000/F000 are writable load targets. Until user code is
+    // loaded there, jumping to them would run uninitialized bytes and hang.
+    // Install minimal JMP $FF00 stubs so E000R/F000R return to WozMon.
+    static const uint8_t jmp_wozmon[] = { 0x4C, 0x00, 0xFF };
+    memcpy(&sys->ram[0xE000], jmp_wozmon, sizeof(jmp_wozmon));
+    memcpy(&sys->ram[0xF000], jmp_wozmon, sizeof(jmp_wozmon));
+    printf("[neo1] neo1-50 entry stubs installed: E000/F000 -> FF00 until overwritten\n");
+}
+#endif
+
 static chips_range_t neo1_selected_rom_range(void) {
 #if NEO1_PERSONALITY == NEO1_PERSONALITY_50
     return (chips_range_t){
@@ -259,6 +271,11 @@ static void app_init(void) {
 
     neo1_desc_t desc = neo1_desc();
     neo1_init(&state.neo1, &desc);
+
+#if NEO1_PERSONALITY == NEO1_PERSONALITY_50
+    neo1_install_neo150_entry_stubs(&state.neo1);
+#endif
+
     neo1_reset(&state.neo1);
     neo1_install_ram_tools(&state.neo1);
 
