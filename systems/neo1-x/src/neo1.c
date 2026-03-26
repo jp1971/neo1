@@ -83,6 +83,8 @@
 #define NEO1_DVI_TEST_PATTERN (0)
 #endif
 
+#define NEO1_SOFT_RESET_KEY (0x12) // Ctrl-R
+
 // -----------------------------------------------------------------------------
 // local machine/platform state
 // -----------------------------------------------------------------------------
@@ -132,6 +134,10 @@ static void neo1_install_ram_tools(neo1_t* sys) {
 //
 static void neo1_video_sync_terminal(void) {
    neo1_video_set_terminal(&state.term);
+}
+
+static void neo1_soft_reset(void) {
+    neo1_reset(&state.neo1);
 }
 
 #if NEO1_PERSONALITY == NEO1_PERSONALITY_50
@@ -184,6 +190,11 @@ static void neo1_usb_char_in(uint8_t ch, void* user_data) {
     }
     printf("\n");
 #endif
+
+    if (ch == NEO1_SOFT_RESET_KEY) {
+        neo1_soft_reset();
+        return;
+    }
 
     if (ch == '\n') {
         ch = '\r';
@@ -314,6 +325,11 @@ static void app_init(void) {
 static void poll_keyboard(void) {
     int ch = getchar_timeout_us(0);
     if (ch == PICO_ERROR_TIMEOUT) {
+        return;
+    }
+
+    if (ch == NEO1_SOFT_RESET_KEY) {
+        neo1_soft_reset();
         return;
     }
 
