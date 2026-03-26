@@ -84,11 +84,16 @@ static void __not_in_flash_func(neo1_video_prepare_scanline)(uint32_t line) {
             const uint32_t local_y = line - NEO1_EMPTY_LINES;
             const uint32_t row = local_y / NEO1_SCALED_CHAR_HEIGHT;
             const uint32_t gy  = (local_y / 2) % FONT_CHAR_HEIGHT;
-            const uint32_t cell_y = local_y % NEO1_SCALED_CHAR_HEIGHT;
+            const bool cursor_blink_on = (((dvi_frame_counter / NEO1_CURSOR_BLINK_FRAMES) & 1u) == 0u);
+            const uint32_t cursor_x = g_term_buffers[g_front_buffer_index].cursor_x;
+            const uint32_t cursor_y = g_term_buffers[g_front_buffer_index].cursor_y;
 
             if (row < NEO1_TERM_ROWS) {
                 for (uint32_t col = 0; col < NEO1_TERM_COLS; col++) {
                     uint8_t ch = g_term_buffers[g_front_buffer_index].chars[row][col];
+                    if (cursor_blink_on && (cursor_y == row) && (cursor_x == col)) {
+                        ch = '@';
+                    }
                     ch &= 0x7F;
 
                     uint32_t dst_byte = NEO1_LEFT_PAD_BYTES + (col * 2);
@@ -96,23 +101,6 @@ static void __not_in_flash_func(neo1_video_prepare_scanline)(uint32_t line) {
                         uint16_t bits16 = g_font_16x8_ram[((uint32_t)ch * FONT_CHAR_HEIGHT) + gy];
                         scanbuf[dst_byte + 0] = (uint8_t)(bits16 & 0xFFu);
                         scanbuf[dst_byte + 1] = (uint8_t)(bits16 >> 8);
-                    }
-                }
-            }
-            if (row < NEO1_TERM_ROWS) {
-                const bool cursor_blink_on = (((dvi_frame_counter / NEO1_CURSOR_BLINK_FRAMES) & 1u) == 0u);
-                const uint32_t cursor_x = g_term_buffers[g_front_buffer_index].cursor_x;
-                const uint32_t cursor_y = g_term_buffers[g_front_buffer_index].cursor_y;
-
-                if (cursor_blink_on &&
-                    (cursor_y < NEO1_TERM_ROWS) &&
-                    (cursor_x < NEO1_TERM_COLS) &&
-                    (row == cursor_y) &&
-                    (cell_y >= (NEO1_SCALED_CHAR_HEIGHT - 2))) {
-                    const uint32_t cursor_byte = NEO1_LEFT_PAD_BYTES + (cursor_x * 2);
-                    if ((cursor_byte + 1) < NEO1_SCANLINE_BYTES) {
-                        scanbuf[cursor_byte + 0] = 0xFFu;
-                        scanbuf[cursor_byte + 1] = 0xFFu;
                     }
                 }
             }
