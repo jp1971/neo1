@@ -47,6 +47,14 @@
 #include <stddef.h>
 #include <string.h>
 
+#ifndef NEO1_ROM_BASE
+#define NEO1_ROM_BASE (0xE000)
+#endif
+
+#ifndef NEO1_ROM_PROTECT_BASE
+#define NEO1_ROM_PROTECT_BASE (NEO1_ROM_BASE)
+#endif
+
 #ifndef NEO1_ENABLE_VCFFA1
 #define NEO1_ENABLE_VCFFA1 (1)
 #endif
@@ -69,8 +77,7 @@ extern "C" {
 
 enum {
     NEO1_MEM_SIZE     = 0x10000,
-    NEO1_ROM_BASE     = 0xE000,
-    NEO1_ROM_SIZE     = 0x2000,
+    NEO1_ROM_SIZE     = (0x10000 - NEO1_ROM_BASE),
 
     NEO1_IO_KBD       = 0xD010,
     NEO1_IO_KBDCR     = 0xD011,
@@ -96,7 +103,7 @@ typedef struct {
     chips_debug_t debug;   // optional debugging hook
 
     struct {
-        chips_range_t rom; // required: 8 KB Neo 1 top ROM image including vectors
+        chips_range_t rom; // required: top ROM payload copied to NEO1_ROM_BASE
     } roms;
 
     struct {
@@ -296,8 +303,8 @@ static inline void _neo1_mem_write(neo1_t* sys, uint16_t addr, uint8_t data) {
             break;
 
         default:
-            // Protect the ROM region. Neo 1 ROM is copied into $E000-$FFFF.
-            if (addr < NEO1_ROM_BASE) {
+            // Protect the ROM region starting at NEO1_ROM_PROTECT_BASE.
+            if (addr < NEO1_ROM_PROTECT_BASE) {
                 mem_wr(&sys->mem, addr, data);
             }
             break;
@@ -331,7 +338,8 @@ void neo1_init(neo1_t* sys, const neo1_desc_t* desc) {
     sys->debug = desc->debug;
 
     CHIPS_ASSERT(desc->roms.rom.ptr);
-    CHIPS_ASSERT(desc->roms.rom.size >= NEO1_ROM_SIZE);
+    CHIPS_ASSERT(desc->roms.rom.size > 0);
+    CHIPS_ASSERT(((uint32_t)NEO1_ROM_BASE + (uint32_t)desc->roms.rom.size) <= NEO1_MEM_SIZE);
 
     sys->rom = desc->roms.rom.ptr;
     sys->char_out = desc->char_out.func;
@@ -351,9 +359,9 @@ void neo1_init(neo1_t* sys, const neo1_desc_t* desc) {
         sys->ram[addr + 1] = 0xFF;
     }
 
-    // Copy the 8 KB Neo 1 top ROM image to $E000-$FFFF. This ROM should
-    // already contain NMI/RESET/IRQ vectors in its last 6 bytes.
-    memcpy(&sys->ram[NEO1_ROM_BASE], sys->rom, NEO1_ROM_SIZE);
+    // Copy the selected top ROM payload to NEO1_ROM_BASE. The selected image
+    // should provide NMI/RESET/IRQ vectors at $FFFA-$FFFF.
+    memcpy(&sys->ram[NEO1_ROM_BASE], sys->rom, desc->roms.rom.size);
 
     printf("[neo1] mem E000=%02X E001=%02X F000=%02X F001=%02X FFFA=%02X FFFB=%02X FFFC=%02X FFFD=%02X FFFE=%02X FFFF=%02X\n",
         sys->ram[0xE000], sys->ram[0xE001],

@@ -21,7 +21,9 @@ target_compile_definitions(neo1 PRIVATE
     DVI_N_TMDS_BUFFERS=3
     DVI_MONOCHROME_TMDS=1
     NEO1_ENABLE_DVI=1
+    NEO1_PERSONALITY=23
     # Personality toggles -- all default to (1). Override here to disable.
+    # NEO1_PERSONALITY=50   # Neo1-50: WozMon-only ROM at $FF00, E000-EFFF writable
     # NEO1_ENABLE_VACI=0    # set 0 to free $C100 for hardware ACI or other uses
     # NEO1_ENABLE_VCFFA1=0  # set 0 to free $AFF0-$AFFF and $AFDC-$AFDD
 )

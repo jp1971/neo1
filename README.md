@@ -12,6 +12,15 @@ From WozMon:
 - `C100R` → VACI (Virtual Apple-1 Cassette Interface)
 - `1810R` → VCFFA1 (Virtual CFFA1)
 
+## Personality selection (compile-time)
+
+Set `NEO1_PERSONALITY` in `systems/neo1-x/CMakeLists.txt`:
+
+- `NEO1_PERSONALITY=23` (default): top ROM region is `$E000-$FFFF`.
+	- `E000R` and `F000R` are available from ROM.
+- `NEO1_PERSONALITY=50`: WozMon ROM is placed at `$FF00-$FFFF` and only that page is write-protected.
+	- `$E000-$EFFF` is writable so BASIC can be loaded by storage utility and run with `E000R`.
+
 ## Neo1-x memory map (current)
 
 ```

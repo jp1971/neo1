@@ -45,6 +45,18 @@
 #include "chips/mem.h"
 #include "chips/clk.h"
 
+#ifndef NEO1_PERSONALITY
+#define NEO1_PERSONALITY (23)
+#endif
+
+#define NEO1_PERSONALITY_23 (23)
+#define NEO1_PERSONALITY_50 (50)
+
+#if NEO1_PERSONALITY == NEO1_PERSONALITY_50
+#define NEO1_ROM_BASE (0xFF00)
+#define NEO1_ROM_PROTECT_BASE (0xFF00)
+#endif
+
 #include "systems/neo1.h"
 #include "neo1_terminal.h"
 #include "neo1_video.h"
@@ -120,6 +132,20 @@ static void neo1_install_ram_tools(neo1_t* sys) {
 //
 static void neo1_video_sync_terminal(void) {
    neo1_video_set_terminal(&state.term);
+}
+
+static chips_range_t neo1_selected_rom_range(void) {
+#if NEO1_PERSONALITY == NEO1_PERSONALITY_50
+    return (chips_range_t){
+        .ptr = neo1_apple1_rom_bin,
+        .size = (size_t)neo1_apple1_rom_bin_len,
+    };
+#else
+    return (chips_range_t){
+        .ptr = neo1_system_rom_bin,
+        .size = (size_t)neo1_system_rom_bin_len,
+    };
+#endif
 }
 
 //
@@ -201,12 +227,14 @@ static void neo1_char_out(uint8_t ch, void* user_data) {
 // - whether optional debug hooks are enabled
 //
 static neo1_desc_t neo1_desc(void) {
+    const chips_range_t rom = neo1_selected_rom_range();
+
     return (neo1_desc_t){
         .debug = {{0}},
         .roms = {
             .rom = {
-                .ptr = neo1_system_rom_bin,
-                .size = sizeof(neo1_system_rom_bin),
+                .ptr = rom.ptr,
+                .size = rom.size,
             },
         },
         .char_out = {
@@ -352,20 +380,17 @@ int main(void) {
 
     printf("[neo1] starting...\n");
 
-    // Print ROM size as a quick confirmation that the expected Neo1-23 system
-    // image is compiled into the build.
-    printf("[neo1] ROM size = %u bytes\n", (unsigned)sizeof(neo1_system_rom_bin));
+    const chips_range_t rom = neo1_selected_rom_range();
+    printf("[neo1] personality=%u rom_base=$%04X rom_protect_base=$%04X rom_size=%u bytes\n",
+        (unsigned)NEO1_PERSONALITY,
+        (unsigned)NEO1_ROM_BASE,
+        (unsigned)NEO1_ROM_PROTECT_BASE,
+        (unsigned)rom.size);
 
-    // The Neo1-23 system ROM occupies the top 8 KiB of memory ($E000-$FFFF).
-    // The 65C02 vectors live in the last 6 bytes of that image, so printing
-    // them here is a quick sanity check that the ROM layout is what we expect.
-    if (sizeof(neo1_system_rom_bin) >= 0x2000) {
-        const uint32_t vec_base = (uint32_t)sizeof(neo1_system_rom_bin) - 6u;
-        printf("[neo1] vectors: NMI=%02X%02X RESET=%02X%02X IRQ=%02X%02X\n",
-               neo1_system_rom_bin[vec_base + 1], neo1_system_rom_bin[vec_base + 0],
-               neo1_system_rom_bin[vec_base + 3], neo1_system_rom_bin[vec_base + 2],
-               neo1_system_rom_bin[vec_base + 5], neo1_system_rom_bin[vec_base + 4]);
-    }
+    printf("[neo1] vectors: NMI=%02X%02X RESET=%02X%02X IRQ=%02X%02X\n",
+        state.neo1.ram[0xFFFB], state.neo1.ram[0xFFFA],
+        state.neo1.ram[0xFFFD], state.neo1.ram[0xFFFC],
+        state.neo1.ram[0xFFFF], state.neo1.ram[0xFFFE]);
 
     printf("[neo1] capturing startup trace...\n");
 
