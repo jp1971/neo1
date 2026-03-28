@@ -141,7 +141,7 @@ MenuQuit:
 ;   3. Prompt for load address ($XXXX)
 ;   4. Display ACI-style command echo
 ;   5. Wait for CR to execute
-;   6. Open file by index, read first 512 bytes, copy to destination
+;   6. Open file by index, read/copy full file to destination (sector loop)
 ;   7. Return to caller
 ;------------------------------------------------------------------------------
 VaciRead:
@@ -301,9 +301,33 @@ AciCmdDone:
         LDA #'R'
         JSR Putc
 
-        ; Read file (512 bytes = 2 pages at 256 bytes each)
+        ; Copy exactly file_size bytes from MSC_DATA to destination.
+        ; Backend read is sector-based, so loop sector-by-sector.
+        LDA ZP_ADDR_LO
+        STA ZP_PTR_LO
+        LDA ZP_ADDR_HI
+        STA ZP_PTR_HI
+
+        ; remaining byte count
+        LDA MSC_SIZE_LO
+        STA ZP_B0
+        LDA MSC_SIZE_HI
+        STA ZP_B1
+
+        ; sector = 0
         LDA #$00
+        STA ZP_TEMPLO
+        STA ZP_TEMPHI
+
+        LDA ZP_B0
+        ORA ZP_B1
+        BEQ VrCopyDone
+
+VrSectorLoop:
+        ; Issue sector read command
+        LDA ZP_TEMPLO
         STA MSC_SECT_LO
+        LDA ZP_TEMPHI
         STA MSC_SECT_HI
         LDA #CMD_READ
         STA MSC_CMD
@@ -313,48 +337,72 @@ AciCmdDone:
         STA MSC_CMD
         JSR WaitReady
         RTS
-        
-VrReadOk:
-        ; Copy exactly file_size bytes from MSC_DATA to destination.
-        LDA ZP_ADDR_LO
-        STA ZP_PTR_LO
-        LDA ZP_ADDR_HI
-        STA ZP_PTR_HI
 
-        LDA MSC_SIZE_LO
+VrReadOk:
+        ; chunk = min(remaining, 512)
+        LDA ZP_B1
+        CMP #$02
+        BCS VrChunk512
+        LDA ZP_B0
+        STA ZP_END_LO
+        LDA ZP_B1
+        STA ZP_END_HI
+        JMP VrCopyChunk
+
+VrChunk512:
+        LDA #$00
+        STA ZP_END_LO
+        LDA #$02
+        STA ZP_END_HI
+
+VrCopyChunk:
+        ; copy ZP_END_HI:ZP_END_LO bytes from MSC_DATA to destination
+        ; use ZP_ONES:ZP_TENS as working decrement counter
+        LDA ZP_END_LO
+        STA ZP_TENS
+        LDA ZP_END_HI
+        STA ZP_ONES
+
+VrCopyByte:
+        LDA ZP_TENS
+        ORA ZP_ONES
+        BEQ VrChunkDone
+
+        LDA MSC_DATA
+        LDY #$00
+        STA (ZP_PTR_LO),Y
+
+        INC ZP_PTR_LO
+        BNE VrPtrDone
+        INC ZP_PTR_HI
+VrPtrDone:
+
+        LDA ZP_TENS
+        BNE VrDecChunkLo
+        DEC ZP_ONES
+VrDecChunkLo:
+        DEC ZP_TENS
+        JMP VrCopyByte
+
+VrChunkDone:
+        ; remaining -= chunk
+        LDA ZP_B0
+        SEC
+        SBC ZP_END_LO
         STA ZP_B0
-        LDA MSC_SIZE_HI
+        LDA ZP_B1
+        SBC ZP_END_HI
         STA ZP_B1
 
+        ; sector++
+        INC ZP_TEMPLO
+        BNE VrCheckRemaining
+        INC ZP_TEMPHI
+
+VrCheckRemaining:
         LDA ZP_B0
         ORA ZP_B1
-        BEQ VrCopyDone
-        
-VrFullPageCheck:
-        LDA ZP_B1
-        BEQ VrPartial
-        LDY #$00
-VrCopyPage:
-        LDA MSC_DATA
-        STA (ZP_PTR_LO),Y
-        INY
-        BNE VrCopyPage
-        INC ZP_PTR_HI
-        DEC ZP_B1
-        JMP VrFullPageCheck
-
-VrPartial:
-        LDA ZP_B0
-        BEQ VrCopyDone
-        STA ZP_TEMPLO
-        LDY #$00
-VrCopyTail:
-        LDA MSC_DATA
-        STA (ZP_PTR_LO),Y
-        DEC ZP_TEMPLO
-        BEQ VrCopyDone
-        INY
-        JMP VrCopyTail
+        BNE VrSectorLoop
 
 VrCopyDone:
         JSR PrintCR
