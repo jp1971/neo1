@@ -54,6 +54,17 @@ CMD_READ     = $03
 CMD_WRITE    = $04
 INFO_VALID   = $01
 
+BASIC_ZP_START_LO = $4A
+BASIC_ZP_START_HI = $00
+BASIC_ZP_LEN_LO   = $B6
+BASIC_ZP_LEN_HI   = $00
+BASIC_MEM_START_LO = $00
+BASIC_MEM_START_HI = $08
+BASIC_MEM_LEN_LO   = $00
+BASIC_MEM_LEN_HI   = $08
+BASIC_SAVE_MIN_LO  = $B6
+BASIC_SAVE_MIN_HI  = $08
+
 ; Filename buffer in page 2 (writable, WozMon input area — safe while VACI runs)
 VACI_FNAME_BUF = $0200
 
@@ -112,6 +123,10 @@ PromptDone:
         BEQ MenuDelete
         CMP #'W'
         BEQ MenuWrite
+        CMP #'L'
+        BEQ MenuLoad
+        CMP #'S'
+        BEQ MenuSave
         
         ; Unknown command, loop
         JMP MenuLoop
@@ -126,6 +141,14 @@ MenuDelete:
 
 MenuWrite:
         JSR VaciWrite
+        JMP MenuLoop
+
+MenuSave:
+        JSR VaciSaveBasic
+        JMP MenuLoop
+
+MenuLoad:
+        JSR VaciLoadBasic
         JMP MenuLoop
 
 MenuQuit:
@@ -509,13 +532,13 @@ VdDeleteErr:
 ;   1. Prompt "* FILENAME: " - read up to 15 chars into VACI_FNAME_BUF
 ;   2. Prompt "* START ($XXXX): " - ReadHexWord -> start addr (ZP_PTR)
 ;   3. Prompt "* END ($XXXX): "   - ReadHexWord -> end addr  (ZP_END)
-;   4. Compute length = end - start + 1, cap at 512
+;   4. Compute length = end - start + 1
 ;   5. Echo "* AAAA . EEEEW", wait for CR (other key = cancel)
 ;   6. CMD_OPEN, stream filename+NUL to MSC_DATA (triggers do_open())
-;   7. WaitReady; stream ZP_B1:ZP_B0 payload bytes, pad remainder to 512
-;   8. Set sector 0, CMD_WRITE, WaitReady
+;   7. Sector loop: chunk=min(remaining,512), stream+pad to 512, CMD_WRITE
+;   8. Repeat until remaining=0
 ;   9. CMD_CLOSE, WaitReady
-;  10. Print "* WRITE OK", RTS
+;  10. Return to WozMon
 ;
 ; ZP usage: ZP_PTR_LO/HI=start, ZP_END_LO/HI=end, ZP_B0/B1=length(lo/hi)
 ;------------------------------------------------------------------------------
@@ -586,7 +609,19 @@ VwEndOk:
         LDA ZP_ADDR_HI
         STA ZP_END_HI
 
-        ; ---- Compute length = (end - start) + 1, cap at 512 ($0200) ----
+        ; ---- Validate range and compute length = (end - start) + 1 ----
+        LDA ZP_END_HI
+        CMP ZP_PTR_HI
+        BCS VwRangeHiOk
+        JMP VwWriteErr
+VwRangeHiOk:
+        BNE VwRangeOk
+        LDA ZP_END_LO
+        CMP ZP_PTR_LO
+        BCS VwRangeOk
+        JMP VwWriteErr
+VwRangeOk:
+
         SEC
         LDA ZP_END_LO
         SBC ZP_PTR_LO
@@ -599,20 +634,6 @@ VwEndOk:
         BNE VwLenNoCarry
         INC ZP_B1
 VwLenNoCarry:
-        ; Cap: if ZP_B1 > 2, or ZP_B1 == 2 and ZP_B0 > 0 -> length > 512
-        LDA ZP_B1
-        CMP #$02
-        BCC VwLenOk
-        BEQ VwChkB0
-        JMP VwCapLen
-VwChkB0:
-        LDA ZP_B0
-        BEQ VwLenOk
-VwCapLen:
-        LDA #$02
-        STA ZP_B1
-        LDA #$00
-        STA ZP_B0
 VwLenOk:
         ; ---- ACI echo: CR "AAAA.EEEEW" ----
         JSR PrintCR
@@ -659,20 +680,43 @@ VwOpenFnDone:
         BCC VwOpenOk
         JMP VwWriteErr          ; open failed
 VwOpenOk:
-        ; Tell backend how many bytes are intentionally valid for this write.
-        LDA ZP_B0
-        STA MSC_SIZE_LO
-        LDA ZP_B1
-        STA MSC_SIZE_HI
+        ; sector = 0
+        LDA #$00
+        STA ZP_TEMPLO
+        STA ZP_TEMPHI
 
-        ; ---- Stream payload to MSC_DATA (page 0 then page 1 of sector) ----
-        ; ZP_B1 = full 256-byte pages from RAM (0, 1, or 2)
-        ; ZP_B0 = remaining bytes in partial last page (0-255)
+VwSectorLoop:
+        ; remaining == 0 ?
+        LDA ZP_B0
+        ORA ZP_B1
+        BNE VwHasRemaining
+        JMP VwWriteOk
+VwHasRemaining:
+
+        ; chunk = min(remaining, 512)
+        LDA ZP_B1
+        CMP #$02
+        BCS VwChunk512
+        LDA ZP_B0
+        STA ZP_END_LO
+        LDA ZP_B1
+        STA ZP_END_HI
+        JMP VwChunkReady
+
+VwChunk512:
+        LDA #$00
+        STA ZP_END_LO
+        LDA #$02
+        STA ZP_END_HI
+
+VwChunkReady:
+        ; ---- Stream chunk payload to MSC_DATA (page 0 then page 1) ----
+        ; ZP_END_HI:ZP_END_LO = chunk bytes (1..512)
         ; ZP_PTR = source address
 
         ; Page 0
         LDY #$00
-        LDA ZP_B1
+        LDA ZP_END_HI
         BEQ VwPg0Partial        ; ZP_B1==0: only ZP_B0 bytes in page 0
         ; ZP_B1>=1: full 256 bytes from RAM
 VwPg0Full:
@@ -684,14 +728,14 @@ VwPg0Full:
         JMP VwPage1
 
 VwPg0Partial:
-        LDA ZP_B0
+        LDA ZP_END_LO
         BEQ VwPg0PadAll         ; zero bytes: pad entire page 0
-        STA ZP_TEMPLO
+        STA ZP_TENS
 VwPg0PayLoop:
         LDA (ZP_PTR_LO),Y
         STA MSC_DATA
         INY
-        DEC ZP_TEMPLO
+        DEC ZP_TENS
         BNE VwPg0PayLoop
         ; Pad page 0 remainder with zeros (Y..255)
         LDA #$00
@@ -712,7 +756,7 @@ VwPg0PadAllLoop:
         ; Page 1
 VwPage1:
         LDY #$00
-        LDA ZP_B1
+        LDA ZP_END_HI
         CMP #$02
         BEQ VwPg1Full           ; 2 full pages: both from RAM
         CMP #$01
@@ -731,17 +775,18 @@ VwPg1Full:
         STA MSC_DATA
         INY
         BNE VwPg1Full
+        INC ZP_PTR_HI
         JMP VwDataDone
 
 VwPg1Partial:
-        LDA ZP_B0
+        LDA ZP_END_LO
         BEQ VwPg1PadAll         ; ZP_B1==1, ZP_B0==0 means exactly 256 bytes
-        STA ZP_TEMPLO
+        STA ZP_TENS
 VwPg1PayLoop:
         LDA (ZP_PTR_LO),Y
         STA MSC_DATA
         INY
-        DEC ZP_TEMPLO
+        DEC ZP_TENS
         BNE VwPg1PayLoop
         LDA #$00
 VwPg1PadRestLoop:
@@ -751,21 +796,39 @@ VwPg1PadRestLoop:
         JMP VwDataDone
 
 VwDataDone:
-        ; ---- CMD_WRITE sector 0 ----
-        LDA #$00
+        ; ---- CMD_WRITE current sector ----
+        LDA ZP_END_LO
+        STA MSC_SIZE_LO
+        LDA ZP_END_HI
+        STA MSC_SIZE_HI
+
+        LDA ZP_TEMPLO
         STA MSC_SECT_LO
+        LDA ZP_TEMPHI
         STA MSC_SECT_HI
         LDA #CMD_WRITE
         STA MSC_CMD
         JSR WaitReady
-        BCC VwWriteOk
-        ; Write failed: attempt close then report error
-        PHA
-        LDA #CMD_CLOSE
-        STA MSC_CMD
-        JSR WaitReady
-        PLA
-        JMP VwWriteErr
+        BCC VwSectorWritten
+        JMP VwWriteErrClose
+
+VwSectorWritten:
+        ; remaining -= chunk
+        LDA ZP_B0
+        SEC
+        SBC ZP_END_LO
+        STA ZP_B0
+        LDA ZP_B1
+        SBC ZP_END_HI
+        STA ZP_B1
+
+        ; sector++
+        INC ZP_TEMPLO
+        BEQ VwSectorCarry
+        JMP VwSectorLoop
+VwSectorCarry:
+        INC ZP_TEMPHI
+        JMP VwSectorLoop
 
 VwWriteOk:
         ; ---- CMD_CLOSE ----
@@ -777,6 +840,12 @@ VwWriteOk:
         ; ---- Success: return quietly ----
         JSR PrintCR
         JMP WOZMON_ENTRY
+
+VwWriteErrClose:
+        LDA #CMD_CLOSE
+        STA MSC_CMD
+        JSR WaitReady
+        JMP VwWriteErr
 
 VwWriteErr:
         LDX #$00
@@ -791,6 +860,490 @@ VwErDone:
         RTS
 
 VwCancel:
+        JSR PrintCR
+        RTS
+
+;------------------------------------------------------------------------------
+; VaciSaveBasic - Save BASIC program state to one packed file
+;
+; Layout (2230 bytes total):
+;   bytes 0000-0181 : $004A-$00FF (182 bytes)
+;   bytes 0182-2229 : $0800-$0FFF (2048 bytes)
+;
+; Packed into sectors:
+;   sector 0: 182 bytes ZP + 330 bytes from $0800
+;   sectors 1-3: 512 bytes each
+;   sector 4: final 182 bytes
+;------------------------------------------------------------------------------
+VaciSaveBasic:
+        ; ---- Filename prompt ----
+        LDX #$00
+VsFnPrLoop:
+        LDA TxtSaveFnamePrompt,X
+        BEQ VsFnPrDone
+        JSR Putc
+        INX
+        JMP VsFnPrLoop
+VsFnPrDone:
+        ; Read up to 15 chars (uppercase), stop on CR, NUL-terminate
+        LDX #$00
+VsFnReadLoop:
+        CPX #$0F
+        BCS VsFnEnd
+        JSR GetKey
+        CMP #$0D
+        BEQ VsFnEnd
+        JSR ToUpper
+        JSR Putc
+        STA VACI_FNAME_BUF,X
+        INX
+        JMP VsFnReadLoop
+VsFnEnd:
+        TXA
+        BNE VsFnNotEmpty
+        JMP VsCancel
+VsFnNotEmpty:
+        LDA #$00
+        STA VACI_FNAME_BUF,X
+
+        ; ---- Open file ----
+        LDA #CMD_OPEN
+        STA MSC_CMD
+        LDX #$00
+VsOpenFnLoop:
+        LDA VACI_FNAME_BUF,X
+        STA MSC_DATA
+        BEQ VsOpenFnDone
+        INX
+        CPX #$10
+        BCC VsOpenFnLoop
+        LDA #$00
+        STA MSC_DATA
+VsOpenFnDone:
+        JSR WaitReady
+        BCC VsOpenOk
+        JMP VsWriteErr
+
+VsOpenOk:
+        ; Pointers: ZP_PTR -> $004A, ZP_ADDR -> $0800
+        LDA #BASIC_ZP_START_LO
+        STA ZP_PTR_LO
+        LDA #BASIC_ZP_START_HI
+        STA ZP_PTR_HI
+        LDA #BASIC_MEM_START_LO
+        STA ZP_ADDR_LO
+        LDA #BASIC_MEM_START_HI
+        STA ZP_ADDR_HI
+
+        ; ---- Sector 0 (182 bytes ZP + 330 bytes MEM) ----
+        ; 182-byte ZP block
+        LDA #BASIC_ZP_LEN_LO
+        STA ZP_B0
+VsS0ZpLoop:
+        LDA ZP_B0
+        BEQ VsS0MemPart
+        LDY #$00
+        LDA (ZP_PTR_LO),Y
+        STA MSC_DATA
+        INC ZP_PTR_LO
+        BNE VsS0ZpPtrOk
+        INC ZP_PTR_HI
+VsS0ZpPtrOk:
+        DEC ZP_B0
+        JMP VsS0ZpLoop
+
+VsS0MemPart:
+        ; 330-byte MEM block (0x014A)
+        LDA #$4A
+        STA ZP_TENS
+        LDA #$01
+        STA ZP_ONES
+VsS0MemLoop:
+        LDA ZP_TENS
+        ORA ZP_ONES
+        BEQ VsS0Write
+        LDY #$00
+        LDA (ZP_ADDR_LO),Y
+        STA MSC_DATA
+        INC ZP_ADDR_LO
+        BNE VsS0MemPtrOk
+        INC ZP_ADDR_HI
+VsS0MemPtrOk:
+        LDA ZP_TENS
+        BNE VsS0MemDecLo
+        DEC ZP_ONES
+VsS0MemDecLo:
+        DEC ZP_TENS
+        JMP VsS0MemLoop
+
+VsS0Write:
+        ; Write full 512-byte sector
+        LDA #$00
+        STA MSC_SIZE_LO
+        LDA #$02
+        STA MSC_SIZE_HI
+        LDA #$00
+        STA MSC_SECT_LO
+        STA MSC_SECT_HI
+        LDA #CMD_WRITE
+        STA MSC_CMD
+        JSR WaitReady
+        BCC VsFullLoopInit
+        JMP VsWriteErrClose
+
+VsFullLoopInit:
+        ; ---- Sectors 1-3: full 512-byte chunks from MEM ----
+        LDA #$01
+        STA ZP_END_LO          ; sector number
+        LDA #$03
+        STA ZP_B0              ; full sectors remaining
+VsFullSectorLoop:
+        LDA ZP_B0
+        BEQ VsLastSector
+
+        LDY #$00
+VsPg0Loop:
+        LDA (ZP_ADDR_LO),Y
+        STA MSC_DATA
+        INY
+        BNE VsPg0Loop
+        INC ZP_ADDR_HI
+
+        LDY #$00
+VsPg1Loop:
+        LDA (ZP_ADDR_LO),Y
+        STA MSC_DATA
+        INY
+        BNE VsPg1Loop
+        INC ZP_ADDR_HI
+
+        LDA #$00
+        STA MSC_SIZE_LO
+        LDA #$02
+        STA MSC_SIZE_HI
+        LDA ZP_END_LO
+        STA MSC_SECT_LO
+        LDA #$00
+        STA MSC_SECT_HI
+        LDA #CMD_WRITE
+        STA MSC_CMD
+        JSR WaitReady
+        BCC VsFullWritten
+        JMP VsWriteErrClose
+
+VsFullWritten:
+        INC ZP_END_LO
+        DEC ZP_B0
+        JMP VsFullSectorLoop
+
+VsLastSector:
+        ; ---- Sector 4: final 182 bytes from MEM ----
+        LDA #BASIC_ZP_LEN_LO
+        STA ZP_B0
+VsLastFill:
+        LDA ZP_B0
+        BEQ VsLastWrite
+        LDY #$00
+        LDA (ZP_ADDR_LO),Y
+        STA MSC_DATA
+        INC ZP_ADDR_LO
+        BNE VsLastPtrOk
+        INC ZP_ADDR_HI
+VsLastPtrOk:
+        DEC ZP_B0
+        JMP VsLastFill
+
+VsLastWrite:
+        LDA #BASIC_ZP_LEN_LO
+        STA MSC_SIZE_LO
+        LDA #$00
+        STA MSC_SIZE_HI
+        LDA #$04
+        STA MSC_SECT_LO
+        LDA #$00
+        STA MSC_SECT_HI
+        LDA #CMD_WRITE
+        STA MSC_CMD
+        JSR WaitReady
+        BCC VsDone
+        JMP VsWriteErrClose
+
+VsDone:
+        LDA #CMD_CLOSE
+        STA MSC_CMD
+        JSR WaitReady
+        BCS VsWriteErr
+        JSR PrintCR
+        JMP WOZMON_ENTRY
+
+VsWriteErrClose:
+        LDA #CMD_CLOSE
+        STA MSC_CMD
+        JSR WaitReady
+
+VsWriteErr:
+        LDX #$00
+VsErrLoop:
+        LDA TxtSaveError,X
+        BEQ VsErrDone
+        JSR Putc
+        INX
+        JMP VsErrLoop
+VsErrDone:
+        JSR PrintCR
+        RTS
+
+VsCancel:
+        JSR PrintCR
+        RTS
+
+;------------------------------------------------------------------------------
+; VaciLoadBasic - Load packed BASIC program state from one file by index
+;------------------------------------------------------------------------------
+VaciLoadBasic:
+        ; Enumerate files
+        LDA #$00
+        STA ZP_INDEX
+        LDA #CMD_DIR_OPEN
+        STA MSC_CMD
+        JSR WaitReady
+        BCC VlOpenOk
+        RTS
+
+VlOpenOk:
+VlListLoop:
+        LDA ZP_INDEX
+        CMP #$64
+        BCS VlListDone
+
+        LDA #CMD_DIR_NEXT
+        STA MSC_CMD
+        JSR WaitReady
+        BCC VlNextOk
+        RTS
+
+VlNextOk:
+        LDA MSC_INFO
+        AND #INFO_VALID
+        BEQ VlListDone
+
+        LDA ZP_INDEX
+        JSR PrintDec2
+        LDA #$3A
+        JSR Putc
+        LDA #$20
+        JSR Putc
+
+VlNameLoop:
+        LDA MSC_DATA
+        BEQ VlNameDone
+        JSR Putc
+        JMP VlNameLoop
+
+VlNameDone:
+        JSR PrintCR
+        INC ZP_INDEX
+        JMP VlListLoop
+
+VlListDone:
+        ; Prompt for index
+        LDX #$00
+VlPromptLoop:
+        LDA TxtLoadPrompt,X
+        BNE VlPromptNext
+        JMP VlPromptDone
+VlPromptNext:
+        JSR Putc
+        INX
+        JMP VlPromptLoop
+VlPromptDone:
+        JSR ReadDec2
+        BCC VlIndexOk
+        RTS
+
+VlIndexOk:
+        STA ZP_INDEX
+        JSR PrintCR
+
+        ; Open selected file
+        LDA ZP_INDEX
+        STA MSC_INDEX
+        LDA #CMD_OPEN_IND
+        STA MSC_CMD
+        JSR WaitReady
+        BCC VlOpenFileOk
+        RTS
+
+VlOpenFileOk:
+        ; Require at least 2230 bytes
+        LDA MSC_SIZE_HI
+        CMP #BASIC_SAVE_MIN_HI
+        BCS VlMinHiOk
+        JMP VlLoadErrClose
+VlMinHiOk:
+        BNE VlSizeOk
+        LDA MSC_SIZE_LO
+        CMP #BASIC_SAVE_MIN_LO
+        BCS VlSizeOk
+        JMP VlLoadErrClose
+VlSizeOk:
+
+        ; Sector 0 -> copy first 182 bytes to $004A
+        LDA #$00
+        STA MSC_SECT_LO
+        STA MSC_SECT_HI
+        LDA #CMD_READ
+        STA MSC_CMD
+        JSR WaitReady
+        BCC VlS0ReadOk
+        JMP VlLoadErrClose
+VlS0ReadOk:
+
+        LDA #BASIC_ZP_START_LO
+        STA ZP_PTR_LO
+        LDA #BASIC_ZP_START_HI
+        STA ZP_PTR_HI
+        LDA #BASIC_ZP_LEN_LO
+        STA ZP_B0
+VlS0Copy:
+        LDA ZP_B0
+        BEQ VlMemStart
+        LDA MSC_DATA
+        LDY #$00
+        STA (ZP_PTR_LO),Y
+        INC ZP_PTR_LO
+        BNE VlS0PtrOk
+        INC ZP_PTR_HI
+VlS0PtrOk:
+        DEC ZP_B0
+        JMP VlS0Copy
+
+VlMemStart:
+        ; Skip the remaining 330 bytes of sector 0 payload
+        LDA #$4A
+        STA ZP_TENS
+        LDA #$01
+        STA ZP_ONES
+VlSkipS0Tail:
+        LDA ZP_TENS
+        ORA ZP_ONES
+        BEQ VlMemCopyInit
+        LDA MSC_DATA
+        LDA ZP_TENS
+        BNE VlSkipDecLo
+        DEC ZP_ONES
+VlSkipDecLo:
+        DEC ZP_TENS
+        JMP VlSkipS0Tail
+
+VlMemCopyInit:
+        LDA #$4A
+        STA ZP_ADDR_LO
+        LDA #$09
+        STA ZP_ADDR_HI
+
+        ; Sectors 1-3: 1536 bytes
+        LDA #$01
+        STA ZP_END_LO
+        LDA #$03
+        STA ZP_B0
+VlFullReadLoop:
+        LDA ZP_B0
+        BEQ VlLastRead
+
+        LDA ZP_END_LO
+        STA MSC_SECT_LO
+        LDA #$00
+        STA MSC_SECT_HI
+        LDA #CMD_READ
+        STA MSC_CMD
+        JSR WaitReady
+        BCC VlFullReadOk
+        JMP VlLoadErrClose
+VlFullReadOk:
+
+        LDY #$00
+VlRdPg0:
+        LDA MSC_DATA
+        STA (ZP_ADDR_LO),Y
+        INY
+        BNE VlRdPg0
+        INC ZP_ADDR_HI
+
+        LDY #$00
+VlRdPg1:
+        LDA MSC_DATA
+        STA (ZP_ADDR_LO),Y
+        INY
+        BNE VlRdPg1
+        INC ZP_ADDR_HI
+
+        INC ZP_END_LO
+        DEC ZP_B0
+        JMP VlFullReadLoop
+
+VlLastRead:
+        ; Sector 4: final 182 bytes to $0F4A-$0FFF
+        LDA #$04
+        STA MSC_SECT_LO
+        LDA #$00
+        STA MSC_SECT_HI
+        LDA #CMD_READ
+        STA MSC_CMD
+        JSR WaitReady
+        BCC VlLastReadOk
+        JMP VlLoadErrClose
+VlLastReadOk:
+
+        LDA #BASIC_ZP_LEN_LO
+        STA ZP_B0
+VlLastCopy:
+        LDA ZP_B0
+        BEQ VlDone
+        LDA MSC_DATA
+        LDY #$00
+        STA (ZP_ADDR_LO),Y
+        INC ZP_ADDR_LO
+        BNE VlLastPtrOk
+        INC ZP_ADDR_HI
+VlLastPtrOk:
+        DEC ZP_B0
+        JMP VlLastCopy
+
+VlDone:
+        LDA #CMD_CLOSE
+        STA MSC_CMD
+        JSR WaitReady
+        BCC VlCloseOk
+        JMP VlLoadErr
+VlCloseOk:
+
+        JSR PrintCR
+        LDX #$00
+VlWarmLoop:
+        LDA TxtWarmStart,X
+        BEQ VlWarmDone
+        JSR Putc
+        INX
+        JMP VlWarmLoop
+VlWarmDone:
+        JSR PrintCR
+        JMP WOZMON_ENTRY
+
+VlLoadErrClose:
+        LDA #CMD_CLOSE
+        STA MSC_CMD
+        JSR WaitReady
+
+VlLoadErr:
+        LDX #$00
+VlErrLoop:
+        LDA TxtLoadError,X
+        BEQ VlErrDone
+        JSR Putc
+        INX
+        JMP VlErrLoop
+VlErrDone:
         JSR PrintCR
         RTS
 
@@ -1071,7 +1624,7 @@ GkWait:
 ; Strings
 ;------------------------------------------------------------------------------
 TxtPrompt:
-        .asciiz "R/W/Q?: "
+        .asciiz "R/W/L/S/Q?: "
 
 TxtIdxPrompt:
         .byte $0D, $22, "CASSETTE", $22, " (00-99): ", $00
@@ -1104,3 +1657,19 @@ TxtWrEndPrompt:
 
 TxtWrError:
         .asciiz "WRITE ERR"
+
+TxtSaveFnamePrompt:
+        .byte $0D
+        .asciiz "SAVE NAME: "
+
+TxtLoadPrompt:
+        .byte $0D, $22, "CASSETTE", $22, " (00-99): ", $00
+
+TxtSaveError:
+        .asciiz "SAVE ERR"
+
+TxtLoadError:
+        .asciiz "LOAD ERR"
+
+TxtWarmStart:
+        .asciiz "WARM START: E2B3R"

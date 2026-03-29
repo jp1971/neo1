@@ -13,6 +13,57 @@ add_executable(neo1
     ${CMAKE_SOURCE_DIR}/lib/fatfs/source/diskio.c
 )
 
+find_program(CA65_EXECUTABLE ca65)
+find_program(LD65_EXECUTABLE ld65)
+find_package(Python3 COMPONENTS Interpreter QUIET)
+
+set(NEO1_VACI_SOURCE ${CMAKE_SOURCE_DIR}/src/ram/neo1_vaci_v1.s)
+set(NEO1_VACI_CFG ${CMAKE_SOURCE_DIR}/src/ram/neo1_vaci_v1.cfg)
+set(NEO1_VACI_GEN_SCRIPT ${CMAKE_SOURCE_DIR}/src/ram/gen_vaci_header.py)
+set(NEO1_VACI_OBJ ${CMAKE_CURRENT_BINARY_DIR}/generated/ram/neo1_vaci_v1.o)
+set(NEO1_VACI_BIN ${CMAKE_CURRENT_BINARY_DIR}/generated/ram/neo1_vaci_v1.bin)
+set(NEO1_VACI_LABELS ${CMAKE_CURRENT_BINARY_DIR}/generated/ram/neo1_vaci_v1.labels)
+set(NEO1_VACI_HEADER ${CMAKE_CURRENT_BINARY_DIR}/generated/ram/neo1_vaci_v1.h)
+set(NEO1_CFFA1_M2_SOURCE ${CMAKE_SOURCE_DIR}/src/ram/neo1_cffa1_m2_blockdrv.s)
+set(NEO1_CFFA1_M2_CFG ${CMAKE_SOURCE_DIR}/src/ram/neo1_cffa1_m2.cfg)
+set(NEO1_CFFA1_M2_GEN_SCRIPT ${CMAKE_SOURCE_DIR}/src/ram/gen_cffa1_m2_header.py)
+set(NEO1_CFFA1_M2_OBJ ${CMAKE_CURRENT_BINARY_DIR}/generated/ram/neo1_cffa1_m2_blockdrv.o)
+set(NEO1_CFFA1_M2_BIN ${CMAKE_CURRENT_BINARY_DIR}/generated/ram/neo1_cffa1_m2_blockdrv.bin)
+set(NEO1_CFFA1_M2_LABELS ${CMAKE_CURRENT_BINARY_DIR}/generated/ram/neo1_cffa1_m2_blockdrv.labels)
+set(NEO1_CFFA1_M2_HEADER ${CMAKE_CURRENT_BINARY_DIR}/generated/ram/neo1_cffa1_m2_blockdrv.h)
+
+if(CA65_EXECUTABLE AND LD65_EXECUTABLE AND Python3_Interpreter_FOUND)
+    add_custom_command(
+        OUTPUT ${NEO1_VACI_HEADER}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/generated/ram
+        COMMAND ${CA65_EXECUTABLE} ${NEO1_VACI_SOURCE} -o ${NEO1_VACI_OBJ}
+        COMMAND ${LD65_EXECUTABLE} -C ${NEO1_VACI_CFG} ${NEO1_VACI_OBJ} -o ${NEO1_VACI_BIN} -Ln ${NEO1_VACI_LABELS}
+        COMMAND ${Python3_EXECUTABLE} ${NEO1_VACI_GEN_SCRIPT} --bin ${NEO1_VACI_BIN} --out ${NEO1_VACI_HEADER}
+        DEPENDS ${NEO1_VACI_SOURCE} ${NEO1_VACI_CFG} ${NEO1_VACI_GEN_SCRIPT}
+        VERBATIM
+        COMMENT "Building neo1_vaci_v1 RAM image/header from assembly"
+    )
+
+    add_custom_command(
+        OUTPUT ${NEO1_CFFA1_M2_HEADER}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/generated/ram
+        COMMAND ${CA65_EXECUTABLE} ${NEO1_CFFA1_M2_SOURCE} -o ${NEO1_CFFA1_M2_OBJ}
+        COMMAND ${LD65_EXECUTABLE} -C ${NEO1_CFFA1_M2_CFG} ${NEO1_CFFA1_M2_OBJ} -o ${NEO1_CFFA1_M2_BIN} -Ln ${NEO1_CFFA1_M2_LABELS}
+        COMMAND ${Python3_EXECUTABLE} ${NEO1_CFFA1_M2_GEN_SCRIPT} --labels ${NEO1_CFFA1_M2_LABELS} --bin ${NEO1_CFFA1_M2_BIN} --out ${NEO1_CFFA1_M2_HEADER}
+        DEPENDS ${NEO1_CFFA1_M2_SOURCE} ${NEO1_CFFA1_M2_CFG} ${NEO1_CFFA1_M2_GEN_SCRIPT}
+        VERBATIM
+        COMMENT "Building neo1_cffa1_m2_blockdrv RAM image/header from assembly"
+    )
+
+    add_custom_target(neo1_vaci_header_gen DEPENDS ${NEO1_VACI_HEADER})
+    add_custom_target(neo1_cffa1_m2_header_gen DEPENDS ${NEO1_CFFA1_M2_HEADER})
+    add_dependencies(neo1 neo1_vaci_header_gen)
+    add_dependencies(neo1 neo1_cffa1_m2_header_gen)
+    target_include_directories(neo1 BEFORE PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
+else()
+    message(WARNING "RAM tool auto-rebuild disabled (missing ca65/ld65/python3); using checked-in src/ram headers")
+endif()
+
 target_compile_options(neo1 PRIVATE -Wall)
 
 target_compile_definitions(neo1 PRIVATE
@@ -21,7 +72,7 @@ target_compile_definitions(neo1 PRIVATE
     DVI_N_TMDS_BUFFERS=3
     DVI_MONOCHROME_TMDS=1
     NEO1_ENABLE_DVI=1
-    NEO1_PERSONALITY=23
+    NEO1_PERSONALITY=50
     # Personality toggles -- all default to (1). Override here to disable.
     # NEO1_PERSONALITY=50   # Neo1-50: WozMon-only ROM at $FF00, E000-EFFF writable
     # NEO1_ENABLE_VACI=0    # set 0 to free $C100 for hardware ACI or other uses
