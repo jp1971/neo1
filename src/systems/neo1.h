@@ -83,6 +83,8 @@ enum {
     NEO1_IO_KBDCR     = 0xD011,
     NEO1_IO_DSP       = 0xD012,
     NEO1_IO_DSPCR     = 0xD013,
+    NEO1_IO_DSP_ALT   = 0xD0F2,
+    NEO1_IO_DSPCR_ALT = 0xD0F3,
 
     NEO1_TRACE_COUNT  = 64,
 };
@@ -206,7 +208,20 @@ static inline void _neo1_capture_trace(neo1_t* sys, uint16_t addr, uint8_t data,
     }
 }
 
+static inline uint16_t _neo1_normalize_io_addr(uint16_t addr) {
+    switch (addr) {
+        case NEO1_IO_DSP_ALT:
+            return NEO1_IO_DSP;
+        case NEO1_IO_DSPCR_ALT:
+            return NEO1_IO_DSPCR;
+        default:
+            return addr;
+    }
+}
+
 static inline uint8_t _neo1_mem_read(neo1_t* sys, uint16_t addr) {
+    addr = _neo1_normalize_io_addr(addr);
+
 #if NEO1_ENABLE_VCFFA1
     if (neo1_cffa1_handles_addr(addr)) {
         return neo1_cffa1_io_read(addr);
@@ -257,6 +272,8 @@ static inline uint8_t _neo1_mem_read(neo1_t* sys, uint16_t addr) {
 }
 
 static inline void _neo1_mem_write(neo1_t* sys, uint16_t addr, uint8_t data) {
+    addr = _neo1_normalize_io_addr(addr);
+
 #if NEO1_ENABLE_VCFFA1
     if (neo1_cffa1_handles_addr(addr)) {
         neo1_cffa1_io_write(addr, data);
