@@ -15,7 +15,7 @@
 #include "dvi.h"
 #include "dvi_serialiser.h"
 #include "tmds_encode.h"
-#include "console_font_8x8.h"
+#include "../../../src/roms/neo1_apple1_video_rom_image.h"
 
 #include "neo1_terminal.h"
 #include "neo1_video.h"
@@ -176,10 +176,19 @@ void neo1_video_init(neo1_terminal_t* term) {
         g_has_pending_buffer = false;
         g_term_dirty = false;
     }
+
+    const uint8_t* font_src = apple1_vid;
     for (uint32_t ch = 0; ch < 256; ch++) {
         for (uint32_t row = 0; row < FONT_CHAR_HEIGHT; row++) {
-            uint8_t bits = console_font_8x8[(ch * FONT_CHAR_HEIGHT) + row];
-            bits = neo1_reverse_bits8(bits);
+            uint32_t src_row = row;
+            if (ch == (uint32_t)'@') {
+                src_row = (FONT_CHAR_HEIGHT - 1u) - row;
+            }
+
+            uint8_t bits = font_src[(ch * FONT_CHAR_HEIGHT) + src_row];
+            if (ch == (uint32_t)'@') {
+                bits = neo1_reverse_bits8(bits);
+            }
             g_font_16x8_ram[(ch * FONT_CHAR_HEIGHT) + row] = neo1_expand_row_2x(bits);
         }
     }
