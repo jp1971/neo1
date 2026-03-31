@@ -11,6 +11,10 @@
 
 #define NEO1_CFFA1_BLOCK_SIZE 512u
 
+// -----------------------------------------------------------------------------
+// module state
+// -----------------------------------------------------------------------------
+
 static uint8_t g_regs[NEO1_CFFA1_IO_SIZE];
 static FATFS g_fatfs;
 static FIL g_image;
@@ -22,21 +26,25 @@ static uint16_t g_block_offset;
 static bool g_write_pending;
 static uint32_t g_write_block;
 
+// Keep STATUS and ALTSTATUS register views synchronized.
 static void set_status(uint8_t status) {
     g_regs[NEO1_CFFA1_REG_STATUS_COMMAND] = status;
     g_regs[NEO1_CFFA1_REG_DEVCTRL_ALTSTATUS] = status;
 }
 
+// Report error condition via ERROR/FEATURE and STATUS bits.
 static void set_error(uint8_t err_code) {
     g_regs[NEO1_CFFA1_REG_ERROR_FEATURE] = err_code;
     set_status(NEO1_CFFA1_STATUS_DRDY | NEO1_CFFA1_STATUS_DSC | NEO1_CFFA1_STATUS_ERR);
 }
 
+// Report ready state, optionally asserting DRQ when data phase is active.
 static void set_ok(uint8_t with_drq) {
     g_regs[NEO1_CFFA1_REG_ERROR_FEATURE] = NEO1_CFFA1_ERR_OK;
     set_status(NEO1_CFFA1_STATUS_DRDY | NEO1_CFFA1_STATUS_DSC | (with_drq ? NEO1_CFFA1_STATUS_DRQ : 0));
 }
 
+// Recognize common disk image filename extensions.
 static bool filename_has_disk_ext(const char* name) {
     const size_t len = strlen(name);
     if (len < 4) {
@@ -57,10 +65,12 @@ static bool filename_has_disk_ext(const char* name) {
     return false;
 }
 
+// Ensure USB MSC volume is mounted at "0:".
 static FRESULT mount_fs(void) {
     return f_mount(&g_fatfs, "0:", 1);
 }
 
+// Close any open image and reset derived state.
 static void close_image_if_open(void) {
     if (g_image_open) {
         f_close(&g_image);
@@ -72,6 +82,7 @@ static void close_image_if_open(void) {
     g_write_block = 0;
 }
 
+// Try opening one candidate image path with requested mode flags.
 static bool try_open_image(const char* name, BYTE mode, bool writable) {
     if (f_open(&g_image, name, mode) != FR_OK) {
         return false;
@@ -89,6 +100,10 @@ static bool try_open_image(const char* name, BYTE mode, bool writable) {
     return true;
 }
 
+// Lazy image selection strategy:
+// 1) preferred writable names
+// 2) preferred read-only names
+// 3) first root entry matching known disk extensions
 static bool open_first_image(void) {
     if (g_image_open) {
         return true;
@@ -155,6 +170,7 @@ static bool open_first_image(void) {
     return opened;
 }
 
+// Decode requested logical block address from LBA register bytes.
 static uint32_t get_requested_block(void) {
     return ((uint32_t)g_regs[NEO1_CFFA1_REG_LBA3] << 24) |
            ((uint32_t)g_regs[NEO1_CFFA1_REG_LBA2] << 16) |
@@ -162,6 +178,7 @@ static uint32_t get_requested_block(void) {
            (uint32_t)g_regs[NEO1_CFFA1_REG_LBA0];
 }
 
+// STATUS command: validate media/image availability.
 static void do_cmd_status(void) {
     if (!open_first_image()) {
         set_error(NEO1_CFFA1_ERR_NODEV);
@@ -170,6 +187,7 @@ static void do_cmd_status(void) {
     set_ok(0);
 }
 
+// READ command: load one 512-byte block into DATA stream buffer.
 static void do_cmd_read(void) {
     const uint32_t block = get_requested_block();
 
@@ -200,6 +218,7 @@ static void do_cmd_read(void) {
     set_ok(1);
 }
 
+// WRITE command: arm data phase; commit occurs after full DATA stream received.
 static void do_cmd_write(void) {
     const uint32_t block = get_requested_block();
 
@@ -224,6 +243,7 @@ static void do_cmd_write(void) {
     set_ok(1);
 }
 
+// Command decode/dispatch for STATUS/COMMAND register writes.
 static void handle_command(uint8_t cmd) {
     g_write_pending = false;
     g_block_offset = 0;
@@ -255,6 +275,7 @@ void neo1_cffa1_init(void) {
     set_ok(0);
 }
 
+// Address filter for Neo1 bus layer interception.
 bool neo1_cffa1_handles_addr(uint16_t addr) {
     if ((addr == NEO1_CFFA1_ID1_ADDR) || (addr == NEO1_CFFA1_ID2_ADDR)) {
         return true;
@@ -262,6 +283,7 @@ bool neo1_cffa1_handles_addr(uint16_t addr) {
     return (addr >= NEO1_CFFA1_IO_BASE) && (addr <= NEO1_CFFA1_IO_END);
 }
 
+// Read side of CFFA1 register bridge.
 uint8_t neo1_cffa1_io_read(uint16_t addr) {
     if (addr == NEO1_CFFA1_ID1_ADDR) {
         return NEO1_CFFA1_ID1_VALUE;
@@ -272,11 +294,13 @@ uint8_t neo1_cffa1_io_read(uint16_t addr) {
     if ((addr >= NEO1_CFFA1_IO_BASE) && (addr <= NEO1_CFFA1_IO_END)) {
         const uint16_t index = (uint16_t)(addr - NEO1_CFFA1_IO_BASE);
         if (index == NEO1_CFFA1_REG_DATA) {
+            // DATA reads stream from current block buffer during DRQ phase.
             uint8_t data = 0x00;
             if (g_block_offset < NEO1_CFFA1_BLOCK_SIZE) {
                 data = g_block_buffer[g_block_offset++];
             }
             if (g_block_offset >= NEO1_CFFA1_BLOCK_SIZE) {
+                // End of transfer: return to ready/no-DRQ state.
                 set_ok(0);
             }
             return data;
@@ -286,12 +310,14 @@ uint8_t neo1_cffa1_io_read(uint16_t addr) {
     return 0x00;
 }
 
+// Write side of CFFA1 register bridge.
 void neo1_cffa1_io_write(uint16_t addr, uint8_t data) {
     if ((addr >= NEO1_CFFA1_IO_BASE) && (addr <= NEO1_CFFA1_IO_END)) {
         const uint16_t index = (uint16_t)(addr - NEO1_CFFA1_IO_BASE);
         g_regs[index] = data;
 
         if ((index == NEO1_CFFA1_REG_DATA) && g_write_pending) {
+            // DATA writes stream one 512-byte block for pending WRITE command.
             if (g_block_offset < NEO1_CFFA1_BLOCK_SIZE) {
                 g_block_buffer[g_block_offset++] = data;
             }
@@ -312,6 +338,7 @@ void neo1_cffa1_io_write(uint16_t addr, uint8_t data) {
                     return;
                 }
 
+                // Transfer committed successfully.
                 set_ok(0);
             }
             return;

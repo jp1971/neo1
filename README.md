@@ -14,12 +14,68 @@ From WozMon:
 
 ## Personality selection (compile-time)
 
-Set `NEO1_PERSONALITY` in `systems/neo1-x/CMakeLists.txt`:
+The build exposes CMake cache variables for runtime personality/features:
+
+- `NEO1_PERSONALITY` = `23` or `50`
+- `NEO1_ENABLE_VACI` = `1` or `0`
+- `NEO1_ENABLE_VCFFA1` = `1` or `0`
+
+Policy:
+
+- `NEO1_PERSONALITY=23` requires both `NEO1_ENABLE_VACI=1` and `NEO1_ENABLE_VCFFA1=1`.
+- Feature toggling is primarily intended for `NEO1_PERSONALITY=50` experiments.
+
+Defaults are set in `systems/neo1-x/CMakeLists.txt`.
+
+Meaning:
 
 - `NEO1_PERSONALITY=23` (default): top ROM region is `$E000-$FFFF`.
 	- `E000R` and `F000R` are available from ROM.
 - `NEO1_PERSONALITY=50`: WozMon ROM is placed at `$FF00-$FFFF` and only that page is write-protected.
 	- `$E000-$EFFF` is writable so BASIC can be loaded by storage utility and run with `E000R`.
+
+### Switching with CMake (recommended)
+
+Configure once with desired values, then keep using **Compile Project** in VS Code:
+
+```sh
+cmake -S . -B build \
+	-DNEO1_PERSONALITY=23 \
+	-DNEO1_ENABLE_VACI=1 \
+	-DNEO1_ENABLE_VCFFA1=1
+```
+
+Example for Neo1-50 with VACI on and VCFFA1 off:
+
+```sh
+cmake -S . -B build \
+	-DNEO1_PERSONALITY=50 \
+	-DNEO1_ENABLE_VACI=1 \
+	-DNEO1_ENABLE_VCFFA1=0
+```
+
+After changing these values, run configure once, then use **Compile Project** as usual.
+
+### Switching with CMake Profiles (preset workflow)
+
+`CMakePresets.json` includes ready-to-use profiles:
+
+- `neo1-23-full`
+- `neo1-50-full`
+- `neo1-50-vaci-only`
+- `neo1-50-vcffa1-only`
+
+In VS Code:
+
+1. Run **CMake: Select Configure Preset** and choose one of the profiles above.
+2. Run **CMake: Configure** once.
+3. Continue using **Compile Project** (Raspberry Pi Pico extension task) as normal.
+
+CLI equivalent example:
+
+```sh
+cmake --preset neo1-50-vaci-only
+```
 
 ## Neo1-x memory map (current)
 
@@ -119,5 +175,10 @@ Exposes CFFA1 signature bytes at `$AFDC`/`$AFDD` and a ProDOS block interface at
 - `systems/neo1-x/` — machine build target and RP2040-side platform code
 - `src/systems/` — core Neo1 runtime/memory model
 - `src/roms/` — ROM images/assets
-- `src/ram/` — RAM-loaded helper programs (filer/loader images)
+- `src/ram/` — RAM-loaded utility payloads (VACI and VCFFA1 support)
 - `lib/` — Pico SDK, TinyUSB, PicoDVI, FatFs
+
+## Planning docs
+
+- `docs/neo1-milestone-plan.md` — overall Neo1 milestone plan (VACI track)
+- `docs/vcffa1-v0-baseline.md` — VCFFA1 smoke baseline and naming notes

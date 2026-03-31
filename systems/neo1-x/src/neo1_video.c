@@ -1,3 +1,13 @@
+// neo1_video.c
+//
+// Neo1 DVI text renderer.
+//
+// Pipeline summary:
+// - terminal state is produced on core 0 (machine loop)
+// - this module snapshots that state into a double buffer
+// - scanlines are generated continuously for a 640x480@60 mode
+// - monochrome 1-bpp lines are TMDS-encoded and submitted to PicoDVI
+
 #include <stdint.h>
 #include <string.h>
 
@@ -20,6 +30,10 @@
 #include "neo1_terminal.h"
 #include "neo1_video.h"
 
+// -----------------------------------------------------------------------------
+// video/font geometry and timing constants
+// -----------------------------------------------------------------------------
+
 #define FONT_CHAR_WIDTH 8
 #define FONT_CHAR_HEIGHT 8
 
@@ -37,11 +51,19 @@
 #define NEO1_TEXT_BYTES          (NEO1_TERM_COLS * 2)
 #define NEO1_LEFT_PAD_BYTES      ((NEO1_SCANLINE_BYTES - NEO1_TEXT_BYTES) / 2)
 
+// -----------------------------------------------------------------------------
+// module state
+// -----------------------------------------------------------------------------
+
 static struct dvi_inst dvi0;
 static struct semaphore dvi_start_sem;
 static volatile uint32_t dvi_frame_counter = 0;
 static volatile uint32_t dvi_line_counter = 0;
 
+// Terminal snapshot model:
+// - g_term points at caller-owned terminal state
+// - g_term_buffers[front] is consumed by scanline rendering
+// - a pending buffer index is flipped at frame boundary
 static neo1_terminal_t* g_term = 0;
 static neo1_terminal_t g_term_buffers[2];
 static volatile uint32_t g_front_buffer_index = 0;
@@ -53,6 +75,7 @@ static volatile uint32_t g_terminal_buffer_swaps = 0;
 #define NEO1_CURSOR_BLINK_FRAMES 30
 static uint16_t __not_in_flash("neo1_video_font") g_font_16x8_ram[256 * FONT_CHAR_HEIGHT];
 
+// Reverse bit order in one byte.
 static inline uint8_t neo1_reverse_bits8(uint8_t v) {
     v = (uint8_t)(((v & 0xF0u) >> 4) | ((v & 0x0Fu) << 4));
     v = (uint8_t)(((v & 0xCCu) >> 2) | ((v & 0x33u) << 2));
@@ -60,6 +83,7 @@ static inline uint8_t neo1_reverse_bits8(uint8_t v) {
     return v;
 }
 
+// Expand an 8-bit row into 16 bits by doubling each source pixel horizontally.
 static inline uint16_t neo1_expand_row_2x(uint8_t bits) {
     uint16_t out = 0;
     for (uint32_t i = 0; i < 8; i++) {
@@ -70,6 +94,8 @@ static inline uint16_t neo1_expand_row_2x(uint8_t bits) {
     return out;
 }
 
+// Build and encode one scanline for the current line index.
+// This function runs in the DVI path and keeps work bounded per line.
 static void __not_in_flash_func(neo1_video_prepare_scanline)(uint32_t line) {
     static uint8_t scanbuf[FRAME_WIDTH / 8];
     memset(scanbuf, 0, sizeof(scanbuf));
@@ -84,6 +110,7 @@ static void __not_in_flash_func(neo1_video_prepare_scanline)(uint32_t line) {
             const uint32_t local_y = line - NEO1_EMPTY_LINES;
             const uint32_t row = local_y / NEO1_SCALED_CHAR_HEIGHT;
             const uint32_t gy  = (local_y / 2) % FONT_CHAR_HEIGHT;
+            // Cursor blink is frame-based and overlaid during rasterization.
             const bool cursor_blink_on = (((dvi_frame_counter / NEO1_CURSOR_BLINK_FRAMES) & 1u) == 0u);
             const uint32_t cursor_x = g_term_buffers[g_front_buffer_index].cursor_x;
             const uint32_t cursor_y = g_term_buffers[g_front_buffer_index].cursor_y;
@@ -98,6 +125,7 @@ static void __not_in_flash_func(neo1_video_prepare_scanline)(uint32_t line) {
 
                     uint32_t dst_byte = NEO1_LEFT_PAD_BYTES + (col * 2);
                     if ((dst_byte + 1) < NEO1_SCANLINE_BYTES) {
+                        // Font rows are pre-expanded to 16 bits (2 bytes per glyph row).
                         uint16_t bits16 = g_font_16x8_ram[((uint32_t)ch * FONT_CHAR_HEIGHT) + gy];
                         scanbuf[dst_byte + 0] = (uint8_t)(bits16 & 0xFFu);
                         scanbuf[dst_byte + 1] = (uint8_t)(bits16 >> 8);
@@ -108,12 +136,15 @@ static void __not_in_flash_func(neo1_video_prepare_scanline)(uint32_t line) {
     }
 
 encode_line:
+    // Submit the 1-bpp scanline to PicoDVI TMDS queue.
     uint32_t* tmdsbuf;
     queue_remove_blocking_u32(&dvi0.q_tmds_free, &tmdsbuf);
     tmds_encode_1bpp((const uint32_t*)scanbuf, tmdsbuf, FRAME_WIDTH);
     queue_add_blocking_u32(&dvi0.q_tmds_valid, &tmdsbuf);
 }
 
+// Scanline callback called by DVI engine.
+// Buffer swaps happen at frame boundary to keep rendered frames coherent.
 static void __not_in_flash_func(_scanline_callback)(void) {
     if (dvi_line_counter == FRAME_HEIGHT) {
         dvi_frame_counter++;
@@ -138,6 +169,7 @@ static void __not_in_flash_func(_scanline_callback)(void) {
     dvi_line_counter++;
 }
 
+// Core 1 entry point: owns DVI start and then sleeps waiting for IRQ work.
 static void __not_in_flash_func(core1_main)(void) {
     dvi_register_irqs_this_core(&dvi0, DMA_IRQ_0);
     sem_acquire_blocking(&dvi_start_sem);
@@ -148,6 +180,7 @@ static void __not_in_flash_func(core1_main)(void) {
 }
 
 void neo1_video_set_terminal(neo1_terminal_t* term) {
+    // Pointer assignment is cheap; actual copy is deferred to frame boundary.
     g_term = term;
     g_set_terminal_calls++;
 
@@ -157,6 +190,7 @@ void neo1_video_set_terminal(neo1_terminal_t* term) {
 }
 
 void neo1_video_init(neo1_terminal_t* term) {
+    // DVI mode requires higher voltage/clock settings.
     vreg_set_voltage(VREG_VSEL);
     sleep_ms(10);
     set_sys_clock_khz(DVI_TIMING.bit_clk_khz, true);
@@ -181,6 +215,7 @@ void neo1_video_init(neo1_terminal_t* term) {
     for (uint32_t ch = 0; ch < 256; ch++) {
         for (uint32_t row = 0; row < FONT_CHAR_HEIGHT; row++) {
             uint32_t src_row = row;
+            // Keep '@' special handling from legacy rendering path.
             if (ch == (uint32_t)'@') {
                 src_row = (FONT_CHAR_HEIGHT - 1u) - row;
             }
@@ -200,10 +235,12 @@ void neo1_video_init(neo1_terminal_t* term) {
     dvi_init(&dvi0, next_striped_spin_lock_num(), next_striped_spin_lock_num());
 
     dvi_line_counter = 1;
+    // Prime first line before enabling core 1 DVI start.
     neo1_video_prepare_scanline(0);
 }
 
 void neo1_video_start(void) {
+    // Prefer core 1 for DVI work, then release start gate.
     hw_set_bits(&bus_ctrl_hw->priority, BUSCTRL_BUS_PRIORITY_PROC1_BITS);
     multicore_launch_core1(core1_main);
     sem_release(&dvi_start_sem);

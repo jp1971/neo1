@@ -1,9 +1,15 @@
-# VACI Milestone Plan (Neo1-23 → Neo1-50 Ready)
+# Neo1 Milestone Plan (VACI Track, Neo1-23 → Neo1-50 Ready)
 
 Date: 2026-03-22
 Completed: 2026-03-24
 Status: Complete
 Scope owner: Neo1 solo mainline (no branch required)
+
+## 0) Terminology
+
+- **Neo1**: overall machine/platform project.
+- **VCFFA1**: current virtual CFFA1 utility flow at `1810R` (baseline/fallback path).
+- **VACI**: Virtual Apple Cassette Interface flow at `C100R` (new milestone track).
 
 ## 1) Branching Policy for This Phase
 
@@ -46,7 +52,7 @@ Deliverables:
   - catalog, load by index, write by name, delete by index, overwrite existing
 - capture one known-good monitor transcript for `1810R`
 - identify and record any intentionally deferred VCFFA1 items
-- create/update `docs/vaci-v0-vcffa1-baseline.md` with the smoke matrix and transcript
+- create/update `docs/vcffa1-v0-baseline.md` with the smoke matrix and transcript
 
 Exit criteria:
 - no VCFFA1 behavior regressions observed in the smoke matrix
@@ -67,7 +73,7 @@ Operator flow:
 7. return cleanly to WozMon on success
 
 Implementation notes:
-- Prefer reusing current catalog/index parsing routines from filer path.
+- Prefer reusing current catalog/index parsing routines from the existing VCFFA1 utility path.
 - Keep transfer primitive byte-oriented; no auto-run.
 - Preserve deterministic error text for empty index and range/parse errors.
 
@@ -116,7 +122,7 @@ Exit criteria:
 - system is ready to branch into Neo1-50 identity later (if desired)
 
 Post-V3 transition target:
-- Retire the legacy filer entry at `0400R` once VACI read/write flow fully covers its practical use.
+- Retire the legacy `0400R` utility entry once VACI read/write flow fully covers its practical use.
 - Keep any reused implementation pieces, but port/rename toward VACI ownership (`C100R` path).
 - Remove or stub old `0400R` launch path only after one full VACI regression pass is clean.
 
@@ -139,9 +145,9 @@ Recommended commit rhythm on `main`:
 ## 7) Immediate Next Actions
 
 1. Execute `V0` smoke gate and record the baseline transcript.
-2. Choose whether `C100R` image lives in `src/ram/` as a dedicated VACI artifact or evolves from current filer source directly.
+2. Choose whether `C100R` image lives in `src/ram/` as a dedicated VACI artifact or evolves from current VCFFA1 utility source directly.
 3. Implement `V1` read-only flow end-to-end before touching write.
-4. After `V3`, remove `0400R` entry and any remaining filer-only naming that no longer reflects architecture.
+4. After `V3`, remove `0400R` entry and any remaining legacy utility naming that no longer reflects architecture.
 
 ---
 

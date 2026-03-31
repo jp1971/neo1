@@ -36,7 +36,6 @@ option(ENABLE_DVI "Enable DVI output using PicoDVI" ON)
 
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/fatfs/source
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../src
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${PICO_TINYUSB_PATH}/src
     ${PICO_TINYUSB_PATH}/src/class/hid
@@ -47,6 +46,8 @@ add_compile_definitions(CFG_TUSB_MCU=OPT_MCU_RP2040)
 if (ENABLE_DVI)
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/lib/PicoDVI/software/include)
     add_subdirectory(lib/PicoDVI/software/libdvi)
+else()
+    message(FATAL_ERROR "ENABLE_DVI=OFF is not currently supported by systems/neo1-x (neo1_video requires PicoDVI).")
 endif()
 
 add_subdirectory(lib/fatfs/source)

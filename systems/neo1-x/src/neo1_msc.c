@@ -4,6 +4,11 @@
 // runtime. This module presents a small set of memory-mapped I/O registers that
 // the 6502 can use to open a file on the mounted USB drive and read/write 512B
 // sectors.
+//
+// Design notes:
+// - this is a command-driven register interface, not a full filesystem API
+// - operations complete synchronously and expose completion via STATUS
+// - DATA acts as a byte stream for both sector data and command payloads
 
 #include "neo1_msc.h"
 #include "ff.h"
@@ -37,6 +42,7 @@ static bool g_open_pending = false;
 static char g_open_filename[NEO1_MSC_FILENAME_MAX];
 static uint16_t g_open_filename_pos = 0;
 
+// Filter directory entries to files intended for load/open workflows.
 static bool is_loadable_entry(const FILINFO* fno) {
     if (fno->fname[0] == '\0') {
         return false;
@@ -50,6 +56,7 @@ static bool is_loadable_entry(const FILINFO* fno) {
     return true;
 }
 
+// Close active enumeration cursor, if present.
 static void close_dir_if_open(void) {
     if (g_dir_open) {
         f_closedir(&g_dir);
@@ -57,24 +64,29 @@ static void close_dir_if_open(void) {
     }
 }
 
+// Ensure volume "0:" is mounted before any file/directory operation.
 static FRESULT ensure_mounted(void) {
     return f_mount(&g_fatfs, "0:", 1);
 }
 
+// Set STATUS register to error state with FatFs-compatible low bits.
 static void set_error(uint8_t err) {
     // Store a nonzero status so the CPU can detect the error.
     // High bit indicates error; lower bits are the FatFs result code.
     g_status = NEO1_MSC_STATUS_ERROR | (err & 0x7F);
 }
 
+// Set STATUS register to ready/success.
 static void set_ready(void) {
     g_status = NEO1_MSC_STATUS_READY;
 }
 
+// Set STATUS register to busy/in-progress.
 static void set_busy(void) {
     g_status = NEO1_MSC_STATUS_BUSY;
 }
 
+// OPEN handler: open/create filename previously streamed through DATA writes.
 static void do_open(void) {
     // Mount the filesystem if needed.
     // Note: the USB MSC driver mounts the volume as "0:".
@@ -108,6 +120,7 @@ static void do_open(void) {
     set_ready();
 }
 
+// CLOSE handler: close file and reset related state.
 static void do_close(void) {
     if (g_file_open) {
         f_close(&g_file);
@@ -118,6 +131,7 @@ static void do_close(void) {
     set_ready();
 }
 
+// DIR_OPEN handler: open root directory and reset enumeration metadata.
 static void do_dir_open(void) {
     FRESULT res = ensure_mounted();
     if (res != FR_OK) {
@@ -145,6 +159,7 @@ static void do_dir_open(void) {
     set_ready();
 }
 
+// DIR_NEXT handler: return next loadable entry name through DATA reads.
 static void do_dir_next(void) {
     if (!g_dir_open) {
         set_error((uint8_t)FR_INVALID_OBJECT);
@@ -188,6 +203,7 @@ static void do_dir_next(void) {
     }
 }
 
+// Find Nth loadable file in root directory.
 static bool find_indexed_file(uint8_t index, char* out_name, size_t out_name_size, FRESULT* out_res) {
     DIR dir;
     FILINFO fno;
@@ -236,6 +252,7 @@ static bool find_indexed_file(uint8_t index, char* out_name, size_t out_name_siz
     return false;
 }
 
+// OPEN_INDEX handler: resolve selected entry and dispatch regular OPEN.
 static void do_open_index(void) {
     FRESULT res = ensure_mounted();
     if (res != FR_OK) {
@@ -254,6 +271,7 @@ static void do_open_index(void) {
     do_open();
 }
 
+// DELETE_INDEX handler: resolve selected entry and delete it.
 static void do_delete_index(void) {
     FRESULT res = ensure_mounted();
     if (res != FR_OK) {
@@ -288,6 +306,7 @@ static void do_delete_index(void) {
     set_ready();
 }
 
+// READ handler: load sector-sized payload into DATA buffer.
 static void do_read(void) {
     if (!g_file_open) {
         set_error(1);
@@ -326,6 +345,7 @@ static void do_read(void) {
     set_ready();
 }
 
+// WRITE handler: write DATA buffer to selected sector and sync file.
 static void do_write(void) {
     if (!g_file_open) {
         set_error(1);
@@ -400,6 +420,7 @@ void neo1_msc_init(void) {
     set_ready();
 }
 
+// Read side of MSC memory-mapped register interface.
 uint8_t neo1_msc_io_read(uint16_t addr) {
     switch (addr) {
         case NEO1_IO_MSC_STATUS:
@@ -422,9 +443,11 @@ uint8_t neo1_msc_io_read(uint16_t addr) {
     }
 }
 
+// Write side of MSC memory-mapped register interface.
 void neo1_msc_io_write(uint16_t addr, uint8_t data) {
     switch (addr) {
         case NEO1_IO_MSC_CMD:
+            // Command dispatch point for 6502-side control flow.
             switch (data) {
                 case NEO1_MSC_CMD_OPEN:
                     // Prepare to receive filename via DATA port writes.
@@ -492,7 +515,7 @@ void neo1_msc_io_write(uint16_t addr, uint8_t data) {
                 break;
             }
 
-            // Otherwise DATA targets the sector buffer for read/write operations.
+            // Otherwise DATA targets the sector payload buffer.
             if (g_data_offset < sizeof(g_buffer)) {
                 g_buffer[g_data_offset++] = data;
             }

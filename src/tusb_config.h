@@ -1,6 +1,15 @@
 #ifndef _TUSB_CONFIG_H_
 #define _TUSB_CONFIG_H_
 
+// tusb_config.h
+//
+// TinyUSB host stack configuration for Neo1 top-level host app components.
+//
+// This configuration enables host mode with:
+// - HID support (keyboard + generic HID gamepad path)
+// - MSC support (USB mass storage for FatFs-backed access)
+// - optional hub support with bounded device count
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -29,6 +38,7 @@ extern "C" {
 
 #define CFG_TUH_ENUMERATION_BUFSIZE 256
 
+// Enabled TinyUSB host classes.
 #define CFG_TUH_HUB                 1
 #define CFG_TUH_CDC                 0
 #define CFG_TUH_HID                 4
@@ -36,8 +46,10 @@ extern "C" {
 #define CFG_TUH_MSC                 1
 #define CFG_TUH_VENDOR              0
 
+// Maximum connected devices including downstream hub devices.
 #define CFG_TUH_DEVICE_MAX          (CFG_TUH_HUB ? 5 : 1)
 
+// HID endpoint transfer buffer sizes.
 #define CFG_TUH_HID_EPIN_BUFSIZE    64
 #define CFG_TUH_HID_EPOUT_BUFSIZE   64
 

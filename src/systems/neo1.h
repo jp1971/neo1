@@ -20,7 +20,7 @@
 // - real WDC65C02 on Neo6502
 // - flat 64K memory backing store
 // - Neo 1 top ROM image at $E000-$FFFF (8 KB, including vectors)
-// - Apple-1 / Replica 1-style I/O at $D010-$D013
+// - Apple-1 / Replica 1-style I/O at $D010-$D013 plus Neo1 MSC I/O at $D014-$D01C
 // - buffered startup trace (no live printf in bus loop)
 //
 // ## zlib/libpng license
@@ -219,6 +219,11 @@ static inline uint16_t _neo1_normalize_io_addr(uint16_t addr) {
     }
 }
 
+// Bus read dispatch order:
+// 1) normalize mirrored addresses
+// 2) route VCFFA1 window first when enabled
+// 3) handle Neo1 keyboard/display and MSC registers
+// 4) fall back to RAM/ROM backing store
 static inline uint8_t _neo1_mem_read(neo1_t* sys, uint16_t addr) {
     addr = _neo1_normalize_io_addr(addr);
 
@@ -271,6 +276,11 @@ static inline uint8_t _neo1_mem_read(neo1_t* sys, uint16_t addr) {
     }
 }
 
+// Bus write dispatch order mirrors read side:
+// 1) normalize mirrored addresses
+// 2) route VCFFA1 window first when enabled
+// 3) handle Neo1 keyboard/display and MSC registers
+// 4) write to backing RAM unless inside protected ROM region
 static inline void _neo1_mem_write(neo1_t* sys, uint16_t addr, uint8_t data) {
     addr = _neo1_normalize_io_addr(addr);
 
@@ -328,6 +338,7 @@ static inline void _neo1_mem_write(neo1_t* sys, uint16_t addr, uint8_t data) {
     }
 }
 
+// Service one captured bus access from current CPU cycle and trace it.
 static inline void _neo1_mem_rw(neo1_t* sys, uint16_t addr, bool rw) {
     if (rw) {
         uint8_t data = _neo1_mem_read(sys, addr);
@@ -443,6 +454,7 @@ void neo1_tick(neo1_t* sys) {
     sys->system_ticks++;
 }
 
+// Execute for a host-time budget by converting microseconds to machine ticks.
 uint32_t neo1_exec(neo1_t* sys, uint32_t micro_seconds) {
     CHIPS_ASSERT(sys && sys->valid);
 
@@ -453,6 +465,7 @@ uint32_t neo1_exec(neo1_t* sys, uint32_t micro_seconds) {
             neo1_tick(sys);
         }
     } else {
+        // Debug callback mode allows cooperative stop conditions.
         for (uint32_t ticks = 0; (ticks < num_ticks) && !(*sys->debug.stopped); ticks++) {
             neo1_tick(sys);
             sys->debug.callback.func(sys->debug.callback.user_data, 0);
@@ -493,6 +506,7 @@ uint32_t neo1_save_snapshot(neo1_t* sys, neo1_t* dst) {
     return NEO1_SNAPSHOT_VERSION;
 }
 
+// Restore snapshot with version check and debug/memory fixups.
 bool neo1_load_snapshot(neo1_t* sys, uint32_t version, neo1_t* src) {
     CHIPS_ASSERT(sys && src);
     if (version != NEO1_SNAPSHOT_VERSION) {

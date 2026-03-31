@@ -1,0 +1,72 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "NEO1_PERSONALITY": "50",
+        "NEO1_ENABLE_VACI": "1",
+        "NEO1_ENABLE_VCFFA1": "1"
+      }
+    },
+    {
+      "name": "neo1-23-full",
+      "displayName": "Neo1-23 (VACI on, VCFFA1 on)",
+      "description": "Neo1-23 baseline policy profile: VACI and VCFFA1 both enabled.",
+      "inherits": "base",
+      "cacheVariables": {
+        "NEO1_PERSONALITY": "23",
+        "NEO1_ENABLE_VACI": "1",
+        "NEO1_ENABLE_VCFFA1": "1"
+      }
+    },
+    {
+      "name": "neo1-50-full",
+      "displayName": "Neo1-50 (VACI on, VCFFA1 on)",
+      "description": "Neo1-50 with both storage interfaces enabled.",
+      "inherits": "base",
+      "cacheVariables": {
+        "NEO1_PERSONALITY": "50",
+        "NEO1_ENABLE_VACI": "1",
+        "NEO1_ENABLE_VCFFA1": "1"
+      }
+    },
+    {
+      "name": "neo1-50-vaci-only",
+      "displayName": "Neo1-50 (VACI on, VCFFA1 off)",
+      "description": "Neo1-50 profile for VACI-only testing.",
+      "inherits": "base",
+      "cacheVariables": {
+        "NEO1_PERSONALITY": "50",
+        "NEO1_ENABLE_VACI": "1",
+        "NEO1_ENABLE_VCFFA1": "0"
+      }
+    },
+    {
+      "name": "neo1-50-vcffa1-only",
+      "displayName": "Neo1-50 (VACI off, VCFFA1 on)",
+      "description": "Neo1-50 profile for VCFFA1-only testing.",
+      "inherits": "base",
+      "cacheVariables": {
+        "NEO1_PERSONALITY": "50",
+        "NEO1_ENABLE_VACI": "0",
+        "NEO1_ENABLE_VCFFA1": "1"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "build",
+      "configurePreset": "neo1-50-full"
+    }
+  ]
+}

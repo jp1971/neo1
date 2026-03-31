@@ -1,14 +1,25 @@
+// msc_app.c
+//
+// TinyUSB MSC host + FatFs disk I/O glue used by the top-level host app path.
+//
+// Responsibilities:
+// - mount/unmount MSC volumes on device events
+// - expose FatFs disk_* hooks backed by TinyUSB read10/write10
+// - provide a simple inquiry callback for media identification/logging
+
 #include <inttypes.h>
 #include "tusb.h"
 #include "ff.h"
 #include "diskio.h"
 
+// Per-device FatFs volume state and in-flight transfer flags.
 static FATFS msc_fatfs_volumes[CFG_TUH_DEVICE_MAX];
 static volatile bool msc_volume_busy[CFG_TUH_DEVICE_MAX];
 static scsi_inquiry_resp_t msc_inquiry_resp;
 
 bool msc_inquiry_complete = false;
 
+// Completion callback for TinyUSB MSC INQUIRY command.
 bool inquiry_complete_cb(uint8_t dev_addr, tuh_msc_complete_data_t const *cb_data) {
     if (cb_data->csw->status != 0) {
         printf("MSC SCSI inquiry failed\r\n");
@@ -41,29 +52,37 @@ bool inquiry_complete_cb(uint8_t dev_addr, tuh_msc_complete_data_t const *cb_dat
     return true;
 }
 
+// TinyUSB host callback: device mounted, start SCSI inquiry.
 void tuh_msc_mount_cb(uint8_t dev_addr) {
     uint8_t const lun = 0;
     printf("MSC mounted, inquiring\r\n");
     tuh_msc_inquiry(dev_addr, lun, &msc_inquiry_resp, inquiry_complete_cb, 0);
 }
 
+// TinyUSB host callback: device unmounted, unmount matching FatFs drive.
 void tuh_msc_umount_cb(uint8_t dev_addr) {
     char drive_path[3] = "0:";
     drive_path[0] += dev_addr;
     f_unmount(drive_path);
 }
 
+// Pump TinyUSB task loop until async transfer callback clears busy flag.
 static void wait_for_disk_io(BYTE pdrv) {
     while (msc_volume_busy[pdrv]) {
         tuh_task();
     };
 }
 
+// TinyUSB transfer completion callback used by read/write paths.
 static bool disk_io_complete(uint8_t dev_addr, tuh_msc_complete_data_t const *cb_data) {
     (void)cb_data;
     msc_volume_busy[dev_addr] = false;
     return true;
 }
+
+// -----------------------------------------------------------------------------
+// FatFs disk I/O backend API
+// -----------------------------------------------------------------------------
 
 DSTATUS disk_status(BYTE pdrv) {
     uint8_t dev_addr = pdrv;

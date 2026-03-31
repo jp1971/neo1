@@ -1,12 +1,12 @@
-# V0 Baseline — VCFFA1 Smoke Matrix
+# VCFFA1 V0 Baseline — Smoke Matrix
 
 Date: 2026-03-22
 Owner: Neo1 solo mainline
-Purpose: freeze known-good VCFFA1 behavior before VACI implementation changes begin.
+Purpose: freeze known-good VCFFA1 behavior before the next storage/runtime changes.
 
 ## Scope
 
-This V0 gate validates that current VCFFA1 behavior remains stable while VACI work starts on `main`.
+This V0 gate validates that current VCFFA1 behavior remains stable as the reference baseline.
 
 In scope:
 - `1810R` mini-menu and catalog output
@@ -17,6 +17,7 @@ In scope:
 
 Out of scope:
 - new VCFFA1 feature work
+- VACI feature implementation details
 - broad UX redesign
 
 ## Pre-Run Conditions
@@ -73,7 +74,7 @@ Regression fixed:
 - Fixed by saving index before PrintCR call; also corrected RAM linker config (`$1800` vs `$0400`)
 - Hardware-tested: all valid load indices now work correctly
 
-## Exit Decision
+## Baseline Decision
 
 ✅ PASS — proceed to V1 (`C100R` VACI read flow)
 
@@ -81,4 +82,18 @@ S1-S8 status:
 - [x] S1-S4: Load path working
 - [x] S6-S8: Delete and menu navigation working
 - [⊗] S5: Write/overwrite deferred; root cause not yet diagnosed
-- [→] Defer W path improvements until after V1-V2 VACI baseline is solid
+- [→] Defer W path improvements until the next storage milestone work resumes
+
+## Naming Convention Note
+
+Doc naming and wording use **VCFFA1** (virtual CFFA1) as the feature name.
+Code symbols currently remain `neo1_cffa1_*` for compatibility and to avoid churn.
+A dedicated rename pass can be done later when active VCFFA1 development resumes.
+
+### Deferred Rename Checklist (when VCFFA1 work resumes)
+
+- Pick a single canonical prefix (`vcffa1_` vs `neo1_cffa1_`) and apply it consistently.
+- Rename module files together in one pass (header, implementation, generated artifacts if any).
+- Rename public symbols and compile-time flags in the same pass.
+- Update include paths and any RAM/tool references that embed old names.
+- Run full compile/flash/smoke matrix after rename before functional changes.

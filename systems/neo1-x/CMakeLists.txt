@@ -12,6 +12,28 @@ add_executable(neo1
     ${CMAKE_SOURCE_DIR}/lib/fatfs/source/diskio.c
 )
 
+# Personality and feature toggles are exposed as cache variables so they can be
+# switched via CMake configure presets or one-off -D flags.
+set(NEO1_PERSONALITY "50" CACHE STRING "Neo1 personality: 23 or 50")
+set_property(CACHE NEO1_PERSONALITY PROPERTY STRINGS 23 50)
+set(NEO1_ENABLE_VACI "1" CACHE STRING "Enable VACI runtime support (1 or 0)")
+set(NEO1_ENABLE_VCFFA1 "1" CACHE STRING "Enable VCFFA1 runtime support (1 or 0)")
+
+if (NOT NEO1_ENABLE_VACI MATCHES "^[01]$")
+    message(FATAL_ERROR "NEO1_ENABLE_VACI must be 0 or 1")
+endif()
+
+if (NOT NEO1_ENABLE_VCFFA1 MATCHES "^[01]$")
+    message(FATAL_ERROR "NEO1_ENABLE_VCFFA1 must be 0 or 1")
+endif()
+
+# Policy: Neo1-23 always ships with both VACI and VCFFA1 enabled.
+if (NEO1_PERSONALITY STREQUAL "23")
+    if (NOT (NEO1_ENABLE_VACI STREQUAL "1" AND NEO1_ENABLE_VCFFA1 STREQUAL "1"))
+        message(FATAL_ERROR "NEO1_PERSONALITY=23 requires NEO1_ENABLE_VACI=1 and NEO1_ENABLE_VCFFA1=1")
+    endif()
+endif()
+
 # Use checked-in RAM image headers instead of auto-building from assembly.
 # This simplifies the build and avoids the need for ca65/ld65/python3 toolchains,
 # and eliminates the power-cycle issue that occurred after rebuilding the headers.
@@ -20,16 +42,17 @@ target_include_directories(neo1 BEFORE PRIVATE ${CMAKE_SOURCE_DIR}/src/ram)
 target_compile_options(neo1 PRIVATE -Wall)
 
 target_compile_definitions(neo1 PRIVATE
+    # PicoDVI/serial timing config.
     DVI_DEFAULT_SERIAL_CONFIG=olimex_neo6502_cfg
     DVI_VERTICAL_REPEAT=1
     DVI_N_TMDS_BUFFERS=3
     DVI_MONOCHROME_TMDS=1
     NEO1_ENABLE_DVI=1
-    NEO1_PERSONALITY=50
-    # Personality toggles -- all default to (1). Override here to disable.
-    # NEO1_PERSONALITY=50   # Neo1-50: WozMon-only ROM at $FF00, E000-EFFF writable
-    # NEO1_ENABLE_VACI=0    # set 0 to free $C100 for hardware ACI or other uses
-    # NEO1_ENABLE_VCFFA1=0  # set 0 to free $AFF0-$AFFF and $AFDC-$AFDD
+
+    # Runtime personality/features passed through to firmware C sources.
+    NEO1_PERSONALITY=${NEO1_PERSONALITY}
+    NEO1_ENABLE_VACI=${NEO1_ENABLE_VACI}
+    NEO1_ENABLE_VCFFA1=${NEO1_ENABLE_VCFFA1}
 )
 
 target_include_directories(neo1 PRIVATE

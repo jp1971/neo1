@@ -1,5 +1,13 @@
 #pragma once
 
+// neo1_cffa1.h
+//
+// Neo1 virtual CFFA1 compatibility bridge.
+//
+// This module exposes a minimal CFFA1-like register window and signature bytes
+// so legacy monitor/tooling paths can talk to block storage semantics while the
+// backend is implemented on top of host-side FatFs file I/O.
+
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -14,6 +22,8 @@ extern "C" {
 // - provide a safe readable/writable I/O window at $AFF0-$AFFF
 // - keep behavior deterministic while backend commands are unimplemented
 
+// Signature bytes expected by CFFA1-aware software.
+
 #define NEO1_CFFA1_ID1_ADDR   (0xAFDC)
 #define NEO1_CFFA1_ID2_ADDR   (0xAFDD)
 #define NEO1_CFFA1_ID1_VALUE  (0xCF)
@@ -22,6 +32,14 @@ extern "C" {
 #define NEO1_CFFA1_IO_BASE    (0xAFF0)
 #define NEO1_CFFA1_IO_END     (0xAFFF)
 #define NEO1_CFFA1_IO_SIZE    (0x10)
+
+// Register map overview for $AFF0-$AFFF window:
+// - +0x06 ALTSTATUS / DEVCTRL mirror
+// - +0x08 DATA (streams block bytes)
+// - +0x09 ERROR / FEATURE
+// - +0x0A SECTOR COUNT (currently pass-through)
+// - +0x0B..+0x0E LBA0..LBA3
+// - +0x0F STATUS / COMMAND
 
 // ATA-like register offsets within $AFF0-$AFFF.
 #define NEO1_CFFA1_REG_DEVCTRL_ALTSTATUS  (0x06)
@@ -55,6 +73,7 @@ extern "C" {
 #define NEO1_CFFA1_STATUS_DRDY            (1u << 6)
 #define NEO1_CFFA1_STATUS_BSY             (1u << 7)
 
+// Public bridge API used by Neo1 runtime bus hooks.
 void neo1_cffa1_init(void);
 bool neo1_cffa1_handles_addr(uint16_t addr);
 uint8_t neo1_cffa1_io_read(uint16_t addr);

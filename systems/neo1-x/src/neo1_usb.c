@@ -1,3 +1,17 @@
+// neo1_usb.c
+//
+// TinyUSB host integration for Neo1.
+//
+// Input path:
+// - TinyUSB HID callbacks deliver keyboard reports
+// - reports are edge-detected against previous state
+// - keycodes are translated to ASCII/control bytes
+// - bytes are forwarded to the registered Neo1 callback
+//
+// Storage path:
+// - TinyUSB MSC mount/unmount events update mounted state
+// - FatFs is mounted as "0:" for simple directory listing/debug
+
 #include "neo1_usb.h"
 
 #include <string.h>
@@ -27,6 +41,7 @@ static FATFS fs;
 // internal helpers
 // -----------------------------------------------------------------------------
 
+// Returns true if keycode exists in the current 6-key rollover report.
 static inline bool neo1_usb_is_key_in_report(hid_keyboard_report_t const* report, uint8_t keycode) {
     for (uint32_t i = 0; i < 6; i++) {
         if (report->keycode[i] == keycode) {
@@ -36,12 +51,14 @@ static inline bool neo1_usb_is_key_in_report(hid_keyboard_report_t const* report
     return false;
 }
 
+// Forward one decoded byte to system callback if registered.
 static void neo1_usb_emit_char(uint8_t ch) {
     if (g_char_handler) {
         g_char_handler(ch, g_char_handler_user_data);
     }
 }
 
+// Decode one HID keyboard report and emit newly-pressed keys only.
 static void neo1_usb_process_kbd_report(hid_keyboard_report_t const* report) {
     // Modifier bits from TinyUSB HID definitions.
     const bool shift =
@@ -81,6 +98,7 @@ static void neo1_usb_process_kbd_report(hid_keyboard_report_t const* report) {
                 if (keycode < 128) {
                     uint8_t ch = keycode2ascii[keycode][shift ? 1 : 0];
                     if (ch) {
+                        // Ctrl-modified letters map to ASCII control range.
                         if (ctrl) {
                             uint8_t upper = (uint8_t)toupper((int)ch);
                             if ((upper >= 'A') && (upper <= 'Z')) {
@@ -103,6 +121,7 @@ static void neo1_usb_process_kbd_report(hid_keyboard_report_t const* report) {
 // -----------------------------------------------------------------------------
 
 void neo1_usb_init(neo1_usb_char_handler_t handler, void* user_data) {
+    // Reset module state before bringing up TinyUSB host stack.
     g_char_handler = handler;
     g_char_handler_user_data = user_data;
     g_keyboard_mounted = false;
@@ -160,7 +179,7 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t cons
     uint8_t const itf_protocol = tuh_hid_interface_protocol(dev_addr, instance);
 
     if (itf_protocol == HID_ITF_PROTOCOL_KEYBOARD) {
-        // printf("[usb] keyboard report dev=%u inst=%u\n", dev_addr, instance);
+        // Keyboard reports are parsed into ASCII/control bytes for Neo1 input.
         neo1_usb_process_kbd_report((hid_keyboard_report_t const*) report);
     }
 
@@ -211,7 +230,7 @@ void tuh_umount_cb(uint8_t dev_addr) {
     printf("[usb] device unmounted dev=%u\n", dev_addr);
 }
 
-// Test function to list files
+// Debug helper to list root directory entries on mounted MSC media.
 void neo1_msc_list_files(void) {
     if (!g_msc_mounted) {
         printf("[msc] no drive mounted\n");

@@ -1,9 +1,20 @@
+// neo1_terminal.c
+//
+// Software text terminal implementation for Neo1.
+//
+// Responsibilities:
+// - maintain a 40x24 character buffer and cursor state
+// - implement newline, wrapping, and scrolling behavior
+// - provide a debug dump view
+// - render character cells into the monochrome framebuffer consumed by video
+
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 
 #include "neo1_terminal.h"
 
+// Scroll one text row upward and clear the last row.
 static void neo1_terminal_scroll(neo1_terminal_t* term) {
     memmove(&term->chars[0][0],
             &term->chars[1][0],
@@ -12,6 +23,7 @@ static void neo1_terminal_scroll(neo1_terminal_t* term) {
     term->cursor_y = NEO1_TERM_ROWS - 1;
 }
 
+// Move to column 0 on the next row, scrolling if already on the last row.
 static void neo1_terminal_newline(neo1_terminal_t* term) {
     term->cursor_x = 0;
     if (term->cursor_y + 1 < NEO1_TERM_ROWS) {
@@ -28,16 +40,19 @@ void neo1_terminal_clear(neo1_terminal_t* term) {
 }
 
 void neo1_terminal_putc(neo1_terminal_t* term, uint8_t ch) {
+    // CR is the runtime's line-advance convention.
     if (ch == '\r') {
         neo1_terminal_newline(term);
         return;
     }
 
+    // Form feed clears the software terminal.
     if (ch == 0x0C) {
         neo1_terminal_clear(term);
         return;
     }
 
+    // Ignore non-printable / non-ASCII bytes.
     if ((ch < 32) || (ch > 126)) {
         return;
     }
@@ -74,6 +89,7 @@ void neo1_terminal_render_to_framebuffer(
     const uint8_t* character_rom,
     uint8_t fb[NEO1_FB_HEIGHT][NEO1_FB_WIDTH]) {
 
+    // Start with a fully blank 1-bpp framebuffer.
     memset(fb, 0, NEO1_FB_HEIGHT * NEO1_FB_WIDTH);
 
     for (uint32_t row = 0; row < NEO1_TERM_ROWS; row++) {
@@ -82,6 +98,7 @@ void neo1_terminal_render_to_framebuffer(
             uint32_t glyph_index = ((uint32_t)ch & 0x7F) * NEO1_CHAR_HEIGHT;
 
             for (uint32_t gy = 0; gy < NEO1_CHAR_HEIGHT; gy++) {
+                // Character ROM uses 7 visible bits per row for current font data.
                 uint8_t bits = character_rom[glyph_index + gy] & 0x7F;
                 uint32_t y = row * NEO1_CHAR_HEIGHT + gy;
 

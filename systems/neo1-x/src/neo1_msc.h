@@ -1,5 +1,18 @@
 #pragma once
 
+// neo1_msc.h
+//
+// Neo1 memory-mapped Mass Storage Class (MSC) bridge.
+//
+// The 6502 side uses a compact command/status register protocol to access files
+// on the mounted USB drive through FatFs-backed host services.
+//
+// Typical command flow:
+// 1) write parameters (sector/index/filename bytes)
+// 2) write command opcode to CMD
+// 3) poll STATUS until READY or ERROR
+// 4) stream payload via DATA when applicable
+
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -7,14 +20,6 @@
 extern "C" {
 #endif
 
-// Memory-mapped I/O for Neo1 MSC (Mass Storage) access.
-//
-// This is a minimal command-based interface where the 6502 writes a command
-// to a register and then polls a status register until the command completes.
-//
-// The 6502 writes the filename bytes (including terminating NUL) to the DATA
-// port after issuing an OPEN command.
-//
 // Debug output:
 // Set NEO1_MSC_DEBUG to 0 to disable all debug output, or 1 (default) to enable.
 // Debug messages are printed to the host console (stdio).
@@ -30,6 +35,15 @@ extern "C" {
 #define NEO1_IO_MSC_INFO       (0xD01A)
 #define NEO1_IO_MSC_SIZE_LO    (0xD01B)
 #define NEO1_IO_MSC_SIZE_HI    (0xD01C)
+
+// Register roles:
+// - CMD:      command dispatch
+// - SECTOR_*: 16-bit sector index for READ/WRITE
+// - DATA:     byte stream for sector payload or directory/file name payload
+// - STATUS:   busy/ready/error
+// - INDEX:    selector for OPEN_INDEX/DELETE_INDEX
+// - INFO:     directory entry metadata (set by DIR_NEXT)
+// - SIZE_*:   16-bit file size hint (reported after OPEN/DIR_NEXT, also write length hint for WRITE)
 
 // Command opcodes written to NEO1_IO_MSC_CMD.
 #define NEO1_MSC_CMD_OPEN      (0x01)
