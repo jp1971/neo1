@@ -59,9 +59,9 @@
 #define NEO1_ENABLE_VCFFA1 (1)
 #endif
 
-#include "../../systems/neo1-x/src/neo1_msc.h"
+#include "../../systems/neo1-pico/src/neo1_msc.h"
 #if NEO1_ENABLE_VCFFA1
-#include "../../systems/neo1-x/src/neo1_cffa1.h"
+#include "../../systems/neo1-pico/src/neo1_cffa1.h"
 #endif
 
 #ifdef __cplusplus

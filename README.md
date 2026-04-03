@@ -1,6 +1,25 @@
-# Neo1-x
+# Neo1
 
-Neo1-x is a modern 65C02 system running on the Olimex Neo6502 platform: It can be configured as a Neo1-50 to emulate an Apple-1 50 years after it was first demoed at the Homebrew Computer Club in April 1976 or a Neo1-23 to emulate a Replica 1 23 years after its initial release in 2003.
+Neo1 is a modern 65C02 system project with multiple personalities and, now, multiple platform targets. The current hardware target runs on the Olimex Neo6502 platform and can be configured as a Neo1-50 to emulate an Apple-1 50 years after it was first demoed at the Homebrew Computer Club in April 1976 or a Neo1-23 to emulate a Replica 1 23 years after its initial release in 2003.
+
+## Naming Axes
+
+Neo1 now has three distinct naming axes that should stay separate:
+
+- `Neo1` — the overall project and machine family.
+- `23` / `50` — the machine personality selected at compile time.
+- `pico` / `sdl` — the platform implementation target.
+
+Working rule:
+
+- Personality names should not appear in `systems/` directory names.
+- `systems/` directory names should describe platform implementation, not the ROM personality.
+- CMake presets should encode both axes explicitly.
+
+Platform targets:
+
+- `systems/neo1-pico/` — Olimex Neo6502 / RP2040 hardware target
+- `systems/neo1-sdl/` — macOS/Linux host target using SDL2
 
 ## What boots and where
 
@@ -25,7 +44,7 @@ Policy:
 - `NEO1_PERSONALITY=23` requires both `NEO1_ENABLE_VACI=1` and `NEO1_ENABLE_VCFFA1=1`.
 - Feature toggling is primarily intended for `NEO1_PERSONALITY=50` experiments.
 
-Defaults are set in `systems/neo1-x/CMakeLists.txt`.
+Defaults are currently set in `systems/neo1-pico/CMakeLists.txt`.
 
 Meaning:
 
@@ -60,10 +79,12 @@ After changing these values, run configure once, then use **Compile Project** as
 
 `CMakePresets.json` includes ready-to-use profiles:
 
-- `neo1-23-full`
-- `neo1-50-full`
-- `neo1-50-vaci-only`
-- `neo1-50-vcffa1-only`
+- `neo1-pico-23-full`
+- `neo1-pico-50-full`
+- `neo1-pico-50-vaci-only`
+- `neo1-sdl-23-full`
+- `neo1-sdl-50-full`
+- `neo1-sdl-50-vaci-only`
 
 In VS Code:
 
@@ -74,10 +95,10 @@ In VS Code:
 CLI equivalent example:
 
 ```sh
-cmake --preset neo1-50-vaci-only
+cmake --preset neo1-pico-50-vaci-only
 ```
 
-## Neo1-x memory map (current)
+## Current RP2040 Memory Map
 
 ```
 +-----------------------+
@@ -146,7 +167,7 @@ Without one of those, firmware reset control may not fully reset the external 65
 
 ## USB storage requirements
 
-Neo1-x uses FatFs over TinyUSB MSC. FatFs requires an **MBR-partitioned FAT32** volume.
+The current RP2040 target uses FatFs over TinyUSB MSC. FatFs requires an **MBR-partitioned FAT32** volume.
 
 **Files to place in the root of the volume:**
 - Any `.BIN` — loadable programs for VACI
@@ -172,7 +193,8 @@ Exposes CFFA1 signature bytes at `$AFDC`/`$AFDD` and a ProDOS block interface at
 
 ## Repository layout (high-level)
 
-- `systems/neo1-x/` — machine build target and RP2040-side platform code
+- `systems/neo1-pico/` — RP2040-side platform target
+- `systems/neo1-sdl/` — SDL2 host platform target
 - `src/systems/` — core Neo1 runtime/memory model
 - `src/roms/` — ROM images/assets
 - `src/ram/` — RAM-loaded utility payloads (VACI and VCFFA1 support)
@@ -182,3 +204,4 @@ Exposes CFFA1 signature bytes at `$AFDC`/`$AFDD` and a ProDOS block interface at
 
 - `docs/neo1-milestone-plan.md` — overall Neo1 milestone plan (VACI track)
 - `docs/vcffa1-v0-baseline.md` — VCFFA1 smoke baseline and naming notes
+- `docs/neo1-sdl-emulator-plan.md` — host-target architecture, milestones, and naming plan

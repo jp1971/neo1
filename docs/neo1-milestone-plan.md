@@ -5,6 +5,9 @@ Completed: 2026-03-24
 Status: Complete
 Scope owner: Neo1 solo mainline (no branch required)
 
+Related plans:
+- [neo1-sdl-emulator-plan.md](neo1-sdl-emulator-plan.md) — macOS/Linux SDL2 host target (post-RC1 track)
+
 ## 0) Terminology
 
 - **Neo1**: overall machine/platform project.
