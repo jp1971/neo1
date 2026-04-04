@@ -12,7 +12,7 @@
 // Required includes before neo1.h:
 //
 // - chips/chips_common.h
-// - chips/wdc65C02cpu.h   (for Neo6502 hardware CPU path)
+// - chips/neo1_cpu_backend.h   (selects CPU backend; default is wdc65C02cpu.h)
 // - chips/mem.h
 // - chips/clk.h
 //
@@ -46,6 +46,18 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
+
+#ifndef MOS6502CPU_NEEDS_EXTERNAL_BUS
+#define MOS6502CPU_NEEDS_EXTERNAL_BUS (1)
+#endif
+
+#ifndef NEO1_SLEEP_US
+#if defined(PICO_ON_DEVICE) || defined(PICO_RP2040)
+#define NEO1_SLEEP_US(us) sleep_us(us)
+#else
+#define NEO1_SLEEP_US(us) ((void)(us))
+#endif
+#endif
 
 #ifndef NEO1_ROM_BASE
 #define NEO1_ROM_BASE (0xE000)
@@ -135,6 +147,7 @@ typedef struct {
     uint8_t dsp_ddr;
     uint8_t kbd_data;
     uint8_t dsp_data;
+    bool dsp_ready;
 
     // Optional display callback
     neo1_char_out_t char_out;
@@ -235,6 +248,16 @@ static inline uint8_t _neo1_mem_read(neo1_t* sys, uint16_t addr) {
 
     switch (addr) {
         case NEO1_IO_KBD:
+#if (NEO1_CPU_BACKEND == NEO1_CPU_BACKEND_SOFT65C02)
+            // Host robustness: always treat KBD reads as data-port reads so a
+            // pending key cannot get stuck behind control-register mode bits.
+            {
+                uint8_t v = sys->kbd_latched;
+                sys->kbd_latched = 0;
+                sys->kbd_data = 0;
+                return v;
+            }
+#else
             // If bit 2 is clear, access the DDR. Otherwise access the peripheral register.
             if ((sys->kbd_cr & 0x04) == 0) {
                 return sys->kbd_ddr;
@@ -244,6 +267,7 @@ static inline uint8_t _neo1_mem_read(neo1_t* sys, uint16_t addr) {
                 sys->kbd_data = 0;
                 return v;
             }
+#endif
 
         case NEO1_IO_KBDCR:
             // Preserve the programmed control bits, but report key-ready in bit 7.
@@ -254,13 +278,12 @@ static inline uint8_t _neo1_mem_read(neo1_t* sys, uint16_t addr) {
             if ((sys->dsp_cr & 0x04) == 0) {
                 return sys->dsp_ddr;
             } else {
-                // WozMon polls the display interface using BIT on $D012.
-                // Returning 0x00 makes N=0 so BMI falls through as “display ready”.
+                // Keep host display non-blocking: always report ready semantics.
                 return 0x00;
             }
 
         case NEO1_IO_DSPCR:
-            // Minimal model: preserve the programmed control bits and report ready in bit 7.
+            // Preserve programmed control bits and report ready in bit 7.
             return (sys->dsp_cr & 0x7F) | 0x80;
 
         case NEO1_IO_MSC_STATUS:
@@ -309,6 +332,7 @@ static inline void _neo1_mem_write(neo1_t* sys, uint16_t addr, uint8_t data) {
                 sys->dsp_ddr = data;
             } else {
                 sys->dsp_data = data;
+                sys->dsp_ready = true;
                 if (sys->char_out) {
                     sys->char_out(data, sys->char_out_user_data);
                 }
@@ -373,10 +397,6 @@ void neo1_init(neo1_t* sys, const neo1_desc_t* desc) {
     sys->char_out = desc->char_out.func;
     sys->char_out_user_data = desc->char_out.user_data;
 
-    // Initialize hardware CPU glue / CPU abstraction.
-    // On Neo6502, the second argument is ignored by the macro in wdc65C02cpu.h.
-    MOS6502CPU_INIT(&sys->cpu, 0);
-
     // Build flat memory map and preload memory.
     _neo1_init_memorymap(sys);
 
@@ -390,6 +410,10 @@ void neo1_init(neo1_t* sys, const neo1_desc_t* desc) {
     // Copy the selected top ROM payload to NEO1_ROM_BASE. The selected image
     // should provide NMI/RESET/IRQ vectors at $FFFA-$FFFF.
     memcpy(&sys->ram[NEO1_ROM_BASE], sys->rom, desc->roms.rom.size);
+
+    // Initialize hardware CPU glue / CPU abstraction only after memory/ROM are
+    // ready, so soft backends can safely fetch reset vectors during init.
+    MOS6502CPU_INIT(&sys->cpu, sys);
 
     printf("[neo1] mem E000=%02X E001=%02X F000=%02X F001=%02X FFFA=%02X FFFB=%02X FFFC=%02X FFFD=%02X FFFE=%02X FFFF=%02X\n",
         sys->ram[0xE000], sys->ram[0xE001],
@@ -406,6 +430,7 @@ void neo1_init(neo1_t* sys, const neo1_desc_t* desc) {
     sys->dsp_ddr = 0x00;
     sys->kbd_data = 0x00;
     sys->dsp_data = 0x00;
+    sys->dsp_ready = true;
 
     // Clear startup trace.
     sys->startup_trace_len = 0;
@@ -429,6 +454,7 @@ void neo1_reset(neo1_t* sys) {
     sys->dsp_ddr = 0x00;
     sys->kbd_data = 0x00;
     sys->dsp_data = 0x00;
+    sys->dsp_ready = true;
     sys->startup_trace_len = 0;
     sys->startup_trace_complete = false;
     sys->system_ticks = 0;
@@ -438,7 +464,7 @@ void neo1_reset(neo1_t* sys) {
     // Experimental explicit reset control. This only affects the real 65C02
     // if GPIO 26 is mechanically connected to the CPU RESET line.
     MOS6502CPU_SET_RESET(&sys->cpu, true);
-    sleep_us(1000);
+    NEO1_SLEEP_US(1000);
     MOS6502CPU_SET_RESET(&sys->cpu, false);
 }
 
@@ -449,7 +475,9 @@ void neo1_tick(neo1_t* sys) {
     //   1) tick the real CPU / hardware glue
     //   2) service memory using captured addr/rw
     MOS6502CPU_TICK(&sys->cpu);
+#if MOS6502CPU_NEEDS_EXTERNAL_BUS
     _neo1_mem_rw(sys, sys->cpu.addr, sys->cpu.rw);
+#endif
 
     sys->system_ticks++;
 }
@@ -520,5 +548,17 @@ bool neo1_load_snapshot(neo1_t* sys, uint32_t version, neo1_t* src) {
     *sys = im;
     return true;
 }
+
+#if (NEO1_CPU_BACKEND == NEO1_CPU_BACKEND_SOFT65C02)
+uint8_t neo1_soft65c02_mem_read(void* user, uint16_t addr) {
+    neo1_t* sys = (neo1_t*)user;
+    return _neo1_mem_read(sys, addr);
+}
+
+void neo1_soft65c02_mem_write(void* user, uint16_t addr, uint8_t data) {
+    neo1_t* sys = (neo1_t*)user;
+    _neo1_mem_write(sys, addr, data);
+}
+#endif
 
 #endif // CHIPS_IMPL

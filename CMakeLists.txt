@@ -17,6 +17,13 @@ cmake_minimum_required(VERSION 3.12)
 set(NEO1_PLATFORM "pico" CACHE STRING "Neo1 platform target: pico or sdl")
 set_property(CACHE NEO1_PLATFORM PROPERTY STRINGS pico sdl)
 
+# CPU backend selector used by chips/neo1_cpu_backend.h.
+# 1 = wdc65C02 hardware glue (current neo1-pico path)
+# 2 = mos6502 software core (NMOS 6502)
+# 3 = soft65C02 software core (placeholder until vendored)
+set(NEO1_CPU_BACKEND "1" CACHE STRING "Neo1 CPU backend: 1=wdc65C02, 2=mos6502, 3=soft65C02")
+set_property(CACHE NEO1_CPU_BACKEND PROPERTY STRINGS 1 2 3)
+
 project(neo1                           C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)

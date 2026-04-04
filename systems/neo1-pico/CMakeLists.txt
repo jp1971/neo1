@@ -19,6 +19,11 @@ set_property(CACHE NEO1_PERSONALITY PROPERTY STRINGS 23 50)
 set(NEO1_ENABLE_VACI "1" CACHE STRING "Enable VACI runtime support (1 or 0)")
 set(NEO1_ENABLE_VCFFA1 "1" CACHE STRING "Enable VCFFA1 runtime support (1 or 0)")
 
+# Safety gate: neo1-pico currently depends on real 65C02 hardware glue.
+if (NOT NEO1_CPU_BACKEND STREQUAL "1")
+    message(FATAL_ERROR "neo1-pico requires NEO1_CPU_BACKEND=1 (wdc65C02 hardware backend) for now")
+endif()
+
 if (NOT NEO1_ENABLE_VACI MATCHES "^[01]$")
     message(FATAL_ERROR "NEO1_ENABLE_VACI must be 0 or 1")
 endif()
@@ -53,6 +58,7 @@ target_compile_definitions(neo1 PRIVATE
     NEO1_PERSONALITY=${NEO1_PERSONALITY}
     NEO1_ENABLE_VACI=${NEO1_ENABLE_VACI}
     NEO1_ENABLE_VCFFA1=${NEO1_ENABLE_VCFFA1}
+    NEO1_CPU_BACKEND=${NEO1_CPU_BACKEND}
 )
 
 target_include_directories(neo1 PRIVATE
