@@ -3,10 +3,123 @@
 #include <SDL.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "../../../src/roms/neo1_apple1_video_rom_image.h"
 
 static SDL_Window* window_handle;
 static SDL_Renderer* renderer_handle;
 static bool should_quit;
+static FILE* disk_handle;
+static char disk_path[512];
+
+enum {
+    NEO1_TERM_COLS = 40,
+    NEO1_TERM_ROWS = 24,
+    NEO1_CELL_W = 14,
+    NEO1_CELL_H = 16,
+};
+
+static uint8_t term_cells[NEO1_TERM_ROWS][NEO1_TERM_COLS];
+static int term_cursor_x;
+static int term_cursor_y;
+static bool term_dirty;
+
+#define NEO1_SDL_SECTOR_SIZE (512u)
+#define NEO1_SDL_DEFAULT_DISK_MB (32u)
+
+static bool neo1_platform_open_disk_image(void) {
+    const char* env_path = getenv("NEO1_SDL_DISK");
+    const char* path = (env_path && env_path[0]) ? env_path : "neo1_sdl_disk.img";
+
+    disk_path[0] = '\0';
+    (void)snprintf(disk_path, sizeof(disk_path), "%s", path);
+
+    disk_handle = fopen(path, "r+b");
+    if (!disk_handle) {
+        disk_handle = fopen(path, "w+b");
+        if (!disk_handle) {
+            SDL_Log("disk image open/create failed: %s", path);
+            return false;
+        }
+
+        // Create a sparse 32 MB default image.
+        const long long bytes = (long long)NEO1_SDL_DEFAULT_DISK_MB * 1024ll * 1024ll;
+        if ((bytes > 0) && (fseek(disk_handle, (long)(bytes - 1), SEEK_SET) == 0)) {
+            (void)fputc(0, disk_handle);
+            (void)fflush(disk_handle);
+        }
+    }
+
+    SDL_Log("neo1-sdl disk image: %s", path);
+    return true;
+}
+
+static void neo1_term_scroll_up(void) {
+    memmove(&term_cells[0][0], &term_cells[1][0], (NEO1_TERM_ROWS - 1) * NEO1_TERM_COLS);
+    memset(&term_cells[NEO1_TERM_ROWS - 1][0], ' ', NEO1_TERM_COLS);
+}
+
+static void neo1_term_newline(void) {
+    term_cursor_x = 0;
+    term_cursor_y++;
+    if (term_cursor_y >= NEO1_TERM_ROWS) {
+        neo1_term_scroll_up();
+        term_cursor_y = NEO1_TERM_ROWS - 1;
+    }
+}
+
+static void neo1_term_put_glyph(uint8_t ch) {
+    if (term_cursor_x < 0 || term_cursor_x >= NEO1_TERM_COLS ||
+        term_cursor_y < 0 || term_cursor_y >= NEO1_TERM_ROWS) {
+        return;
+    }
+    term_cells[term_cursor_y][term_cursor_x] = ch;
+    term_cursor_x++;
+    if (term_cursor_x >= NEO1_TERM_COLS) {
+        neo1_term_newline();
+    }
+}
+
+static void neo1_term_draw(void) {
+    if (!renderer_handle) {
+        return;
+    }
+
+    SDL_SetRenderDrawColor(renderer_handle, 10, 12, 10, 255);
+    SDL_RenderClear(renderer_handle);
+    SDL_SetRenderDrawColor(renderer_handle, 120, 255, 140, 255);
+
+    for (int row = 0; row < NEO1_TERM_ROWS; row++) {
+        for (int col = 0; col < NEO1_TERM_COLS; col++) {
+            const uint8_t ch = term_cells[row][col] & 0x7F;
+            const int glyph_base = ((int)ch) * 8;
+            if ((glyph_base + 7) >= (int)sizeof(apple1_vid)) {
+                continue;
+            }
+
+            const int dst_x = col * NEO1_CELL_W;
+            const int dst_y = row * NEO1_CELL_H;
+
+            for (int gy = 0; gy < 8; gy++) {
+                const uint8_t bits = apple1_vid[glyph_base + gy];
+                for (int gx = 0; gx < 6; gx++) {
+                    if (bits & (1u << (5 - gx))) {
+                        SDL_Rect p = {
+                            dst_x + gx * 2 + 1,
+                            dst_y + gy * 2,
+                            2,
+                            2,
+                        };
+                        SDL_RenderFillRect(renderer_handle, &p);
+                    }
+                }
+            }
+        }
+    }
+}
 
 void neo1_platform_init(int width, int height, const char* title) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_TIMER) != 0) {
@@ -35,9 +148,25 @@ void neo1_platform_init(int width, int height, const char* title) {
     SDL_SetRenderDrawColor(renderer_handle, 16, 16, 16, 255);
     SDL_RenderClear(renderer_handle);
     SDL_RenderPresent(renderer_handle);
+
+    SDL_RaiseWindow(window_handle);
+    SDL_StartTextInput();
+
+    memset(term_cells, ' ', sizeof(term_cells));
+    term_cursor_x = 0;
+    term_cursor_y = 0;
+    term_dirty = true;
+
+    (void)neo1_platform_open_disk_image();
 }
 
 void neo1_platform_shutdown(void) {
+    SDL_StopTextInput();
+
+    if (disk_handle) {
+        fclose(disk_handle);
+        disk_handle = NULL;
+    }
     if (renderer_handle) {
         SDL_DestroyRenderer(renderer_handle);
         renderer_handle = NULL;
@@ -57,7 +186,42 @@ void neo1_platform_update_display(const uint32_t* pixels, int width, int height)
     if (!renderer_handle) {
         return;
     }
+
+    // Redraw every frame in host mode to keep output stable even if the dirty
+    // flag misses an edge while the machine is rapidly writing display bytes.
+    neo1_term_draw();
+    term_dirty = false;
     SDL_RenderPresent(renderer_handle);
+}
+
+void neo1_platform_put_char(uint8_t ch) {
+    ch &= 0x7F;
+
+    switch (ch) {
+        case '\r':
+            neo1_term_newline();
+            term_dirty = true;
+            return;
+        case '\n':
+            term_dirty = true;
+            return;
+        case 0x08:
+            if (term_cursor_x > 0) {
+                term_cursor_x--;
+                term_cells[term_cursor_y][term_cursor_x] = ' ';
+                term_dirty = true;
+            }
+            return;
+        default:
+            break;
+    }
+
+    if (ch < 0x20) {
+        return;
+    }
+
+    neo1_term_put_glyph(ch);
+    term_dirty = true;
 }
 
 bool neo1_platform_poll_key(uint8_t* out_apple1_keycode, bool* out_pressed) {
@@ -75,6 +239,56 @@ bool neo1_platform_poll_key(uint8_t* out_apple1_keycode, bool* out_pressed) {
             should_quit = true;
             return false;
         }
+
+        if (event.type == SDL_MOUSEBUTTONDOWN) {
+            SDL_RaiseWindow(window_handle);
+            continue;
+        }
+
+        if (event.type == SDL_TEXTINPUT) {
+            const unsigned char ch = (unsigned char)event.text.text[0];
+            // Only inject printable text here. Control keys (Return, Backspace)
+            // are handled in KEYDOWN to avoid double-injecting CR.
+            if ((ch >= 0x20) && (ch != 0x7F)) {
+                if (out_apple1_keycode) {
+                    *out_apple1_keycode = (uint8_t)ch;
+                }
+                if (out_pressed) {
+                    *out_pressed = true;
+                }
+                return true;
+            }
+            continue;
+        }
+
+        if (event.type == SDL_KEYDOWN) {
+            const SDL_Keycode key = event.key.keysym.sym;
+            const bool repeated = event.key.repeat != 0;
+
+            // Printable characters are handled via SDL_TEXTINPUT. Ignore key-repeat
+            // keydown events to avoid duplicate injections.
+            if (repeated) {
+                continue;
+            }
+
+            if (out_pressed) {
+                *out_pressed = true;
+            }
+
+            if (out_apple1_keycode) {
+                if (key == SDLK_RETURN) {
+                    *out_apple1_keycode = '\r';
+                } else if (key == SDLK_BACKSPACE) {
+                    *out_apple1_keycode = 0x08;
+                } else {
+                    if (out_pressed) {
+                        *out_pressed = false;
+                    }
+                    continue;
+                }
+            }
+            return true;
+        }
     }
     return false;
 }
@@ -84,17 +298,41 @@ uint64_t neo1_platform_time_us(void) {
 }
 
 bool neo1_platform_disk_read(uint32_t lba, uint8_t* buf, uint32_t count) {
-    (void)lba;
-    (void)buf;
-    (void)count;
-    return false;
+    if (!disk_handle || !buf || (count == 0)) {
+        return false;
+    }
+
+    const uint64_t offset = (uint64_t)lba * (uint64_t)NEO1_SDL_SECTOR_SIZE;
+    const size_t bytes = (size_t)count * (size_t)NEO1_SDL_SECTOR_SIZE;
+
+    if (fseek(disk_handle, (long)offset, SEEK_SET) != 0) {
+        return false;
+    }
+
+    return fread(buf, 1, bytes, disk_handle) == bytes;
 }
 
 bool neo1_platform_disk_write(uint32_t lba, const uint8_t* buf, uint32_t count) {
-    (void)lba;
-    (void)buf;
-    (void)count;
-    return false;
+    if (!disk_handle || !buf || (count == 0)) {
+        return false;
+    }
+
+    const uint64_t offset = (uint64_t)lba * (uint64_t)NEO1_SDL_SECTOR_SIZE;
+    const size_t bytes = (size_t)count * (size_t)NEO1_SDL_SECTOR_SIZE;
+
+    if (fseek(disk_handle, (long)offset, SEEK_SET) != 0) {
+        return false;
+    }
+
+    if (fwrite(buf, 1, bytes, disk_handle) != bytes) {
+        return false;
+    }
+
+    return fflush(disk_handle) == 0;
+}
+
+const char* neo1_platform_disk_path(void) {
+    return disk_path;
 }
 
 bool neo1_platform_should_quit(void) {
