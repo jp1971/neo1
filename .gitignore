@@ -19,6 +19,9 @@
 *.map
 *.dis
 
+# SDL host disk image
+neo1_sdl_disk.img
+
 # RAM assembler intermediates (keep .s/.cfg/.h sources)
 src/ram/*.o
 src/ram/*.lst
