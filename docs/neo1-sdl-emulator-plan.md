@@ -155,13 +155,79 @@ SDL2 keyboard → Apple 1 ASCII translation:
 
 ---
 
-## 5) Disk Image Model
+## 5) Host Storage Model
 
-VCFFA1/VACI storage on the host:
-- Mount a flat `.img` file as a block device (512-byte sectors, same as the
-  FatFs/USB MSC path).
-- Pass path via CLI argument: `--disk neo1.img`.
-- If absent, disable VCFFA1/VACI at runtime (equivalent to no USB drive).
+The SDL target should replace the Pico-only TinyUSB/FatFs service for VACI,
+while keeping the 6502-visible MSC register protocol unchanged. VCFFA1 is
+intentionally out of the SDL scope: its emulation will continue on the
+Neo6502, where the hardware behavior can be validated against the real device.
+
+The current SDL M1 bridge only exposes raw sector reads/writes and accepts VACI
+directory commands as no-ops; that is enough for a smoke window but cannot make
+VACI enumerate or open files. Replace it with a VACI-only host directory
+backend.
+
+Use one explicit host storage surface:
+
+### 5.1 VACI file store
+
+VACI is a file-oriented protocol. Its SDL backend should use a host directory,
+not a FAT volume embedded inside a disk image:
+
+- Default directory: `neo1_sdl_files/` relative to the working directory.
+- Override with `NEO1_SDL_FILES`, accepting an absolute or relative path.
+- Enumerate regular files only, skip dot files and directories, and return a
+  stable sorted order so `R`/`D` indexes do not change between runs.
+- Implement open/create, close, 512-byte reads, 512-byte writes, directory
+  enumeration, indexed open, and indexed delete.
+- Keep the existing filename and size limits defined by `neo1_msc.h`.
+- Treat a missing directory as an empty drive; create it during initialization
+  when possible and report a protocol error when it is not writable.
+
+### 5.2 Removable-drive policy
+
+Do not make SDL enumerate USB or SD devices. On macOS, an attached thumb or SD
+card is already exposed as a mounted directory, and VACI only needs file
+operations. `NEO1_SDL_FILES` should accept any user-selected directory,
+including a path such as `/Volumes/NEO1`, while keeping a project-local default
+for development and automated tests.
+
+This gives us three useful modes without adding device-specific code:
+
+- Project-local fixture directory for repeatable tests.
+- A directory on a mounted thumb/SD drive for testing removable media.
+- A read-only mounted directory for validating VACI error handling.
+
+The backend should log the canonical path at startup, reject paths that are not
+directories, and surface permission or read-only failures through the existing
+MSC status register. It should not recursively search, format, partition, or
+mount media. Those are hardware or operating-system responsibilities.
+
+### 5.3 Storage backend boundary
+
+Move the storage operations currently embedded in the Pico `neo1_msc.c` and
+`neo1_cffa1.c` implementations behind a small backend selected by the platform:
+
+```c
+typedef struct {
+    bool (*init)(void);
+    void (*shutdown)(void);
+    bool (*file_dir_open)(void);
+    bool (*file_dir_next)(char* name, size_t name_size, uint32_t* size);
+    bool (*file_open)(const char* name, bool create);
+    bool (*file_close)(void);
+    bool (*file_delete)(const char* name);
+    bool (*file_read_sector)(uint32_t sector, uint8_t* buf);
+    bool (*file_write_sector)(uint32_t sector, const uint8_t* buf, uint16_t size);
+} neo1_storage_backend_t;
+```
+
+The exact names can follow the existing style, but the ownership rule matters:
+the register bridges own protocol state and status codes; the selected backend
+owns paths, handles, enumeration, and host I/O. The Pico backend remains backed
+by FatFs/TinyUSB, while SDL supplies the directory implementation. The SDL
+target should stop compiling `neo1_storage_stub.c` once this boundary is in
+place and should compile with `NEO1_ENABLE_VCFFA1=0`.
 
 ---
 
@@ -173,14 +239,14 @@ Add to `CMakePresets.json`:
 ```json
 {
   "name": "neo1-sdl-50-full",
-  "displayName": "Neo1 SDL 50 (VACI on, VCFFA1 on)",
+  "displayName": "Neo1 SDL 50 (VACI only)",
   "generator": "Ninja",
   "binaryDir": "${sourceDir}/build-sdl",
   "cacheVariables": {
     "NEO1_PLATFORM": "sdl",
     "NEO1_PERSONALITY": "50",
     "NEO1_ENABLE_VACI": "1",
-    "NEO1_ENABLE_VCFFA1": "1"
+    "NEO1_ENABLE_VCFFA1": "0"
   }
 }
 ```
@@ -196,8 +262,18 @@ brew install sdl2
 ```bash
 cmake --preset neo1-sdl-50-full
 cmake --build build-sdl
-./build-sdl/systems/neo1-sdl/neo1 --disk neo1.img
+./build-sdl/systems/neo1-sdl/neo1
 ```
+
+Storage configuration for the current SDL implementation is environment based:
+
+```bash
+NEO1_SDL_FILES=neo1_sdl_files \
+./build-sdl/systems/neo1-sdl/neo1
+```
+
+The SDL VACI backend reads `NEO1_SDL_FILES`; `main.c` does not parse command-
+line storage arguments.
 
 ---
 
@@ -250,14 +326,50 @@ Deliverables:
 
 Exit criteria: `PRINT "HELLO"` executes and displays.
 
-### M5 — Disk image (1 session, Neo1-23 only)
-Objective: VCFFA1 and VACI functional with a `.img` file.
+### M5 — VACI backend boundary (1 session)
+Objective: make the VACI protocol platform-neutral without changing its
+6502-visible register map, while explicitly excluding VCFFA1 from SDL.
 
 Deliverables:
-- `--disk` CLI argument wired to `neo1_platform_disk_read/write`.
-- FatFs or equivalent used to mount and traverse the image.
+- Extract the common MSC protocol state machine from the Pico-only FatFs
+  implementation.
+- Define the backend operations needed by VACI files and directories.
+- Keep the existing Pico backend behavior unchanged.
+- Replace the SDL M1 storage stub with an SDL VACI backend registration.
+- Set `NEO1_ENABLE_VCFFA1=0` for SDL builds and remove SDL CFFA1 plumbing.
 
-Exit criteria: `1810R` disk catalog lists files from the mounted image.
+Exit criteria: SDL builds without linking Pico FatFs/TinyUSB storage code, and
+the SDL binary has no VCFFA1 behavior enabled.
+
+### M6 — SDL VACI host directory (1-2 sessions)
+Objective: make VACI useful against ordinary host files.
+
+Deliverables:
+- Implement sorted directory enumeration and indexed file selection.
+- Implement VACI open/read/write/close/delete against `NEO1_SDL_FILES`, whether
+  it points to a project directory or a mounted removable drive.
+- Add clear startup logging for the selected directory and per-command errors.
+- Add a small host-side backend test using temporary files, including an empty
+  directory, a file larger than 512 bytes, delete, and a failed write.
+
+Exit criteria: from WozMon, `C100R` lists files, `R` loads a known binary, `W`
+saves a memory range, and `D` deletes the selected file.
+
+### M7 — SDL VACI regression (1 session)
+Objective: protect both platform backends while storage code is refactored.
+
+Deliverables:
+- Add scripted SDL smoke coverage for VACI list/load/save/delete using a
+  temporary project-local directory.
+- Repeat the smoke test with `NEO1_SDL_FILES` pointed at a mounted removable
+  volume when one is available.
+- Run the same VACI protocol-level checks against the Pico backend where
+  practical.
+- Document the directory environment variable and working-directory behavior
+  in `README.md`.
+
+Exit criteria: a clean SDL build followed by the VACI smoke script passes
+without manual file copying or TinyUSB hardware.
 
 ---
 
@@ -266,9 +378,11 @@ Exit criteria: `1810R` disk catalog lists files from the mounted image.
 | Item | Risk | Mitigation |
 |---|---|---|
 | SDL2 font rasterization performance | Low — 560×192 is tiny | Simple pixelblit, no scaling library needed |
-| FatFs on host without RP2040 HAL | Medium — FatFs expects low-level disk I/O functions | Provide `diskio.c` backed by `fread`/`fwrite` on the `.img` file |
-| Neo1-pico regression during HAL extraction | Low for M0–M4 (no changes to neo1-pico) | HAL extraction to neo1-pico is deferred |
-| SDL2 availability on trip machine | None | Pre-install via `brew install sdl2` before departure |
+| Shared MSC/CFFA1 code is coupled to FatFs | High — SDL cannot reuse the Pico implementation directly | Separate protocol bridges from a platform-selected storage backend |
+| VACI indexes change between runs | Medium — host directory order is not stable | Filter files and sort names before enumeration |
+| Removable volume permissions/ejection | Medium — host paths can become unavailable | Validate the directory at startup and return protocol errors for failed operations |
+| Neo1-pico regression during backend extraction | Medium | Keep the Pico backend and run the existing hardware build after each storage milestone |
+| SDL2 availability on a new machine | Low | Install with `brew install sdl2` before building |
 
 ---
 

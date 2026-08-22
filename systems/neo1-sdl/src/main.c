@@ -87,6 +87,10 @@ int main(void) {
             neo1_key_down(&neo1, keycode);
         }
 
+        if (neo1_platform_should_reset()) {
+            neo1_reset(&neo1);
+        }
+
         // Run a small host-time slice to keep UI responsive.
         (void)neo1_exec(&neo1, 2000);
         neo1_platform_update_display(NULL, 0, 0);

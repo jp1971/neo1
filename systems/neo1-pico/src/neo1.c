@@ -46,7 +46,7 @@
 #include "chips/clk.h"
 
 #ifndef NEO1_PERSONALITY
-#define NEO1_PERSONALITY (23)
+#define NEO1_PERSONALITY (50)
 #endif
 
 #define NEO1_PERSONALITY_23 (23)

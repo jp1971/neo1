@@ -411,6 +411,21 @@ void neo1_init(neo1_t* sys, const neo1_desc_t* desc) {
     // should provide NMI/RESET/IRQ vectors at $FFFA-$FFFF.
     memcpy(&sys->ram[NEO1_ROM_BASE], sys->rom, desc->roms.rom.size);
 
+#if (NEO1_CPU_BACKEND == NEO1_CPU_BACKEND_SOFT65C02)
+    // WozMon's IRQ/BRK vector ($FFFE-$FFFF) points to $0000, which is
+    // normally provided by BASIC on a real Apple 1. Without it, any BRK
+    // instruction (including $00 from uninitialized memory) causes an
+    // infinite BRK loop. For the host-only soft backend, install a
+    // JMP to the RESET vector at $0000 so BRK recovers to the monitor.
+    {
+        const uint16_t reset_vec =
+            (uint16_t)sys->ram[0xFFFC] | ((uint16_t)sys->ram[0xFFFD] << 8);
+        sys->ram[0x0000] = 0x4C;                       // JMP abs
+        sys->ram[0x0001] = (uint8_t)(reset_vec & 0xFF);
+        sys->ram[0x0002] = (uint8_t)(reset_vec >> 8);
+    }
+#endif
+
     // Initialize hardware CPU glue / CPU abstraction only after memory/ROM are
     // ready, so soft backends can safely fetch reset vectors during init.
     MOS6502CPU_INIT(&sys->cpu, sys);
@@ -512,10 +527,17 @@ void neo1_key_down(neo1_t* sys, uint8_t ascii) {
         ascii = '\r';
     }
 
-    // Only latch if no key is pending.
+    // Host-soft backend robustness: always accept the newest key, even if
+    // firmware left a stale value in the latch (e.g. stuck CR). This keeps
+    // SDL interactive while leaving pico hardware behavior unchanged.
+#if (NEO1_CPU_BACKEND == NEO1_CPU_BACKEND_SOFT65C02)
+    sys->kbd_latched = ascii | 0x80;
+#else
+    // Hardware-faithful behavior: only latch if no key is pending.
     if (sys->kbd_latched == 0) {
         sys->kbd_latched = ascii | 0x80;
     }
+#endif
 }
 
 uint32_t neo1_read_startup_trace(const neo1_t* sys, const neo1_trace_event_t** out_events) {

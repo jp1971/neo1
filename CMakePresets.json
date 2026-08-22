@@ -64,29 +64,29 @@
         "NEO1_CPU_BACKEND": "3",
         "NEO1_PERSONALITY": "50",
         "NEO1_ENABLE_VACI": "1",
-        "NEO1_ENABLE_VCFFA1": "1"
+        "NEO1_ENABLE_VCFFA1": "0"
       }
     },
     {
       "name": "neo1-sdl-23-full",
-      "displayName": "Neo1 SDL 23 (VACI on, VCFFA1 on)",
-      "description": "SDL host target with Neo1-23 policy features enabled.",
+      "displayName": "Neo1 SDL 23 (VACI only)",
+      "description": "SDL host target for VACI development; VCFFA1 remains hardware-first.",
       "inherits": "base-sdl",
       "cacheVariables": {
         "NEO1_PERSONALITY": "23",
         "NEO1_ENABLE_VACI": "1",
-        "NEO1_ENABLE_VCFFA1": "1"
+        "NEO1_ENABLE_VCFFA1": "0"
       }
     },
     {
       "name": "neo1-sdl-50-full",
-      "displayName": "Neo1 SDL 50 (VACI on, VCFFA1 on)",
-      "description": "SDL host target with both storage interfaces enabled.",
+      "displayName": "Neo1 SDL 50 (VACI only)",
+      "description": "SDL host target for VACI development; VCFFA1 remains hardware-first.",
       "inherits": "base-sdl",
       "cacheVariables": {
         "NEO1_PERSONALITY": "50",
         "NEO1_ENABLE_VACI": "1",
-        "NEO1_ENABLE_VCFFA1": "1"
+        "NEO1_ENABLE_VCFFA1": "0"
       }
     },
     {

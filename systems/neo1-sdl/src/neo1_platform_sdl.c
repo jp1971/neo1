@@ -26,6 +26,9 @@ static uint8_t term_cells[NEO1_TERM_ROWS][NEO1_TERM_COLS];
 static int term_cursor_x;
 static int term_cursor_y;
 static bool term_dirty;
+static uint64_t frame_count;
+
+static bool should_reset;
 
 #define NEO1_SDL_SECTOR_SIZE (512u)
 #define NEO1_SDL_DEFAULT_DISK_MB (32u)
@@ -106,7 +109,7 @@ static void neo1_term_draw(void) {
             for (int gy = 0; gy < 8; gy++) {
                 const uint8_t bits = apple1_vid[glyph_base + gy];
                 for (int gx = 0; gx < 6; gx++) {
-                    if (bits & (1u << (5 - gx))) {
+                    if (bits & (1u << gx)) {
                         SDL_Rect p = {
                             dst_x + gx * 2 + 1,
                             dst_y + gy * 2,
@@ -115,6 +118,25 @@ static void neo1_term_draw(void) {
                         };
                         SDL_RenderFillRect(renderer_handle, &p);
                     }
+                }
+            }
+        }
+    }
+
+    // Blinking '@' cursor (Apple-1 style, ~1.3 Hz based on wall-clock time)
+    const uint64_t ms = SDL_GetTicks64();
+    if (((ms / 375) & 1u) == 0u &&
+        term_cursor_x >= 0 && term_cursor_x < NEO1_TERM_COLS &&
+        term_cursor_y >= 0 && term_cursor_y < NEO1_TERM_ROWS) {
+        const int cbx = ((int)'@') * 8;
+        const int cdx = term_cursor_x * NEO1_CELL_W;
+        const int cdy = term_cursor_y * NEO1_CELL_H;
+        for (int gy = 0; gy < 8; gy++) {
+            const uint8_t bits = apple1_vid[cbx + gy];
+            for (int gx = 0; gx < 6; gx++) {
+                if (bits & (1u << gx)) {
+                    SDL_Rect p = {cdx + gx * 2 + 1, cdy + gy * 2, 2, 2};
+                    SDL_RenderFillRect(renderer_handle, &p);
                 }
             }
         }
@@ -156,6 +178,8 @@ void neo1_platform_init(int width, int height, const char* title) {
     term_cursor_x = 0;
     term_cursor_y = 0;
     term_dirty = true;
+    frame_count = 0;
+    should_reset = false;
 
     (void)neo1_platform_open_disk_image();
 }
@@ -191,6 +215,7 @@ void neo1_platform_update_display(const uint32_t* pixels, int width, int height)
     // flag misses an edge while the machine is rapidly writing display bytes.
     neo1_term_draw();
     term_dirty = false;
+    frame_count++;
     SDL_RenderPresent(renderer_handle);
 }
 
@@ -222,6 +247,12 @@ void neo1_platform_put_char(uint8_t ch) {
 
     neo1_term_put_glyph(ch);
     term_dirty = true;
+}
+
+bool neo1_platform_should_reset(void) {
+    bool r = should_reset;
+    should_reset = false;
+    return r;
 }
 
 bool neo1_platform_poll_key(uint8_t* out_apple1_keycode, bool* out_pressed) {
@@ -263,11 +294,24 @@ bool neo1_platform_poll_key(uint8_t* out_apple1_keycode, bool* out_pressed) {
 
         if (event.type == SDL_KEYDOWN) {
             const SDL_Keycode key = event.key.keysym.sym;
-            const bool repeated = event.key.repeat != 0;
+            const SDL_Keymod mod = (SDL_Keymod)event.key.keysym.mod;
+            const bool ctrl = (mod & (KMOD_LCTRL | KMOD_RCTRL)) != 0;
+
+            if (ctrl && key == SDLK_l) {
+                memset(term_cells, ' ', sizeof(term_cells));
+                term_cursor_x = 0;
+                term_cursor_y = 0;
+                term_dirty = true;
+                continue;
+            }
+            if (ctrl && key == SDLK_r) {
+                should_reset = true;
+                continue;
+            }
 
             // Printable characters are handled via SDL_TEXTINPUT. Ignore key-repeat
             // keydown events to avoid duplicate injections.
-            if (repeated) {
+            if (event.key.repeat != 0) {
                 continue;
             }
 

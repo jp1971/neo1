@@ -7,6 +7,7 @@ void neo1_platform_init(int width, int height, const char* title);
 void neo1_platform_shutdown(void);
 void neo1_platform_update_display(const uint32_t* pixels, int width, int height);
 void neo1_platform_put_char(uint8_t ch);
+bool neo1_platform_should_reset(void);
 bool neo1_platform_poll_key(uint8_t* out_apple1_keycode, bool* out_pressed);
 uint64_t neo1_platform_time_us(void);
 bool neo1_platform_disk_read(uint32_t lba, uint8_t* buf, uint32_t count);
