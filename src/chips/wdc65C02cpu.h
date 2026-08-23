@@ -2,7 +2,21 @@
 
 // wdc65C02cpu.h
 //
-// TODO: docs
+// RP2040 adapter for the physical W65C02 and Neo6502 bus latches. GPIO 0-7 are
+// the shared byte-wide path. Active-low OE1 and OE2 expose the low and high
+// address bytes; active-low OE3 transfers data. R/W is sampled from the CPU,
+// while PHI2, RESET, IRQ, and NMI are driven by the RP2040.
+//
+// wdc65C02cpu_tick() lowers PHI2, captures address and R/W through the latches,
+// and raises PHI2. The Neo1 machine then services that captured access: CPU
+// writes are read through OE3, and CPU reads are answered by driving GPIO 0-7
+// and pulsing OE3. The latch order and inline delays are timing-sensitive,
+// hardware-verified behavior and must not be reordered without a reset/startup
+// bus-trace comparison.
+//
+// RESET, IRQ, and NMI are active-low at the pins. Boolean setter state `true`
+// means asserted. GPIO 26 affects the CPU only when the Neo6502 reset-control
+// connection is physically present.
 //
 // ## zlib/libpng license
 //
@@ -31,7 +45,7 @@ extern "C" {
 
 typedef struct {
     uint16_t addr;
-    bool rw;  // Memory read or write access
+    bool rw;  // sampled CPU R/W: true = read, false = write
 } wdc6502cpu_t;
 
 #define MOS6502CPU_T                 wdc6502cpu_t
@@ -45,23 +59,29 @@ typedef struct {
 #define MOS6502CPU_SET_IRQ(c, state) wdc65C02cpu_set_irq(state)
 #define MOS6502CPU_SET_RESET(c, state) wdc65C02cpu_set_reset(state)
 
-// Initialize cpu
+// Configure the bus GPIO/latches and issue a 1 ms active-low RESET pulse.
 void wdc65C02cpu_init();
-// Reset cpu
+// Issue the same 1 ms RESET pulse after initialization.
 void wdc65C02cpu_reset();
+// Assert or release the active-low RESET output.
 void wdc65C02cpu_set_reset(bool state);
 
+// Pulse active-low NMI for 1 ms.
 void wdc65C02cpu_nmi();
 
-// Tick the cpu
+// Advance one physical clock transition pair and capture address/R/W.
 void wdc65C02cpu_tick(wdc6502cpu_t* c);
 
+// Read the address bus through the low-byte and high-byte latches, in order.
 uint16_t wdc65C02cpu_get_addr();
 
+// Sample CPU write data through the data latch.
 uint8_t wdc65C02cpu_get_data();
 
+// Drive CPU read data through the data latch.
 void wdc65C02cpu_set_data(uint8_t data);
 
+// Assert or release the active-low IRQ output.
 void wdc65C02cpu_set_irq(bool state);
 
 #ifdef __cplusplus
@@ -90,34 +110,35 @@ void wdc65C02cpu_set_irq(bool state);
 void wdc65C02cpu_init() {
     gpio_init_mask(_GPIO_MASK);
 
-    gpio_init(_OE1_PIN);  // OE1
+    // Keep every latch disabled before configuring the remaining bus signals.
+    gpio_init(_OE1_PIN);
     gpio_set_dir(_OE1_PIN, GPIO_OUT);
     gpio_put(_OE1_PIN, 1);
 
-    gpio_init(_OE2_PIN);  // OE2
+    gpio_init(_OE2_PIN);
     gpio_set_dir(_OE2_PIN, GPIO_OUT);
     gpio_put(_OE2_PIN, 1);
 
-    gpio_init(_OE3_PIN);  // OE3
+    gpio_init(_OE3_PIN);
     gpio_set_dir(_OE3_PIN, GPIO_OUT);
     gpio_put(_OE3_PIN, 1);
 
-    gpio_init(_RW_PIN);  // RW
+    gpio_init(_RW_PIN);
     gpio_set_dir(_RW_PIN, GPIO_IN);
 
-    gpio_init(_CLOCK_PIN);  // CLOCK
+    gpio_init(_CLOCK_PIN);
     gpio_set_dir(_CLOCK_PIN, GPIO_OUT);
     gpio_put(_CLOCK_PIN, 1);
 
-    gpio_init(_RESET_PIN);  // RESET
+    gpio_init(_RESET_PIN);
     gpio_set_dir(_RESET_PIN, GPIO_OUT);
     gpio_put(_RESET_PIN, 1);
 
-    gpio_init(_IRQ_PIN);  // IRQ
+    gpio_init(_IRQ_PIN);
     gpio_set_dir(_IRQ_PIN, GPIO_OUT);
     gpio_put(_IRQ_PIN, 1);
 
-    gpio_init(_NMI_PIN);  // NMI
+    gpio_init(_NMI_PIN);
     gpio_set_dir(_NMI_PIN, GPIO_OUT);
     gpio_put(_NMI_PIN, 1);
 
@@ -143,6 +164,8 @@ void wdc65C02cpu_nmi() {
 }
 
 void wdc65C02cpu_tick(wdc6502cpu_t* c) {
+    // Address and R/W are sampled during the low phase. The shared machine
+    // services the captured access after this function raises PHI2.
     gpio_put(_CLOCK_PIN, 0);
 
     c->addr = wdc65C02cpu_get_addr();
@@ -152,9 +175,11 @@ void wdc65C02cpu_tick(wdc6502cpu_t* c) {
 }
 
 uint16_t wdc65C02cpu_get_addr() {
+    // The shared GPIO byte must be input while either address latch drives it.
     gpio_set_dir_masked(_GPIO_MASK, 0);
 
     gpio_put(_OE1_PIN, 0);
+    // Allow the external latch output to settle before sampling GPIO.
     __asm volatile("nop\n");
     __asm volatile("nop\n");
     __asm volatile("nop\n");
@@ -165,6 +190,7 @@ uint16_t wdc65C02cpu_get_addr() {
     gpio_put(_OE1_PIN, 1);
 
     gpio_put(_OE2_PIN, 0);
+    // Preserve the independently verified high-address latch delay.
     __asm volatile("nop\n");
     __asm volatile("nop\n");
     __asm volatile("nop\n");
@@ -174,15 +200,15 @@ uint16_t wdc65C02cpu_get_addr() {
     addr |= (gpio_get_all() << (8 - _GPIO_SHIFT_BITS)) & 0xFF00;
     gpio_put(_OE2_PIN, 1);
 
-    // printf("get addr: %04x\n", addr);
-
     return addr;
 }
 
 uint8_t wdc65C02cpu_get_data() {
+    // CPU write data is sampled with the shared GPIO byte in input mode.
     gpio_set_dir_masked(_GPIO_MASK, 0);
 
     gpio_put(_OE3_PIN, 0);
+    // Allow the data latch output to settle before sampling GPIO.
     __asm volatile("nop\n");
     __asm volatile("nop\n");
     __asm volatile("nop\n");
@@ -192,12 +218,11 @@ uint8_t wdc65C02cpu_get_data() {
     uint8_t data = (gpio_get_all() >> _GPIO_SHIFT_BITS) & 0xFF;
     gpio_put(_OE3_PIN, 1);
 
-    // printf("get data: %02x\n", data);
-
     return data;
 }
 
 void wdc65C02cpu_set_data(uint8_t data) {
+    // CPU read data is driven only for the short active-low OE3 pulse.
     gpio_set_dir_masked(_GPIO_MASK, _GPIO_MASK);
 
     gpio_put_masked(_GPIO_MASK, data << _GPIO_SHIFT_BITS);
@@ -206,7 +231,6 @@ void wdc65C02cpu_set_data(uint8_t data) {
     __asm volatile("nop\n");
     gpio_put(_OE3_PIN, 1);
 
-    // printf("set data: %02x\n", data);
 }
 
 void wdc65C02cpu_set_irq(bool state) { gpio_put(_IRQ_PIN, state ? 0 : 1); }

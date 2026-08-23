@@ -2,13 +2,15 @@
 
 // neo1_cpu_backend.h
 //
-// Single include point for selecting the CPU backend used by Neo1.
+// Transitional compile-time selector for the CPU adapter embedded by
+// src/systems/neo1.h.
 //
-// Current default keeps existing behavior:
-// - neo1-pico uses the hardware 65C02 glue (wdc65C02cpu.h)
-//
-// Future host milestones can set NEO1_CPU_BACKEND via CMake and route this
-// include to a software CPU backend without touching higher-level runtime code.
+// Backend 1 connects the Pico build to the physical W65C02 bus. Backend 3
+// adapts fake65c02 for the SDL runner. Backend 2 is a retained selector for a
+// header that is not present in this repository and is not a supported build.
+// This macro surface reflects the present CHIPS_IMPL integration; it is not the
+// intended boundary between the portable machine and its physical or software
+// CPU runners.
 
 #define NEO1_CPU_BACKEND_WDC65C02 (1)
 #define NEO1_CPU_BACKEND_MOS6502  (2)

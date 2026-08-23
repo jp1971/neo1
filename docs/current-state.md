@@ -74,6 +74,11 @@ block write. Writable operation requires a preferred writable image such as
 6. **Automated coverage is absent.** Current CMake builds define no focused
    host tests for memory decoding, PIA behavior, storage protocols, or the VACI
    payload.
+7. **CPU backend value 2 is not usable.** `neo1_cpu_backend.h` declares a
+   `MOS6502` backend and includes `mos6502cpu.h` when it is selected, but that
+   header is not present in the repository. Current presets use the physical
+   W65C02 backend (1) or the soft-65C02 adapter (3); value 2 is not a supported
+   configuration.
 
 ## Storage-test expectations still outstanding
 

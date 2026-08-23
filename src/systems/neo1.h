@@ -1,6 +1,15 @@
 // neo1.h
 //
-// Minimal Neo1 runtime for Neo6502 using Reload's hardware 65C02 glue.
+// Transitional shared Neo1 machine implementation consumed by both the Pico
+// and SDL targets. It owns the 64 KB backing store, selected top-ROM placement
+// and write protection, Apple-1 keyboard/display register behavior, optional
+// storage address decoding, and the display-byte callback.
+//
+// The CPU is still embedded through the MOS6502CPU_* macro adapter. Pico feeds
+// captured cycles from a physical W65C02; SDL's software adapter calls the same
+// read/write dispatch directly. This header also includes storage declarations
+// from the Pico target. Those are present implementation leaks, not the desired
+// portable-core boundary.
 //
 // Use this header the same way as the other Chips-style headers:
 //
@@ -16,12 +25,11 @@
 // - chips/mem.h
 // - chips/clk.h
 //
-// This version is intentionally minimal:
-// - real WDC65C02 on Neo6502
-// - flat 64K memory backing store
-// - Neo 1 top ROM image at $E000-$FFFF (8 KB, including vectors)
-// - Apple-1 / Replica 1-style I/O at $D010-$D013 plus Neo1 MSC I/O at $D014-$D01C
-// - buffered startup trace (no live printf in bus loop)
+// The including target defines the machine profile before including this file.
+// Neo1-23 places and protects an 8 KB ROM at $E000-$FFFF. Neo1-50 places and
+// protects WozMon at $FF00-$FFFF. Both profiles expose Apple-1-style I/O at
+// $D010-$D013, Replica 1 display mirrors at $D0F2-$D0F3, and the Neo1 MSC
+// extension at $D014-$D01C. VCFFA1 address decoding is compile-time optional.
 //
 // ## zlib/libpng license
 //
@@ -136,28 +144,30 @@ typedef struct {
     bool valid;
     chips_debug_t debug;
 
-    // Full 64K backing store. ROM is copied into $E000-$FFFF at init.
+    // Full 64 KB backing store. The selected ROM is copied to NEO1_ROM_BASE.
     uint8_t ram[NEO1_MEM_SIZE];
     uint8_t* rom;
 
-    // Simple Neo1 input latch (bit 7 set means "valid"/ready convention)
+    // Apple-1 keyboard latch; bit 7 is set on injected input bytes.
     uint8_t kbd_latched;
 
-    // Minimal Neo1 PIA-like state. We do not emulate a full 6820/6821,
-    // only the control/data-direction behavior WozMon relies on.
+    // Minimal PIA-like state for the control/data-direction behavior WozMon
+    // uses. This is not a complete 6820/6821 implementation.
     uint8_t kbd_cr;
     uint8_t dsp_cr;
     uint8_t kbd_ddr;
     uint8_t dsp_ddr;
     uint8_t kbd_data;
     uint8_t dsp_data;
+    // Bookkeeping only: DSP/DSPCR reads report ready unconditionally.
     bool dsp_ready;
 
-    // Optional display callback
+    // Optional consumer for bytes written through the display data register.
     neo1_char_out_t char_out;
     void* char_out_user_data;
 
-    // Buffered startup trace
+    // First physical external-bus accesses captured by _neo1_mem_rw(). The
+    // soft adapter bypasses that helper, so SDL does not populate this trace.
     neo1_trace_event_t startup_trace[NEO1_TRACE_COUNT];
     uint32_t startup_trace_len;
     bool startup_trace_complete;
@@ -175,10 +185,11 @@ void neo1_reset(neo1_t* sys);
 void neo1_tick(neo1_t* sys);
 uint32_t neo1_exec(neo1_t* sys, uint32_t micro_seconds);
 
-// Inject one Neo1 keyboard character (ASCII). Bit 7 will be set internally.
+// Inject one ASCII keyboard byte. LF is normalized to CR and bit 7 is set.
+// Pico preserves a pending byte; the soft backend replaces it.
 void neo1_key_down(neo1_t* sys, uint8_t ascii);
 
-// Startup trace accessors
+// Return the captured physical startup trace and optionally its backing array.
 uint32_t neo1_read_startup_trace(const neo1_t* sys, const neo1_trace_event_t** out_events);
 
 // Snapshot helpers
@@ -404,8 +415,8 @@ void neo1_init(neo1_t* sys, const neo1_desc_t* desc) {
     // Build flat memory map and preload memory.
     _neo1_init_memorymap(sys);
 
-    // Fill memory with a predictable Apple-like pattern:
-    // even bytes 00, odd bytes FF. This mirrors how apple2.h seeds RAM.
+    // Seed uninitialized backing memory deterministically: even addresses are
+    // $00 and odd addresses are $FF.
     for (uint32_t addr = 0; addr < NEO1_MEM_SIZE; addr += 2) {
         sys->ram[addr] = 0x00;
         sys->ram[addr + 1] = 0xFF;
@@ -430,8 +441,8 @@ void neo1_init(neo1_t* sys, const neo1_desc_t* desc) {
     }
 #endif
 
-    // Initialize hardware CPU glue / CPU abstraction only after memory/ROM are
-    // ready, so soft backends can safely fetch reset vectors during init.
+    // Initialize the selected CPU adapter only after memory and vectors exist.
+    // The soft adapter fetches the reset vector during its initialization.
     MOS6502CPU_INIT(&sys->cpu, sys);
 
 #if NEO1_DIAGNOSTICS
@@ -482,8 +493,9 @@ void neo1_reset(neo1_t* sys) {
 
     MOS6502CPU_SET_IRQ(&sys->cpu, false);
 
-    // Experimental explicit reset control. This only affects the real 65C02
-    // if GPIO 26 is mechanically connected to the CPU RESET line.
+    // The hardware adapter drives active-low RESET on GPIO 26; the signal
+    // reaches the physical CPU only when the board's reset connection is made.
+    // The soft adapter resets on assertion and treats release as a no-op.
     MOS6502CPU_SET_RESET(&sys->cpu, true);
     NEO1_SLEEP_US(1000);
     MOS6502CPU_SET_RESET(&sys->cpu, false);
@@ -492,9 +504,10 @@ void neo1_reset(neo1_t* sys) {
 void neo1_tick(neo1_t* sys) {
     CHIPS_ASSERT(sys && sys->valid);
 
-    // This ordering intentionally matches the working Apple II implementation:
-    //   1) tick the real CPU / hardware glue
-    //   2) service memory using captured addr/rw
+    // The physical adapter advances PHI2 and captures address/R/W first; the
+    // machine then services that observed access. The software adapter performs
+    // memory callbacks inside its complete-instruction step and therefore skips
+    // the external-bus service below.
     MOS6502CPU_TICK(&sys->cpu);
 #if MOS6502CPU_NEEDS_EXTERNAL_BUS
     _neo1_mem_rw(sys, sys->cpu.addr, sys->cpu.rw);
@@ -533,13 +546,12 @@ void neo1_key_down(neo1_t* sys, uint8_t ascii) {
         ascii = '\r';
     }
 
-    // Host-soft backend robustness: always accept the newest key, even if
-    // firmware left a stale value in the latch (e.g. stuck CR). This keeps
-    // SDL interactive while leaving pico hardware behavior unchanged.
+    // SDL accommodation: replace a pending byte so host input cannot remain
+    // blocked behind a stale latch value.
 #if (NEO1_CPU_BACKEND == NEO1_CPU_BACKEND_SOFT65C02)
     sys->kbd_latched = ascii | 0x80;
 #else
-    // Hardware-faithful behavior: only latch if no key is pending.
+    // Physical-machine behavior: retain the first byte until the 6502 reads it.
     if (sys->kbd_latched == 0) {
         sys->kbd_latched = ascii | 0x80;
     }
