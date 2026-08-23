@@ -1,33 +1,22 @@
 // neo1.c
 //
-// Neo1-23 machine entry point.
+// Olimex Neo6502 runner for the Neo1-23 and Neo1-50 machine profiles.
 //
-// This file is now less of a bring-up experiment and more of a thin machine
-// orchestrator. The RP2040-side platform services live in separate Neo1 modules:
+// This file owns target assembly and lifecycle rather than the 6502-visible
+// machine model. Its current responsibilities include profile ROM selection,
+// Pico-only RAM-tool and Neo1-50 entry-stub installation, physical reset/startup
+// sequencing, terminal publication, UART/USB input, storage initialization, and
+// fixed-batch bus execution. RP2040 services are split across:
 //
 // - neo1_terminal.*  : text buffer, cursor state, clear-screen behavior
 // - neo1_video.*     : PicoDVI text rendering and scanline generation
-// - neo1_usb.*       : TinyUSB host keyboard input
-// - neo1.h           : 65C02 runtime, memory map, ROM loading, and I/O model
-//
-// The job of this file is to:
-// - construct the 65C02 machine description
-// - connect machine output to the Neo1 terminal/video path
-// - connect UART and USB keyboard input to the machine input path
-// - initialize the system ROM environment
-// - run the machine tick loop
-//
-// Architecturally, this remains compatible with Apple-1 / Replica 1 conventions
-// at the machine interface, but it is now running on a distinct Neo1-23 platform
-// with:
-// - an 8 KiB system ROM at $E000-$FFFF
-// - DVI text output
-// - USB keyboard input
-// - a modern RP2040-side terminal pipeline
+// - neo1_usb.*       : TinyUSB HID keyboard and MSC host lifecycle
+// - neo1.h           : shared memory, ROM, PIA-like, and device dispatch
 //
 // Notes:
 // - CHIPS_IMPL must appear in exactly one C/C++ translation unit
-// - This build targets the Olimex Neo6502 platform exclusively.
+// - This runner targets the Olimex Neo6502 and its physical W65C02 exclusively
+// - VACI and VCFFA1 images installed here are ordinary writable 6502 RAM
 
 #define CHIPS_IMPL
 
@@ -136,10 +125,11 @@ static void neo1_install_ram_tools(neo1_t* sys) {
 }
 
 //
-// Push the current terminal state into the video module.
+// Mark the caller-owned terminal state for a core-1 snapshot at a frame boundary.
 //
-// The terminal owns character/cursor state.
-// The video module owns how that state is rendered to DVI.
+// The terminal remains owned and mutated on core 0. The video module owns its
+// snapshot buffers and DVI rendering; its present volatile-flag handoff is not
+// a lock or an atomic snapshot.
 //
 static void neo1_video_sync_terminal(void) {
    neo1_video_set_terminal(&state.term);
@@ -255,7 +245,7 @@ static void neo1_char_out(uint8_t ch, void* user_data) {
 //
 // Build the machine description consumed by the Neo1 runtime.
 //
-// This is where the current machine personality is defined:
+// This is where the selected machine profile is connected to the shared model:
 // - which ROM image is presented at the top of memory
 // - which output callback receives machine-generated characters
 // - whether optional debug hooks are enabled
@@ -279,14 +269,14 @@ static neo1_desc_t neo1_desc(void) {
 }
 
 //
-// Initialize the machine and the Neo1-side support modules.
+// Initialize the shared machine and Pico-owned support state.
 //
 // Order matters here:
 // 1. clear the terminal state
-// 2. initialize the machine/runtime
-// 3. reset the 65C02-side machine
-// 4. initialize USB keyboard input
-// 5. publish the terminal state to the video module
+// 2. initialize memory/ROM and configure the adapter, including its reset pulse
+// 3. install Neo1-50 safety stubs, issue machine RESET, then install RAM tools
+// 4. reset optional storage protocol state and initialize TinyUSB host
+// 5. publish terminal state; DVI clocks/core 1 are started later by main
 //
 static void app_init(void) {
     neo1_terminal_clear(&state.term);
@@ -317,12 +307,13 @@ static void app_init(void) {
 //
 // Poll the UART/stdin keyboard path.
 //
-// Neo1 currently supports two input sources in parallel:
+// The Pico runner polls two input transports in parallel:
 // - UART/stdin polling here
 // - USB keyboard input through neo1_usb_task()
 //
-// Both paths normalize characters into the same Apple-1 / Replica 1-style machine
-// input convention and then inject them via neo1_key_down().
+// Both paths uppercase printable ASCII, normalize LF to CR, recognize Ctrl-R as
+// runner reset, and call neo1_key_down(). The shared machine retains only the
+// first byte while one is pending, regardless of which transport supplied it.
 //
 
 #ifndef NEO1_TERM_DEBUG
@@ -366,9 +357,8 @@ static void poll_keyboard(void) {
 //
 // Dump the buffered startup bus trace captured by the Neo1 runtime.
 //
-// This is useful during low-level bring-up because it shows the actual memory
-// traffic seen during reset and early execution without printing directly from
-// inside the memory/bus path.
+// This exposes the first physical memory transactions after reset without
+// printing from the timing-sensitive bus-service path.
 //
 #if NEO1_DIAGNOSTICS
 static void print_startup_trace(void) {
@@ -402,7 +392,7 @@ static void print_startup_trace(void) {
 // - UART polling
 // - USB host polling
 // - 65C02 execution
-// - light pacing for readability while debugging
+// - a fixed 5,000-cycle batch and a minimum one-millisecond loop duration
 //
 int main(void) {
     stdio_init_all();
@@ -470,9 +460,9 @@ int main(void) {
         }
 #endif
 
-        // Run a modest chunk of machine cycles per host iteration.
-        // This is intentionally simple and can be revisited later if Neo1-23
-        // needs different pacing or tighter synchronization.
+        // Service exactly 5,000 physical bus cycles before polling transports
+        // again. This batching policy belongs to the Pico runner, not the
+        // shared machine contract.
         const uint32_t num_ticks = 5000;
         for (uint32_t i = 0; i < num_ticks; i++) {
             neo1_tick(&state.neo1);
@@ -481,8 +471,8 @@ int main(void) {
         uint32_t end_time_us = time_us_32();
         uint32_t execution_time = end_time_us - start_time_us;
 
-        // Light pacing keeps UART/debug output readable while preserving a
-        // simple main-loop structure during this stage of the project.
+        // Enforce only a minimum host-loop duration; this is not a cycle-rate
+        // governor when the bus batch itself takes longer than one millisecond.
         int32_t sleep_time = 1000 - (int32_t)execution_time;
         if (sleep_time > 0) {
             sleep_us((uint32_t)sleep_time);

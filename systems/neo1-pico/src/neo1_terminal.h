@@ -2,18 +2,17 @@
 
 // neo1_terminal.h
 //
-// Minimal software text terminal used by Neo1.
+// Pico-owned software text grid used by the DVI and UART-facing runner.
 //
-// This module holds terminal state (character cells + cursor) and provides
-// helpers to:
-// - clear and append characters with basic control handling
-// - dump the current screen for debugging
-// - convert terminal cells into a 1-bpp framebuffer for the DVI path
+// This is not part of the Apple-1 PIA register model, and the SDL target has a
+// separate terminal implementation with different control-character behavior.
+// The grid owns 40x24 character cells and a cursor. CR advances to the next row,
+// form feed clears, printable ASCII writes a cell, and all other bytes—including
+// backspace and LF—are ignored. Column overflow wraps and the final row scrolls.
 //
-// Rendering convention:
-// - terminal geometry is 40x24 cells
-// - each glyph slot is 8x8 pixels
-// - glyph fetch currently uses 7 visible bits per row from the character ROM
+// The retained framebuffer helper renders 8x8 slots using seven font bits; the
+// active PicoDVI path instead snapshots the cells and rasterizes them directly
+// in neo1_video.c.
 
 #include <stdint.h>
 
@@ -45,7 +44,7 @@ typedef struct {
 // Fill the terminal with spaces and return cursor to (0, 0).
 void neo1_terminal_clear(neo1_terminal_t* term);
 
-// Append one character with minimal control behavior:
+// Append one character with Pico terminal control behavior:
 // - '\r'      -> newline
 // - 0x0C      -> clear screen
 // - printable -> placed at cursor and advances with wrapping/scroll
@@ -54,8 +53,9 @@ void neo1_terminal_putc(neo1_terminal_t* term, uint8_t ch);
 // Debug helper: print terminal contents and cursor position to stdout.
 void neo1_terminal_dump(const neo1_terminal_t* term);
 
-// Rasterize current terminal cells into a 1-bpp framebuffer.
-// `character_rom` is expected to be laid out as 128 glyphs * 8 rows each.
+// Rasterize into a caller-owned 320x192 byte-per-pixel monochrome array. This
+// utility is not called by the active DVI renderer. `character_rom` must contain
+// 128 glyphs of eight rows; only bits 0-6 are drawn and column 7 remains blank.
 void neo1_terminal_render_to_framebuffer(
     const neo1_terminal_t* term,
     const uint8_t* character_rom,

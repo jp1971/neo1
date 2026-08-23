@@ -2,7 +2,7 @@
 
 Date: 2026-08-23
 
-Status: In progress; phases 1-3 complete
+Status: In progress; phases 1-4 complete
 
 Purpose: make the current code legible and truthful before portable-core
 extraction without changing behavior, blessing temporary architecture, or

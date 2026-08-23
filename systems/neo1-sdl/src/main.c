@@ -1,5 +1,12 @@
 #include "neo1_platform.h"
 
+// SDL runner for the software-CPU Neo1 profiles. It constructs the shared
+// machine, selects the profile ROM, owns the event/render loop and raw-disk
+// startup probe, and connects machine display bytes to the SDL-local terminal.
+// It does not install the Pico runner's VACI/VCFFA1 RAM tools or Neo1-50 entry
+// stubs. `neo1_platform.h` is an SDL-local mixed service interface, not a shared
+// platform abstraction.
+
 #define CHIPS_IMPL
 
 #include <ctype.h>
@@ -91,7 +98,10 @@ int main(void) {
             neo1_reset(&neo1);
         }
 
-        // Run a small host-time slice to keep UI responsive.
+        // neo1_exec converts 2,000 nominal microseconds to about 2,043 soft
+        // ticks, but each soft tick executes a complete instruction. The loop
+        // has no elapsed-time governor, so this is a responsiveness batch rather
+        // than cycle-accurate or real-time scheduling.
         (void)neo1_exec(&neo1, 2000);
         neo1_platform_update_display(NULL, 0, 0);
     }

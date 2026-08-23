@@ -1,12 +1,9 @@
 // neo1_terminal.c
 //
-// Software text terminal implementation for Neo1.
+// Pico terminal-grid implementation declared by neo1_terminal.h.
 //
-// Responsibilities:
-// - maintain a 40x24 character buffer and cursor state
-// - implement newline, wrapping, and scrolling behavior
-// - provide a debug dump view
-// - render character cells into the monochrome framebuffer consumed by video
+// The Pico runner mutates this state on core 0. neo1_video.c copies the cells
+// into its own core-1 rendering buffers; SDL does not compile this module.
 
 #include <stdio.h>
 #include <stdint.h>
@@ -52,7 +49,7 @@ void neo1_terminal_putc(neo1_terminal_t* term, uint8_t ch) {
         return;
     }
 
-    // Ignore non-printable / non-ASCII bytes.
+    // Pico intentionally has no backspace or LF action in this terminal model.
     if ((ch < 32) || (ch > 126)) {
         return;
     }

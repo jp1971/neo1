@@ -83,6 +83,13 @@ block write. Writable operation requires a preferred writable image such as
    machine always routes the supported `$D014-$D01C` accesses to an MSC
    implementation. `NEO1_ENABLE_VACI` controls installation of the 6502-side
    VACI payload, not ownership of those addresses.
+9. **Pico terminal publication is not synchronized across cores.** Core 0
+   mutates the caller-owned terminal while core 1 copies it at a frame boundary.
+   The dirty flag and buffer indices are volatile but not lock-protected, so the
+   source copy is not guaranteed to be atomic.
+10. **SDL execution is not wall-clock or cycle paced.** `neo1_exec(2000)` runs
+    about 2,043 soft ticks per UI iteration, but each tick is a complete
+    instruction and the runner does not govern the batch using elapsed time.
 
 ## Storage-test expectations still outstanding
 

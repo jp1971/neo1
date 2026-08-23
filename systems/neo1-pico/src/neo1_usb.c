@@ -4,13 +4,16 @@
 //
 // Input path:
 // - TinyUSB HID callbacks deliver keyboard reports
-// - reports are edge-detected against previous state
-// - keycodes are translated to ASCII/control bytes
-// - bytes are forwarded to the registered Neo1 callback
+// - six-key reports are edge-detected against the previous report
+// - Shift selects the TinyUSB lookup column; Ctrl-letter emits $01-$1A
+// - Enter, Backspace, Tab, and Space have explicit translations
+// - decoded bytes are forwarded to the runner callback
 //
 // Storage path:
 // - TinyUSB MSC mount/unmount events update mounted state
-// - FatFs is mounted as "0:" for simple directory listing/debug
+// - FatFs volume "0:" is mounted for the storage backends and diagnostics
+//
+// These host callbacks never assert the 6502 IRQ or NMI lines.
 
 #include "neo1_usb.h"
 
@@ -28,7 +31,7 @@
 #define NEO1_DIAGNOSTICS 0
 #endif
 
-// Keep the HID keycode -> ASCII lookup local to Neo 1 instead of depending on
+// Keep the HID keycode -> ASCII lookup local to Neo1 instead of depending on
 // TinyUSB example helper headers.
 static const uint8_t keycode2ascii[128][2] = { HID_KEYCODE_TO_ASCII };
 
@@ -198,12 +201,11 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t cons
 // MSC callbacks
 // -----------------------------------------------------------------------------
 
-// MSC device is mounted
+// Publish media presence and mount its FatFs volume synchronously.
 void tuh_msc_mount_cb(uint8_t dev_addr) {
     (void)dev_addr;
     g_msc_mounted = true;
 
-    // Mount FatFs
     FRESULT res = f_mount(&fs, "0:", 1);
     if (res != FR_OK) {
         printf("[msc] FatFs mount failed: %d\n", res);
@@ -215,17 +217,16 @@ void tuh_msc_mount_cb(uint8_t dev_addr) {
     }
 }
 
-// MSC device is unmounted
+// Withdraw media presence and detach the FatFs volume.
 void tuh_msc_umount_cb(uint8_t dev_addr) {
     (void)dev_addr;
     printf("[msc] storage removed\n");
     g_msc_mounted = false;
 
-    // Unmount FatFs
     f_mount(NULL, "0:", 0);
 }
 
-// General device mount callback for debugging
+// General device diagnostics are deliberately excluded from normal serial output.
 void tuh_mount_cb(uint8_t dev_addr) {
 #if NEO1_DIAGNOSTICS
     printf("[usb] device mounted dev=%u\n", dev_addr);
@@ -240,7 +241,7 @@ void tuh_mount_cb(uint8_t dev_addr) {
 #endif
 }
 
-// General device unmount callback for debugging
+// General device removal diagnostics follow the same policy.
 void tuh_umount_cb(uint8_t dev_addr) {
 #if NEO1_DIAGNOSTICS
     printf("[usb] device unmounted dev=%u\n", dev_addr);

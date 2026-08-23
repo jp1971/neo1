@@ -1,5 +1,15 @@
 #include "neo1_platform.h"
 
+// SDL implementation of the target-local mixed service surface. Display bytes
+// feed a private 40x24 grid rendered on the main thread; this is a second
+// terminal state machine, not an adapter around the Pico terminal. Input is
+// sourced from SDL events, and storage is one seekable raw host image.
+//
+// Observable terminal differences from Pico are intentional preservation of
+// current behavior: SDL erases for Backspace, ignores LF and form feed, uses six
+// font bits in 14x16 cells, and draws its cursor directly. Rendering is
+// unconditional each runner iteration and ignores update_display pixel inputs.
+
 #include <SDL.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -48,7 +58,7 @@ static bool neo1_platform_open_disk_image(void) {
             return false;
         }
 
-        // Create a sparse 32 MB default image.
+        // A missing image is created as a sparse 32 MiB raw block device.
         const long long bytes = (long long)NEO1_SDL_DEFAULT_DISK_MB * 1024ll * 1024ll;
         if ((bytes > 0) && (fseek(disk_handle, (long)(bytes - 1), SEEK_SET) == 0)) {
             (void)fputc(0, disk_handle);
@@ -123,7 +133,7 @@ static void neo1_term_draw(void) {
         }
     }
 
-    // Blinking '@' cursor (Apple-1 style, ~1.3 Hz based on wall-clock time)
+    // Overlay a blinking '@' cursor at about 1.3 Hz using SDL wall-clock time.
     const uint64_t ms = SDL_GetTicks64();
     if (((ms / 375) & 1u) == 0u &&
         term_cursor_x >= 0 && term_cursor_x < NEO1_TERM_COLS &&
@@ -211,8 +221,7 @@ void neo1_platform_update_display(const uint32_t* pixels, int width, int height)
         return;
     }
 
-    // Redraw every frame in host mode to keep output stable even if the dirty
-    // flag misses an edge while the machine is rapidly writing display bytes.
+    // Redraw unconditionally; term_dirty and frame_count do not gate rendering.
     neo1_term_draw();
     term_dirty = false;
     frame_count++;
@@ -278,8 +287,8 @@ bool neo1_platform_poll_key(uint8_t* out_apple1_keycode, bool* out_pressed) {
 
         if (event.type == SDL_TEXTINPUT) {
             const unsigned char ch = (unsigned char)event.text.text[0];
-            // Only inject printable text here. Control keys (Return, Backspace)
-            // are handled in KEYDOWN to avoid double-injecting CR.
+            // SDL_TEXTINPUT supplies printable bytes; KEYDOWN owns controls so
+            // Return cannot also arrive as a text-input CR.
             if ((ch >= 0x20) && (ch != 0x7F)) {
                 if (out_apple1_keycode) {
                     *out_apple1_keycode = (uint8_t)ch;
@@ -309,8 +318,8 @@ bool neo1_platform_poll_key(uint8_t* out_apple1_keycode, bool* out_pressed) {
                 continue;
             }
 
-            // Printable characters are handled via SDL_TEXTINPUT. Ignore key-repeat
-            // keydown events to avoid duplicate injections.
+            // Printable input is handled above; ignore repeated control-key
+            // events so Return and Backspace are injected once per press.
             if (event.key.repeat != 0) {
                 continue;
             }

@@ -4,9 +4,14 @@
 //
 // Pipeline summary:
 // - terminal state is produced on core 0 (machine loop)
-// - this module snapshots that state into a double buffer
+// - core 1 copies caller state into one of two internal snapshots at frame end
 // - scanlines are generated continuously for a 640x480@60 mode
 // - monochrome 1-bpp lines are TMDS-encoded and submitted to PicoDVI
+//
+// Text is doubled to 16x16 pixels per cell, filling 640x384 and leaving 48 blank
+// scanlines above and below. A blinking '@' glyph is overlaid at the cursor.
+// The producer/consumer flags are volatile but not lock-protected; preserve the
+// frame-boundary swap and caller lifetime until synchronization is redesigned.
 
 #include <stdint.h>
 #include <string.h>
@@ -60,10 +65,10 @@ static struct semaphore dvi_start_sem;
 static volatile uint32_t dvi_frame_counter = 0;
 static volatile uint32_t dvi_line_counter = 0;
 
-// Terminal snapshot model:
+// Terminal snapshot ownership:
 // - g_term points at caller-owned terminal state
 // - g_term_buffers[front] is consumed by scanline rendering
-// - a pending buffer index is flipped at frame boundary
+// - core 1 copies to the non-front buffer and flips it only at frame boundary
 static neo1_terminal_t* g_term = 0;
 static neo1_terminal_t g_term_buffers[2];
 static volatile uint32_t g_front_buffer_index = 0;
@@ -180,7 +185,7 @@ static void __not_in_flash_func(core1_main)(void) {
 }
 
 void neo1_video_set_terminal(neo1_terminal_t* term) {
-    // Pointer assignment is cheap; actual copy is deferred to frame boundary.
+    // Caller state stays in place; only the dirty notification is immediate.
     g_term = term;
     g_set_terminal_calls++;
 
@@ -240,7 +245,7 @@ void neo1_video_init(neo1_terminal_t* term) {
 }
 
 void neo1_video_start(void) {
-    // Prefer core 1 for DVI work, then release start gate.
+    // Give core 1 bus priority for continuous DVI work, then release its gate.
     hw_set_bits(&bus_ctrl_hw->priority, BUSCTRL_BUS_PRIORITY_PROC1_BITS);
     multicore_launch_core1(core1_main);
     sem_release(&dvi_start_sem);
