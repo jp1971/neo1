@@ -13,6 +13,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#ifndef NEO1_DIAGNOSTICS
+#define NEO1_DIAGNOSTICS 0
+#endif
+
 // Optional callback for delivering decoded keyboard bytes to Neo1 runtime.
 typedef void (*neo1_usb_char_handler_t)(uint8_t ch, void* user_data);
 
@@ -30,4 +34,6 @@ bool neo1_usb_keyboard_mounted(void);
 bool neo1_usb_msc_mounted(void);
 
 // Debug helper: list root directory entries of mounted MSC drive.
+#if NEO1_DIAGNOSTICS
 void neo1_msc_list_files(void);
+#endif

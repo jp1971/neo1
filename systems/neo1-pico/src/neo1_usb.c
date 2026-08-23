@@ -24,6 +24,10 @@
 #include "class/msc/msc.h"
 #include "ff.h"
 
+#ifndef NEO1_DIAGNOSTICS
+#define NEO1_DIAGNOSTICS 0
+#endif
+
 // Keep the HID keycode -> ASCII lookup local to Neo 1 instead of depending on
 // TinyUSB example helper headers.
 static const uint8_t keycode2ascii[128][2] = { HID_KEYCODE_TO_ASCII };
@@ -155,7 +159,10 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const* desc_re
     uint8_t const itf_protocol = tuh_hid_interface_protocol(dev_addr, instance);
 
     if (itf_protocol == HID_ITF_PROTOCOL_KEYBOARD) {
-        printf("[usb] keyboard mounted dev=%u inst=%u\n", dev_addr, instance);
+        printf("[usb] keyboard ready\n");
+#if NEO1_DIAGNOSTICS
+        printf("[usb] keyboard dev=%u inst=%u\n", dev_addr, instance);
+#endif
         g_keyboard_mounted = true;
         memset(&g_prev_report, 0, sizeof(g_prev_report));
         tuh_hid_receive_report(dev_addr, instance);
@@ -167,7 +174,7 @@ void tuh_hid_umount_cb(uint8_t dev_addr, uint8_t instance) {
     (void) dev_addr;
     (void) instance;
 
-    printf("[usb] keyboard unmounted dev=%u inst=%u\n", dev_addr, instance);
+    printf("[usb] keyboard removed\n");
     g_keyboard_mounted = false;
     memset(&g_prev_report, 0, sizeof(g_prev_report));
 }
@@ -193,7 +200,7 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t cons
 
 // MSC device is mounted
 void tuh_msc_mount_cb(uint8_t dev_addr) {
-    printf("[msc] mounted dev=%u\n", dev_addr);
+    (void)dev_addr;
     g_msc_mounted = true;
 
     // Mount FatFs
@@ -201,13 +208,17 @@ void tuh_msc_mount_cb(uint8_t dev_addr) {
     if (res != FR_OK) {
         printf("[msc] FatFs mount failed: %d\n", res);
     } else {
-        printf("[msc] FatFs mounted\n");
+        printf("[msc] storage ready\n");
+#if NEO1_DIAGNOSTICS
+        printf("[msc] mounted dev=%u\n", dev_addr);
+#endif
     }
 }
 
 // MSC device is unmounted
 void tuh_msc_umount_cb(uint8_t dev_addr) {
-    printf("[msc] unmounted dev=%u\n", dev_addr);
+    (void)dev_addr;
+    printf("[msc] storage removed\n");
     g_msc_mounted = false;
 
     // Unmount FatFs
@@ -216,6 +227,7 @@ void tuh_msc_umount_cb(uint8_t dev_addr) {
 
 // General device mount callback for debugging
 void tuh_mount_cb(uint8_t dev_addr) {
+#if NEO1_DIAGNOSTICS
     printf("[usb] device mounted dev=%u\n", dev_addr);
     
     // Get device descriptor (blocking)
@@ -223,14 +235,22 @@ void tuh_mount_cb(uint8_t dev_addr) {
     if (tuh_descriptor_get_device_sync(dev_addr, &desc, sizeof(desc)) == sizeof(desc)) {
         printf("[usb] VID=%04X PID=%04X class=%02X\n", desc.idVendor, desc.idProduct, desc.bDeviceClass);
     }
+#else
+    (void)dev_addr;
+#endif
 }
 
 // General device unmount callback for debugging
 void tuh_umount_cb(uint8_t dev_addr) {
+#if NEO1_DIAGNOSTICS
     printf("[usb] device unmounted dev=%u\n", dev_addr);
+#else
+    (void)dev_addr;
+#endif
 }
 
 // Debug helper to list root directory entries on mounted MSC media.
+#if NEO1_DIAGNOSTICS
 void neo1_msc_list_files(void) {
     if (!g_msc_mounted) {
         printf("[msc] no drive mounted\n");
@@ -253,3 +273,4 @@ void neo1_msc_list_files(void) {
     }
     f_closedir(&dir);
 }
+#endif

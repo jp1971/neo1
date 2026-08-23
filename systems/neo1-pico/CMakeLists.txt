@@ -18,6 +18,7 @@ set(NEO1_PERSONALITY "50" CACHE STRING "Neo1 personality: 23 or 50")
 set_property(CACHE NEO1_PERSONALITY PROPERTY STRINGS 23 50)
 set(NEO1_ENABLE_VACI "1" CACHE STRING "Enable VACI runtime support (1 or 0)")
 set(NEO1_ENABLE_VCFFA1 "1" CACHE STRING "Enable VCFFA1 runtime support (1 or 0)")
+set(NEO1_DIAGNOSTICS "0" CACHE STRING "Enable verbose Neo1 serial diagnostics (1 or 0)")
 
 # Safety gate: neo1-pico currently depends on real 65C02 hardware glue.
 if (NOT NEO1_CPU_BACKEND STREQUAL "1")
@@ -30,6 +31,10 @@ endif()
 
 if (NOT NEO1_ENABLE_VCFFA1 MATCHES "^[01]$")
     message(FATAL_ERROR "NEO1_ENABLE_VCFFA1 must be 0 or 1")
+endif()
+
+if (NOT NEO1_DIAGNOSTICS MATCHES "^[01]$")
+    message(FATAL_ERROR "NEO1_DIAGNOSTICS must be 0 or 1")
 endif()
 
 # Policy: Neo1-23 always ships with both VACI and VCFFA1 enabled.
@@ -58,6 +63,7 @@ target_compile_definitions(neo1 PRIVATE
     NEO1_PERSONALITY=${NEO1_PERSONALITY}
     NEO1_ENABLE_VACI=${NEO1_ENABLE_VACI}
     NEO1_ENABLE_VCFFA1=${NEO1_ENABLE_VCFFA1}
+    NEO1_DIAGNOSTICS=${NEO1_DIAGNOSTICS}
     NEO1_CPU_BACKEND=${NEO1_CPU_BACKEND}
 )
 

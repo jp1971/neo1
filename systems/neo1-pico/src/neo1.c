@@ -94,7 +94,9 @@ typedef struct {
 } state_t;
 
 static state_t __not_in_flash() state;
+#if NEO1_DIAGNOSTICS
 static bool msc_listed = false;
+#endif
 
 static void neo1_install_ram_tools(neo1_t* sys) {
 #if NEO1_ENABLE_VCFFA1
@@ -102,12 +104,16 @@ static void neo1_install_ram_tools(neo1_t* sys) {
     const uint32_t m2_addr = NEO1_CFFA1_M2_BLOCKDRV_ADDR;
     CHIPS_ASSERT((m2_addr + m2_size) <= NEO1_ROM_BASE);
     memcpy(&sys->ram[m2_addr], neo1_cffa1_m2_blockdrv, m2_size);
-    printf("[neo1] cffa1 m2 blockdrv installed at $%04X (%lu bytes), run with G %04X\n",
+#if NEO1_DIAGNOSTICS
+    printf("[neo1] cffa1 m2 blockdrv installed at $%04X (%lu bytes), run with %04XR\n",
            (unsigned)m2_addr,
            (unsigned long)m2_size,
             (unsigned)NEO1_CFFA1_M2_TESTMAIN_ADDR);
+#endif
 #else
+#if NEO1_DIAGNOSTICS
     printf("[neo1] vcffa1 disabled; $AFF0-$AFFF and $AFDC-$AFDD remain free\n");
+#endif
     (void)sys;
 #endif
 
@@ -116,12 +122,16 @@ static void neo1_install_ram_tools(neo1_t* sys) {
     const uint32_t vaci_addr = NEO1_VACI_V1_ADDR;
     CHIPS_ASSERT((vaci_addr + vaci_size) <= NEO1_ROM_BASE);
     memcpy(&sys->ram[vaci_addr], neo1_vaci_v1, vaci_size);
-    printf("[neo1] vaci v1 installed at $%04X (%lu bytes), run with C %04XR\n",
+#if NEO1_DIAGNOSTICS
+    printf("[neo1] vaci v1 installed at $%04X (%lu bytes), run with %04XR\n",
            (unsigned)vaci_addr,
            (unsigned long)vaci_size,
            (unsigned)vaci_addr);
+#endif
 #else
+#if NEO1_DIAGNOSTICS
     printf("[neo1] vaci v1 disabled; $C100 remains free for monitor or hardware ACI use\n");
+#endif
 #endif
 }
 
@@ -147,7 +157,9 @@ static void neo1_install_neo150_entry_stubs(neo1_t* sys) {
     static const uint8_t jmp_wozmon[] = { 0x4C, 0x00, 0xFF };
     memcpy(&sys->ram[0xE000], jmp_wozmon, sizeof(jmp_wozmon));
     memcpy(&sys->ram[0xF000], jmp_wozmon, sizeof(jmp_wozmon));
+#if NEO1_DIAGNOSTICS
     printf("[neo1] neo1-50 entry stubs installed: E000/F000 -> FF00 until overwritten\n");
+#endif
 }
 #endif
 
@@ -180,7 +192,7 @@ static chips_range_t neo1_selected_rom_range(void) {
 static void neo1_usb_char_in(uint8_t ch, void* user_data) {
     (void)user_data;
 
-#if NEO1_KBD_DEBUG
+#if NEO1_DIAGNOSTICS
     printf("[usb] ascii=%02X", (unsigned)ch);
     if ((ch >= 32) && (ch < 127)) {
         printf(" '%c'", ch);
@@ -313,12 +325,8 @@ static void app_init(void) {
 // input convention and then inject them via neo1_key_down().
 //
 
-#ifndef NEO1_KBD_DEBUG
-#define NEO1_KBD_DEBUG (0)
-#endif
-
 #ifndef NEO1_TERM_DEBUG
-#define NEO1_TERM_DEBUG (1)
+#define NEO1_TERM_DEBUG NEO1_DIAGNOSTICS
 #endif
 
 static void poll_keyboard(void) {
@@ -362,6 +370,7 @@ static void poll_keyboard(void) {
 // traffic seen during reset and early execution without printing directly from
 // inside the memory/bus path.
 //
+#if NEO1_DIAGNOSTICS
 static void print_startup_trace(void) {
     const neo1_trace_event_t* ev = 0;
     uint32_t count = neo1_read_startup_trace(&state.neo1, &ev);
@@ -375,6 +384,7 @@ static void print_startup_trace(void) {
                ev[i].data);
     }
 }
+#endif
 
 // -----------------------------------------------------------------------------
 // program entry point
@@ -385,9 +395,8 @@ static void print_startup_trace(void) {
 // 1. initialize stdio/UART
 // 2. initialize the machine and platform services
 // 3. bring up DVI if enabled
-// 4. print ROM/vector sanity information
-// 5. capture and print the startup trace
-// 6. enter the steady-state run loop
+// 4. capture the startup trace and print it when diagnostics are enabled
+// 5. print one readiness summary and enter the steady-state run loop
 //
 // The steady-state loop interleaves:
 // - UART polling
@@ -398,20 +407,23 @@ static void print_startup_trace(void) {
 int main(void) {
     stdio_init_all();
     app_init();
+#if NEO1_DIAGNOSTICS
     printf("[neo1] configuring DVI...\n");
+#endif
    neo1_video_init(&state.term);
 
     // DVI init changes the system clock; reinitialize stdio/UART so the
     // serial console stays at the expected baud rate.
     stdio_init_all();
 
+#if NEO1_DIAGNOSTICS
     printf("[neo1] starting DVI core...\n");
+#endif
    neo1_video_start();
     
     sleep_ms(200);
 
-    printf("[neo1] starting...\n");
-
+#if NEO1_DIAGNOSTICS
     const chips_range_t rom = neo1_selected_rom_range();
     printf("[neo1] personality=%u rom_base=$%04X rom_protect_base=$%04X rom_size=%u bytes\n",
         (unsigned)NEO1_PERSONALITY,
@@ -425,16 +437,25 @@ int main(void) {
         state.neo1.ram[0xFFFF], state.neo1.ram[0xFFFE]);
 
     printf("[neo1] capturing startup trace...\n");
+#endif
 
     // Capture enough early bus activity to understand reset/startup behavior,
-    // but keep printing outside the bus loop so timing stays predictable.
+    // preserving the verified startup sequence. Printing remains outside the
+    // bus loop and is enabled only for a diagnostic build.
     while (state.neo1.startup_trace_len < NEO1_TRACE_COUNT) {
         neo1_tick(&state.neo1);
     }
 
+#if NEO1_DIAGNOSTICS
     print_startup_trace();
-
     printf("[neo1] entering run loop...\n");
+#endif
+
+    printf("[neo1] ready personality=%u vaci=%u vcffa1=%u diagnostics=%u\n",
+           (unsigned)NEO1_PERSONALITY,
+           (unsigned)NEO1_ENABLE_VACI,
+           (unsigned)NEO1_ENABLE_VCFFA1,
+           (unsigned)NEO1_DIAGNOSTICS);
 
     while (1) {
         uint32_t start_time_us = time_us_32();
@@ -442,10 +463,12 @@ int main(void) {
         poll_keyboard();
         neo1_usb_task();
 
+#if NEO1_DIAGNOSTICS
         if (neo1_usb_msc_mounted() && !msc_listed) {
             neo1_msc_list_files();
             msc_listed = true;
         }
+#endif
 
         // Run a modest chunk of machine cycles per host iteration.
         // This is intentionally simple and can be revisited later if Neo1-23

@@ -17,7 +17,8 @@
         "NEO1_CPU_BACKEND": "1",
         "NEO1_PERSONALITY": "50",
         "NEO1_ENABLE_VACI": "1",
-        "NEO1_ENABLE_VCFFA1": "1"
+        "NEO1_ENABLE_VCFFA1": "1",
+        "NEO1_DIAGNOSTICS": "0"
       }
     },
     {
@@ -32,6 +33,15 @@
       }
     },
     {
+      "name": "neo1-pico-23-diagnostics",
+      "displayName": "Neo1 Pico 23 Diagnostics",
+      "description": "Neo1-23 full profile with verbose serial diagnostics enabled.",
+      "inherits": "neo1-pico-23-full",
+      "cacheVariables": {
+        "NEO1_DIAGNOSTICS": "1"
+      }
+    },
+    {
       "name": "neo1-pico-50-full",
       "displayName": "Neo1 Pico 50 (VACI on, VCFFA1 on)",
       "description": "Neo1-50 with both storage interfaces enabled.",
@@ -40,6 +50,15 @@
         "NEO1_PERSONALITY": "50",
         "NEO1_ENABLE_VACI": "1",
         "NEO1_ENABLE_VCFFA1": "1"
+      }
+    },
+    {
+      "name": "neo1-pico-50-diagnostics",
+      "displayName": "Neo1 Pico 50 Diagnostics",
+      "description": "Neo1-50 full profile with verbose serial diagnostics enabled.",
+      "inherits": "neo1-pico-50-full",
+      "cacheVariables": {
+        "NEO1_DIAGNOSTICS": "1"
       }
     },
     {
@@ -103,8 +122,44 @@
   ],
   "buildPresets": [
     {
-      "name": "build",
+      "name": "build-neo1-pico-23-full",
+      "displayName": "Build Neo1 Pico 23 (VACI on, VCFFA1 on)",
+      "configurePreset": "neo1-pico-23-full"
+    },
+    {
+      "name": "build-neo1-pico-23-diagnostics",
+      "displayName": "Build Neo1 Pico 23 Diagnostics",
+      "configurePreset": "neo1-pico-23-diagnostics"
+    },
+    {
+      "name": "build-neo1-pico-50-full",
+      "displayName": "Build Neo1 Pico 50 (VACI on, VCFFA1 on)",
       "configurePreset": "neo1-pico-50-full"
+    },
+    {
+      "name": "build-neo1-pico-50-diagnostics",
+      "displayName": "Build Neo1 Pico 50 Diagnostics",
+      "configurePreset": "neo1-pico-50-diagnostics"
+    },
+    {
+      "name": "build-neo1-pico-50-vaci-only",
+      "displayName": "Build Neo1 Pico 50 (VACI on, VCFFA1 off)",
+      "configurePreset": "neo1-pico-50-vaci-only"
+    },
+    {
+      "name": "build-neo1-sdl-23-full",
+      "displayName": "Build Neo1 SDL 23 (VACI only)",
+      "configurePreset": "neo1-sdl-23-full"
+    },
+    {
+      "name": "build-neo1-sdl-50-full",
+      "displayName": "Build Neo1 SDL 50 (VACI only)",
+      "configurePreset": "neo1-sdl-50-full"
+    },
+    {
+      "name": "build-neo1-sdl-50-vaci-only",
+      "displayName": "Build Neo1 SDL 50 (VACI on, VCFFA1 off)",
+      "configurePreset": "neo1-sdl-50-vaci-only"
     }
   ]
 }

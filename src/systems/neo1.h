@@ -71,6 +71,10 @@
 #define NEO1_ENABLE_VCFFA1 (1)
 #endif
 
+#ifndef NEO1_DIAGNOSTICS
+#define NEO1_DIAGNOSTICS (0)
+#endif
+
 #include "../../systems/neo1-pico/src/neo1_msc.h"
 #if NEO1_ENABLE_VCFFA1
 #include "../../systems/neo1-pico/src/neo1_cffa1.h"
@@ -430,12 +434,14 @@ void neo1_init(neo1_t* sys, const neo1_desc_t* desc) {
     // ready, so soft backends can safely fetch reset vectors during init.
     MOS6502CPU_INIT(&sys->cpu, sys);
 
+#if NEO1_DIAGNOSTICS
     printf("[neo1] mem E000=%02X E001=%02X F000=%02X F001=%02X FFFA=%02X FFFB=%02X FFFC=%02X FFFD=%02X FFFE=%02X FFFF=%02X\n",
         sys->ram[0xE000], sys->ram[0xE001],
         sys->ram[0xF000], sys->ram[0xF001],
         sys->ram[0xFFFA], sys->ram[0xFFFB],
         sys->ram[0xFFFC], sys->ram[0xFFFD],
         sys->ram[0xFFFE], sys->ram[0xFFFF]);
+#endif
         
     // Default no key pending and reset the minimal PIA-like state.
     sys->kbd_latched = 0;

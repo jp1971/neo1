@@ -6,7 +6,7 @@
 #include <stdio.h>
 
 #ifndef NEO1_CFFA1_DEBUG
-#define NEO1_CFFA1_DEBUG 0
+#define NEO1_CFFA1_DEBUG NEO1_DIAGNOSTICS
 #endif
 
 #define NEO1_CFFA1_BLOCK_SIZE 512u

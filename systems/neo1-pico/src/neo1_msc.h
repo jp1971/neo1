@@ -20,10 +20,14 @@
 extern "C" {
 #endif
 
-// Debug output:
-// Set NEO1_MSC_DEBUG to 0 to disable all debug output, or 1 (default) to enable.
-// Debug messages are printed to the host console (stdio).
-#define NEO1_MSC_DEBUG 0
+#ifndef NEO1_DIAGNOSTICS
+#define NEO1_DIAGNOSTICS 0
+#endif
+
+// Follow the firmware-wide diagnostic policy unless explicitly overridden.
+#ifndef NEO1_MSC_DEBUG
+#define NEO1_MSC_DEBUG NEO1_DIAGNOSTICS
+#endif
 
 // I/O register addresses.
 #define NEO1_IO_MSC_CMD        (0xD014)
