@@ -245,15 +245,15 @@ Installed at `$C100-$CA6E` on Neo1 Pico. The visible prompt is
 | --- | --- |
 | `R` | List files by index, select one, and load it at a requested address |
 | `W` | Save an inclusive RAM address range to a named file; multi-sector writes and truncation are hardware-verified |
-| `L` | Load a packed Integer BASIC workspace by file index; the corrected 2,230-byte restore passes an emulated round-trip test and awaits Neo6502 confirmation |
+| `L` | Load a packed Integer BASIC workspace by file index; the corrected 2,230-byte restore passes emulated and Neo6502 round-trip tests |
 | `S` | Save the Integer BASIC zero-page and `$0800-$0FFF` workspace; `$F0-$FC` is preserved before VACI uses it as scratch |
 | `Q` | Return to WozMon |
 
 `D` is an intentionally hidden destructive command that lists files and
 deletes one by index. The corrected `L`/`S` format is compatible with existing
 2,230-byte files, but bytes already corrupted by the older saver cannot be
-recovered. See [Current state](docs/current-state.md) for the outstanding
-physical smoke test.
+recovered. See [Current state](docs/current-state.md) for the dated
+hardware-validation evidence.
 
 ### VCFFA1 — Virtual CFFA1 (`1810R`)
 

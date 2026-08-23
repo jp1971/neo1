@@ -2,7 +2,7 @@
 
 Date: 2026-08-23
 
-Status: In progress; phases 1-6 and Phase 7 checkpoints 1-2 host-complete
+Status: In progress; phases 1-6 and Phase 7 checkpoints 1-2 complete
 
 Purpose: make the current code legible and truthful before portable-core
 extraction without changing behavior, blessing temporary architecture, or
@@ -267,7 +267,7 @@ VACI remains the preferred storage interface. Until remediation resumes, limit
 normal VCFFA1 use to the verified catalog/load/block-inspection workflow and
 use only disposable images for `W` or `D`.
 
-The deferral is an ordering decision, not closure: defects 5 and 14-17 remain
+The deferral is an ordering decision, not closure: defects 3 and 12-15 remain
 open in `docs/current-state.md`. A newly observed regression in the verified
 read-oriented workflow may be fixed sooner as a narrowly scoped preservation
 change.
@@ -281,14 +281,15 @@ Proceed with the active work in this order:
    indexed open, short reads and writes, delete, multi-sector write, and exact
    truncating overwrite. It deliberately does not claim execution coverage for
    the 6502 VACI payload.
-2. **Host-complete 2026-08-23; hardware smoke pending — Repair VACI BASIC
-   save/load as one format decision.** The 2,230-byte layout is unchanged.
+2. **Completed 2026-08-23 — Repair VACI BASIC save/load as one format
+   decision.** The 2,230-byte layout is unchanged.
    VACI stages `$F0-$FC` at `$0210-$021C`, restores the missing `$0800-$0949`
    bytes, and delays scratch restoration until the transfer is finished. A test
    executes the generated payload on the software 65C02 and proves a byte-exact
    round trip of `$004A-$00FF` and `$0800-$0FFF`. Existing snapshots remain
    readable, but scratch bytes already damaged by the old saver are not
-   recoverable. The current-state document contains the required Neo6502 test.
+   recoverable. The current-state document records the passing Neo6502 sentinel
+   test.
 3. **Harden ordinary VACI transfers.** Close successful reads, reject or safely
    handle 64 KB length wrap and protected/overlapping ranges, accept only
    defined status values, and add a bounded failure path. Tighten the linker
