@@ -1,3 +1,7 @@
+# Canonical VCFFA1 binary/label-to-header formatter. Assembly and linking are
+# separate explicit steps; this script trusts those inputs and falls back to
+# the documented entry addresses when a label is absent or malformed.
+
 from pathlib import Path
 import argparse
 

@@ -1,8 +1,12 @@
 // msc_app.c
 //
-// TinyUSB MSC host + FatFs disk I/O glue used by the top-level host app path.
+// Retained, unlinked TinyUSB MSC/FatFs implementation from the earlier host-app
+// path. No current CMake target compiles this file. Its TinyUSB mount callbacks
+// overlap neo1_usb.c, and the Pico target instead links the FatFs diskio.c used
+// by its active USB-host path. Treat this as a legacy/reference candidate, not
+// the storage backend used by Neo1.
 //
-// Responsibilities:
+// If deliberately integrated elsewhere, its implemented responsibilities are:
 // - mount/unmount MSC volumes on device events
 // - expose FatFs disk_* hooks backed by TinyUSB read10/write10
 // - provide a simple inquiry callback for media identification/logging

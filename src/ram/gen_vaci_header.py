@@ -1,3 +1,6 @@
+# Low-level binary-to-header formatter used by build_vaci.py. Direct CLI use
+# trusts the supplied binary and does not assemble or validate its provenance.
+
 import argparse
 from pathlib import Path
 

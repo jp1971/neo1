@@ -1,3 +1,8 @@
+# Supported VACI maintenance entry point. It assembles the tracked source and
+# linker configuration into a temporary directory, renders the C header in
+# memory, and either compares with or replaces the tracked header. Ignored
+# binaries beside the source are not inputs and may be stale.
+
 from __future__ import annotations
 
 import argparse

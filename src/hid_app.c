@@ -1,10 +1,15 @@
 // hid_app.c
 //
-// TinyUSB HID host input bridge for keyboard + selected gamepad devices.
+// Retained, unlinked TinyUSB HID host implementation from the earlier host-app
+// path. No current CMake target compiles this file. Its TinyUSB callback names
+// overlap the active Pico neo1_usb.c implementation, and its keyboard/gamepad
+// outputs depend on external functions not supplied by either Neo1 runner.
+// Treat it as a legacy/reference candidate, not evidence of active input or
+// gamepad support.
 //
-// Responsibilities:
+// If deliberately integrated elsewhere, its implemented responsibilities are:
 // - detect key press/release edges from HID keyboard reports
-// - translate keycodes into ASCII/raw key events for emulator input path
+// - translate keycodes into external raw-key callbacks
 // - parse supported gamepad report formats into normalized hat/button state
 
 #include "tusb.h"

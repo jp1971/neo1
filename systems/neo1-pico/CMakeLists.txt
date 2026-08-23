@@ -1,3 +1,5 @@
+# Pico runner and RP2040 service sources. RAM payloads are compiled into neo1.c
+# through checked-in headers; src/hid_app.c and src/msc_app.c are not linked.
 add_executable(neo1
     ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1_terminal.c
@@ -20,7 +22,7 @@ set(NEO1_ENABLE_VACI "1" CACHE STRING "Enable VACI runtime support (1 or 0)")
 set(NEO1_ENABLE_VCFFA1 "1" CACHE STRING "Enable VCFFA1 runtime support (1 or 0)")
 set(NEO1_DIAGNOSTICS "0" CACHE STRING "Enable verbose Neo1 serial diagnostics (1 or 0)")
 
-# Safety gate: neo1-pico currently depends on real 65C02 hardware glue.
+# The Pico runner services a physical W65C02 bus and accepts only adapter 1.
 if (NOT NEO1_CPU_BACKEND STREQUAL "1")
     message(FATAL_ERROR "neo1-pico requires NEO1_CPU_BACKEND=1 (wdc65C02 hardware backend) for now")
 endif()
@@ -37,16 +39,16 @@ if (NOT NEO1_DIAGNOSTICS MATCHES "^[01]$")
     message(FATAL_ERROR "NEO1_DIAGNOSTICS must be 0 or 1")
 endif()
 
-# Policy: Neo1-23 always ships with both VACI and VCFFA1 enabled.
+# Pico profile policy: Neo1-23 requires both RAM tools and device interfaces.
 if (NEO1_PERSONALITY STREQUAL "23")
     if (NOT (NEO1_ENABLE_VACI STREQUAL "1" AND NEO1_ENABLE_VCFFA1 STREQUAL "1"))
         message(FATAL_ERROR "NEO1_PERSONALITY=23 requires NEO1_ENABLE_VACI=1 and NEO1_ENABLE_VCFFA1=1")
     endif()
 endif()
 
-# Use checked-in RAM image headers instead of auto-building from assembly.
-# This simplifies the build and avoids the need for ca65/ld65/python3 toolchains,
-# and eliminates the power-cycle issue that occurred after rebuilding the headers.
+# Normal firmware builds consume checked-in RAM image headers and never run
+# assemblers or generators. Regeneration is an explicit maintenance operation,
+# documented in src/ram/README.md, and requires Python plus cc65 tools.
 target_include_directories(neo1 BEFORE PRIVATE ${CMAKE_SOURCE_DIR}/src/ram)
 
 target_compile_options(neo1 PRIVATE -Wall)
@@ -88,9 +90,10 @@ target_link_libraries(neo1
     hardware_clocks
 )
 
-# create map/bin/hex/uf2
+# Emit the SDK map, binary, Intel HEX, and UF2 artifacts beside the ELF.
 pico_add_extra_outputs(neo1)
 
-# Serial-only for now
+# Keep SDK stdio on UART. The RP2040 USB controller is used by TinyUSB host, so
+# USB device stdio is disabled.
 pico_enable_stdio_usb(neo1 0)
 pico_enable_stdio_uart(neo1 1)

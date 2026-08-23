@@ -1,3 +1,7 @@
+# Legacy duplicate of gen_cffa1_m2_header.py with fixed paths and no CLI. It has
+# no CMake or script consumer and is retained only as a reference candidate.
+# Use the named VCFFA1 generator for maintenance work.
+
 from pathlib import Path
 
 root = Path(__file__).resolve().parent

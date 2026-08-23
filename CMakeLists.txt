@@ -35,10 +35,10 @@ if (NEO1_PLATFORM STREQUAL "pico")
     include(pico_sdk_import.cmake)
 endif()
 
-# CPU backend selector used by chips/neo1_cpu_backend.h.
-# 1 = wdc65C02 hardware glue (current neo1-pico path)
-# 2 = mos6502 software core (NMOS 6502)
-# 3 = soft65C02 software core (placeholder until vendored)
+# Transitional CPU-adapter selector consumed by chips/neo1_cpu_backend.h.
+# 1 = physical W65C02 bus adapter used by Pico
+# 2 = retained but unsupported selector; its header is absent
+# 3 = fake65c02 adapter used by SDL
 set(NEO1_CPU_BACKEND "1" CACHE STRING "Neo1 CPU backend: 1=wdc65C02, 2=mos6502, 3=soft65C02")
 set_property(CACHE NEO1_CPU_BACKEND PROPERTY STRINGS 1 2 3)
 
@@ -48,8 +48,8 @@ set(CMAKE_CXX_STANDARD 17)
 if (NEO1_PLATFORM STREQUAL "pico")
     pico_sdk_init()
 
-    # Neo1 wants DVI output by default; enabling this adds the PicoDVI library and
-    # its headers to the build.
+    # The Pico runner requires PicoDVI. Keep the option visible so unsupported
+    # attempts to disable it fail with an explicit configuration error below.
     option(ENABLE_DVI "Enable DVI output using PicoDVI" ON)
 
     # Do not add TinyUSB as a direct subdirectory here. The Pico SDK provides the

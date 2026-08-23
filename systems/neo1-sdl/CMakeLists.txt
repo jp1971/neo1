@@ -1,3 +1,5 @@
+# SDL runner, SDL-local mixed platform services, and its duplicate raw-image
+# storage protocols. No Pico service or RAM-payload source is linked here.
 find_package(SDL2 REQUIRED)
 
 add_executable(neo1
