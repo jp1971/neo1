@@ -1,5 +1,9 @@
 # Neo1 Host Emulator Plan
 
+> Historical experiment plan: implementation has diverged from parts of this
+> document. Treat acceptance statements as planned behavior unless confirmed in
+> `docs/current-state.md` or current code.
+
 Date: 2026-04-01
 Status: Planning
 Scope owner: Neo1 solo mainline

@@ -1,5 +1,9 @@
 # Neo1 Milestone Plan (VACI Track, Neo1-23 → Neo1-50 Ready)
 
+> Historical execution plan: this records the completed March 2026 milestone.
+> Command lists and capability claims may have changed; see
+> `docs/current-state.md` for the present baseline.
+
 Date: 2026-03-22
 Completed: 2026-03-24
 Status: Complete

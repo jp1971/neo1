@@ -1,5 +1,8 @@
 # VCFFA1 V0 Baseline — Smoke Matrix
 
+> Historical test log: this records the 2026-03-22 V0 checkpoint. Its deferred
+> write status is not a claim about current behavior; see `docs/current-state.md`.
+
 Date: 2026-03-22
 Owner: Neo1 solo mainline
 Purpose: freeze known-good VCFFA1 behavior before the next storage/runtime changes.

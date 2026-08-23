@@ -15,12 +15,10 @@
 extern "C" {
 #endif
 
-// Minimal CFFA1 compatibility surface for Neo1.
-//
-// Phase M0 goals:
+// CFFA1 compatibility surface for Neo1:
 // - expose CFFA1 signature bytes at $AFDC/$AFDD
-// - provide a safe readable/writable I/O window at $AFF0-$AFFF
-// - keep behavior deterministic while backend commands are unimplemented
+// - provide a readable/writable I/O window at $AFF0-$AFFF
+// - support ProDOS-style status, 512-byte block read, and block write commands
 
 // Signature bytes expected by CFFA1-aware software.
 

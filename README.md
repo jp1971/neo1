@@ -21,82 +21,141 @@ Platform targets:
 - `systems/neo1-pico/` — Olimex Neo6502 / RP2040 hardware target
 - `systems/neo1-sdl/` — macOS/Linux host target using SDL2
 
-## What boots and where
+## Monitor entry points
 
 On reset, the machine boots into Woz Monitor.
 
-From WozMon:
-- `E000R` → Integer BASIC
-- `F000R` → Krusader assembler/editor
-- `C100R` → VACI (Virtual Apple-1 Cassette Interface)
-- `1810R` → VCFFA1 (Virtual CFFA1)
+From WozMon on Neo1 Pico:
 
-## Personality selection (compile-time)
+| Command | Availability | Result |
+| --- | --- | --- |
+| `FF00R` | Every profile | Enter WozMon |
+| `E000R` | Neo1-23, or after loading code on Neo1-50 | Enter Integer BASIC or the program loaded at `$E000` |
+| `F000R` | Neo1-23, or after loading code on Neo1-50 | Enter Krusader or the program loaded at `$F000` |
+| `C100R` | VACI enabled | Enter VACI |
+| `1810R` | VCFFA1 enabled | Enter the VCFFA1 utility |
 
-The build exposes CMake cache variables for runtime personality/features:
+On Neo1-50 Pico, `$E000` and `$F000` initially contain return-to-WozMon stubs
+until a storage utility overwrites them. SDL does not currently install the
+VACI or VCFFA1 RAM utilities.
+
+## Neo1 Pico build profiles
+
+The Pico build exposes these CMake cache variables:
 
 - `NEO1_PERSONALITY` = `23` or `50`
 - `NEO1_ENABLE_VACI` = `1` or `0`
 - `NEO1_ENABLE_VCFFA1` = `1` or `0`
+- `NEO1_DIAGNOSTICS` = `1` for verbose host-side serial diagnostics, otherwise `0`
 
-Policy:
+Neo1-23 requires both storage interfaces. The supplied Pico configure presets
+select the supported combinations:
 
-- `NEO1_PERSONALITY=23` requires both `NEO1_ENABLE_VACI=1` and `NEO1_ENABLE_VCFFA1=1`.
-- Feature toggling is primarily intended for `NEO1_PERSONALITY=50` experiments.
+- `neo1-pico-23-full` selects Neo1-23 with VACI and VCFFA1 enabled.
+- `neo1-pico-50-full` selects Neo1-50 with VACI and VCFFA1 enabled.
+- `neo1-pico-50-vaci-only` selects Neo1-50 with VACI enabled and VCFFA1 disabled.
 
-Defaults are currently set in `systems/neo1-pico/CMakeLists.txt`.
+For bring-up, `neo1-pico-23-diagnostics` and
+`neo1-pico-50-diagnostics` select the corresponding full profile with
+`NEO1_DIAGNOSTICS=1`.
 
-Meaning:
+Neo1-23 places the protected system ROM at `$E000-$FFFF`, so `E000R` and
+`F000R` enter Integer BASIC and Krusader. Neo1-50 protects only WozMon at
+`$FF00-$FFFF`; `$E000-$FEFF` remains writable for programs loaded from
+storage.
 
-- `NEO1_PERSONALITY=23` (default): top ROM region is `$E000-$FFFF`.
-	- `E000R` and `F000R` are available from ROM.
-- `NEO1_PERSONALITY=50`: WozMon ROM is placed at `$FF00-$FFFF` and only that page is write-protected.
-	- `$E000-$EFFF` is writable so BASIC can be loaded by storage utility and run with `E000R`.
+## Building Neo1 Pico in VS Code
 
-### Switching with CMake (recommended)
+The supported hardware-build path uses the Raspberry Pi Pico VS Code extension
+with its CMake Tools integration. The currently verified toolchain is:
 
-Configure once with desired values, then keep using **Compile Project** in VS Code:
+- Raspberry Pi Pico SDK 2.1.0, managed by the extension
+- Arm GNU Toolchain 13.3.Rel1, managed by the extension
+- Ninja and CMake supplied by the extension
 
-```sh
-cmake -S . -B build \
-	-DNEO1_PERSONALITY=23 \
-	-DNEO1_ENABLE_VACI=1 \
-	-DNEO1_ENABLE_VCFFA1=1
-```
+SDK 2.3.0 has not yet been validated. Treat changing SDK versions as a separate
+build change: update the extension-managed project SDK, perform a clean
+configure and build of both Pico personalities, and repeat the Neo6502 smoke
+test before making it the documented baseline.
 
-Example for Neo1-50 with VACI on and VCFFA1 off:
+### Prepare the checkout
 
-```sh
-cmake -S . -B build \
-	-DNEO1_PERSONALITY=50 \
-	-DNEO1_ENABLE_VACI=1 \
-	-DNEO1_ENABLE_VCFFA1=0
-```
-
-After changing these values, run configure once, then use **Compile Project** as usual.
-
-### Switching with CMake Profiles (preset workflow)
-
-`CMakePresets.json` includes ready-to-use profiles:
-
-- `neo1-pico-23-full`
-- `neo1-pico-50-full`
-- `neo1-pico-50-vaci-only`
-- `neo1-sdl-23-full`
-- `neo1-sdl-50-full`
-- `neo1-sdl-50-vaci-only`
-
-In VS Code:
-
-1. Run **CMake: Select Configure Preset** and choose one of the profiles above.
-2. Run **CMake: Configure** once.
-3. Continue using **Compile Project** (Raspberry Pi Pico extension task) as normal.
-
-CLI equivalent example:
+Install the Raspberry Pi Pico extension, allow it to install the verified SDK
+and toolchain, and initialize the three project submodules from the repository
+root:
 
 ```sh
-cmake --preset neo1-pico-50-vaci-only
+git submodule update --init -- lib/pico-sdk lib/PicoDVI lib/tinyusb
 ```
+
+The build uses the extension-managed official SDK. The checked-in Pico SDK fork
+is still required because it supplies Neo1's project-specific
+`olimex_neo6502.h` board definition. PicoDVI and TinyUSB are linked from the
+checked-in submodules.
+
+### Select and configure a profile
+
+1. Open the repository root in VS Code.
+2. Enable **Raspberry Pi Pico: Use CMake Tools** in the workspace settings.
+   The setting `raspberry-pi-pico.useCmakeTools` must be `true`.
+3. Run **CMake: Select Configure Preset** from the Command Palette.
+4. Select one of the normal or diagnostic `neo1-pico-*` profiles listed above.
+5. Confirm that the selected build preset begins with **Build Neo1 Pico** and
+   contains the same `23` or `50` personality as the configure preset.
+6. Use the extension's **Configure CMake** button, or run **CMake: Configure**.
+
+Both Pico personalities use the `build/` directory, so selecting a different
+personality must be followed by Configure before the next build.
+
+### Clean and compile
+
+- Use **Clean CMake** when changing SDK versions, recovering from a stale
+  configuration, or when a full rebuild is required.
+- Use **Compile Project** for normal builds. With CMake Tools enabled, it builds
+  the active preset rather than silently returning to a fixed personality.
+
+The resulting hardware artifacts are written under
+`build/systems/neo1-pico/`. The UF2 to flash is:
+
+```text
+build/systems/neo1-pico/neo1.uf2
+```
+
+Before flashing after a profile switch, check the configure output for the
+expected `NEO1_PERSONALITY`, `NEO1_ENABLE_VACI`, and `NEO1_ENABLE_VCFFA1`
+values.
+
+### Serial diagnostics
+
+Normal profiles set `NEO1_DIAGNOSTICS=0`. They retain 6502 terminal output on
+UART and print only a concise Neo1 readiness line, keyboard/storage mount state,
+and mount failures. They omit startup memory and vector dumps, the 64-event bus
+trace, USB descriptors, root-directory listings, and per-operation storage
+messages.
+
+Select `neo1-pico-23-diagnostics` or `neo1-pico-50-diagnostics` when that
+bring-up evidence is needed. Diagnostic builds also enable Ctrl-D terminal
+buffer dumps on the UART input path. The flag changes host logging only; it
+does not add `printf` calls to the live bus service path.
+
+### Equivalent preset commands
+
+These commands use the same presets as CMake Tools and are useful for checking
+the selected workflow from the extension's configured terminal:
+
+```sh
+cmake --preset neo1-pico-23-full
+cmake --build --preset build-neo1-pico-23-full
+```
+
+To clean that profile:
+
+```sh
+cmake --build --preset build-neo1-pico-23-full --target clean
+```
+
+The SDL target remains a development and behavioral-test target, but it is not
+part of this hardware quickstart.
 
 ## 6502-visible memory map
 
@@ -140,27 +199,6 @@ target does not currently install either utility.
 In every profile, `$0000-$00FF` is zero-page RAM and `$0100-$01FF` is stack
 RAM. The vectors occupy `$FFFA-$FFFF`; reset enters WozMon at `$FF00`.
 
-## Quickstart
-
-```sh
-# Checkout pico-sdk & PicoDVI & tinyusb as git submodules
-cd lib
-git submodule update --init -- pico-sdk PicoDVI tinyusb
-
-cd ..
-
-# Build
-mkdir -p build
-cd build
-cmake ..
-cmake --build .
-
-# Done
-find . -type f -name "*.uf2" -ls
-```
-
-If your generator is Unix Makefiles, `make` works too after `cmake ..`.
-
 ## Hardware reset note (important)
 
 For the 6502 to reset properly, either:
@@ -169,31 +207,47 @@ For the 6502 to reset properly, either:
 
 Without one of those, firmware reset control may not fully reset the external 65C02.
 
-## USB storage requirements
+## USB storage
 
-The current RP2040 target uses FatFs over TinyUSB MSC. FatFs requires an **MBR-partitioned FAT32** volume.
+Neo1 Pico uses FatFs over TinyUSB host MSC. The verified media configuration is
+an MBR-partitioned FAT32 volume; other layouts and filesystems have not yet been
+included in the hardware smoke test.
 
-**Files to place in the root of the volume:**
-- Any `.BIN` — loadable programs for VACI
-- `CFFA1.PO` (optional) — ProDOS disk image for VCFFA1
+Place VACI files and any VCFFA1 disk image in the volume root.
 
 ## Storage interfaces
 
 ### VACI — Virtual Apple-1 Cassette Interface (`C100R`)
 
-Installed at `$C100`. Provides indexed file listing, load, and save modeled on the Apple-1 cassette interface.
+Installed at `$C100-$CA40` on Neo1 Pico. The visible prompt is
+`R/W/L/S/Q?:`.
 
-- `R` — list files by index, prompt for selection and load address, load binary to RAM
-- `W` — prompt for filename, start address, and end address, save memory range to file
-- `D` — list files by index, delete selected file (hidden command)
+| Command | Behavior |
+| --- | --- |
+| `R` | List files by index, select one, and load it at a requested address |
+| `W` | Save an inclusive RAM address range to a named file; multi-sector writes and truncation are hardware-verified |
+| `L` | Load a packed Integer BASIC workspace by file index; implemented but currently has a known restore defect |
+| `S` | Save the Integer BASIC zero-page and `$0800-$0FFF` workspace to one packed file |
+| `Q` | Return to WozMon |
+
+`D` is an intentionally hidden destructive command that lists files and
+deletes one by index. See [Current state](docs/current-state.md) before relying
+on `L`/`S` for program preservation.
 
 ### VCFFA1 — Virtual CFFA1 (`1810R`)
 
-Exposes CFFA1 signature bytes at `$AFDC`/`$AFDD` and a ProDOS block interface at `$AFF0`–`$AFFF`.
+Exposes CFFA1 signature bytes at `$AFDC`/`$AFDD` and a ProDOS block interface
+at `$AFF0-$AFFF`.
 
-- Auto-mounts first `CFFA1.PO`, `CFFA1.HDV`, or `*.po`/`*.hdv`/`*.2mg` image found in root.
-- Supports `PRODOS_STATUS` (`$00`) and `PRODOS_READ` (`$01`) commands via the `$AFFF` command register.
-- 512-byte block data streams out of `$AFF8` one byte per read.
+- Prefers writable `CFFA1RW.PO` or `CFFA1RW.HDV` images.
+- Falls back to read-only `CFFA1.PO` or `CFFA1.HDV`, then the first recognized
+  read-only disk image.
+- Supports `PRODOS_STATUS` (`$00`), `PRODOS_READ` (`$01`), and
+  `PRODOS_WRITE` (`$02`) through `$AFFF`.
+- Streams one 512-byte block through `$AFF8` for reads and writes.
+
+The generic lowercase/alternate `.po` fallback has a known filename-matching
+defect; use one of the preferred names above.
 
 ## Repository layout (high-level)
 
@@ -204,8 +258,10 @@ Exposes CFFA1 signature bytes at `$AFDC`/`$AFDD` and a ProDOS block interface at
 - `src/ram/` — RAM-loaded utility payloads (VACI and VCFFA1 support)
 - `lib/` — Pico SDK, TinyUSB, PicoDVI, FatFs
 
-## Planning docs
+## Documentation
 
-- `docs/neo1-milestone-plan.md` — overall Neo1 milestone plan (VACI track)
-- `docs/vcffa1-v0-baseline.md` — VCFFA1 smoke baseline and naming notes
-- `docs/neo1-sdl-emulator-plan.md` — host-target architecture, milestones, and naming plan
+- `docs/architecture.md` — stable 6502-visible memory and device contracts
+- `docs/current-state.md` — verified capabilities, known defects, and dated test evidence
+- `docs/neo1-milestone-plan.md` — historical overall milestone plan (VACI track)
+- `docs/vcffa1-v0-baseline.md` — dated VCFFA1 V0 smoke-test log
+- `docs/neo1-sdl-emulator-plan.md` — SDL experiment plan; verify its claims against current code
