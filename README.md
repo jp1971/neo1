@@ -237,7 +237,10 @@ on `L`/`S` for program preservation.
 ### VCFFA1 — Virtual CFFA1 (`1810R`)
 
 Exposes CFFA1 signature bytes at `$AFDC`/`$AFDD` and a ProDOS block interface
-at `$AFF0-$AFFF`.
+at `$AFF0-$AFFF`. VCFFA1 is an optional Replica 1 compatibility feature; VACI
+is the preferred Apple-1-oriented storage interface. The current VCFFA1
+implementation is retained for compatibility while its reliability work is
+deferred until after the next portable-core checkpoint.
 
 - Prefers writable `CFFA1RW.PO` or `CFFA1RW.HDV` images.
 - Falls back to read-only `CFFA1.PO` or `CFFA1.HDV`, then the first recognized
@@ -246,8 +249,28 @@ at `$AFF0-$AFFF`.
   `PRODOS_WRITE` (`$02`) through `$AFFF`.
 - Streams one 512-byte block through `$AFF8` for reads and writes.
 
-The generic lowercase/alternate `.po` fallback has a known filename-matching
-defect; use one of the preferred names above.
+The interactive utility supports `C` catalog, `L` load, `B` block inspect, `W`
+write/create/overwrite, `D` delete, and `Q` quit. Its catalog and allocation
+logic is deliberately limited to root directory block 2, the first bitmap
+block, and seedling or two-block sapling files no larger than 1024 bytes.
+
+The catalog/load/block-inspection workflow and loading a `.po` image have been
+verified on Neo6502 hardware. The following limitations remain documented and
+deferred:
+
+- Generic lowercase or alternate `.po` fallback matching is faulty; use one of
+  the preferred image names above.
+- Create and delete are not transactional and can leave the ProDOS bitmap and
+  directory inconsistent after an I/O failure.
+- Overwriting an existing file does not update its EOF or related catalog
+  metadata when the requested length changes.
+- Block-driver DRQ waits have no timeout, and utility load destinations are not
+  range checked.
+
+Treat `W` and `D` as experimental and use them only with a disposable disk
+image. Do not use the current utility to modify valuable media. See
+[Current state](docs/current-state.md) for the complete evidence and defect
+ledger.
 
 ## Repository layout (high-level)
 

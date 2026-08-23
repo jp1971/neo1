@@ -256,13 +256,28 @@ Treat the defects recorded during phases 1-6 as separate behavioral work, not
 as one cleanup commit. Preserve both targets at each completed checkpoint and
 update `docs/current-state.md` only after evidence changes.
 
-Work in this order:
+#### Deferral decision
 
-1. **Make destructive storage tests repeatable.** Add focused host coverage or
-   disposable-image fixtures for MSC status/error handling and ProDOS
-   allocation, catalog, create, overwrite, and delete behavior. Include
-   missing/read-only media, invalid commands and ranges, out-of-range blocks,
-   short I/O, and injected failures between metadata writes.
+VCFFA1 reliability work is explicitly deferred until after the next
+portable-core checkpoint. This includes generic `.po` discovery, transactional
+create/delete, existing-file metadata updates, filesystem bounds, load-range
+validation, and bounded DRQ polling. VCFFA1 remains available as a Replica 1
+compatibility feature, but it must not define or block the shared Apple-1 core;
+VACI remains the preferred storage interface. Until remediation resumes, limit
+normal VCFFA1 use to the verified catalog/load/block-inspection workflow and
+use only disposable images for `W` or `D`.
+
+The deferral is an ordering decision, not closure: defects 5 and 14-17 remain
+open in `docs/current-state.md`. A newly observed regression in the verified
+read-oriented workflow may be fixed sooner as a narrowly scoped preservation
+change.
+
+Proceed with the active work in this order:
+
+1. **Make VACI storage tests repeatable.** Add focused host coverage or
+   disposable-media fixtures for MSC status/error and VACI file operations.
+   Include missing/read-only media, invalid commands and ranges, short I/O, and
+   the successful multi-sector write/truncate workflow.
 2. **Repair VACI BASIC save/load as one format decision.** Move or preserve
    scratch state so `$004A-$00FF` is captured and restored faithfully, restore
    the missing `$0800-$0949` bytes, and prove that save then load reproduces all
@@ -272,19 +287,25 @@ Work in this order:
    handle 64 KB length wrap and protected/overlapping ranges, accept only
    defined status values, and add a bounded failure path. Tighten the linker
    ceiling so payload growth cannot enter device or profile-ROM space.
-4. **Repair VCFFA1 discovery and filesystem integrity.** Correct generic `.po`
-   matching. Make create/delete updates recoverable or correctly ordered,
-   propagate all metadata-write failures, update existing-entry EOF and related
-   fields, validate bitmap/directory bounds, and either support or explicitly
-   reject volumes and storage types outside the utility's limits.
-5. **Bound VCFFA1 device polling and load ranges.** Check busy/error state while
-   waiting for DRQ, provide a timeout/error result, and reject load destinations
-   that wrap or overwrite utility, staging, I/O, or ROM regions.
-6. **Resolve cross-target deviations found earlier in the pass.** Remove or
+4. **Resolve cross-target deviations found earlier in the pass.** Remove or
    retire unusable CPU backend value 2, make MSC decode enablement explicit,
    synchronize Pico terminal publication, and give the SDL software runner
    elapsed-time/cycle pacing. Keep architectural extraction separate from each
    observable behavior fix.
+
+After the portable-core checkpoint, resume the deferred VCFFA1 track in this
+order:
+
+1. Add disposable-image tests with injected failures between ProDOS allocation,
+   directory, index, overwrite, and delete writes.
+2. Correct generic `.po` matching and make create/delete updates recoverable or
+   correctly ordered, including propagation of every metadata-write failure.
+3. Update existing-entry EOF and related fields, validate bitmap/directory
+   bounds, and either support or explicitly reject volumes and storage types
+   outside the utility's limits.
+4. Check busy/error state while waiting for DRQ, provide a timeout result, and
+   reject load destinations that wrap or overwrite utility, staging, I/O, or
+   ROM regions.
 
 Each payload behavior change must regenerate its checked-in header in the same
 commit and prove the source/header pair agrees. Shared-machine changes require

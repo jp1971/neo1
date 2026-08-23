@@ -53,6 +53,13 @@ The Pico VCFFA1 backend implements status, 512-byte block read, and 512-byte
 block write. Writable operation requires a preferred writable image such as
 `CFFA1RW.PO` or `CFFA1RW.HDV`; fallback images are opened read-only.
 
+VCFFA1 is retained as an optional Replica 1 compatibility feature, but the
+reliability work in defects 5 and 14-17 is deferred until after the next
+portable-core checkpoint. VACI remains the preferred Apple-1 storage path.
+Until that work resumes, use VCFFA1 `W` and `D` only with disposable images;
+the verified catalog/load workflow may continue to be used within the stated
+directory, bitmap, file-size, and destination limitations.
+
 ## Known defects and unverified behavior
 
 1. **VACI BASIC load is not a correct inverse of save.** `S` stores 330 bytes

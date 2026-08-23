@@ -45,6 +45,9 @@
 ; The driver and utility poll devices synchronously and do not use IRQ or NMI.
 ; The utility understands only root directory block 2, the first bitmap block,
 ; and seedling/sapling files of at most 1024 bytes.
+; Catalog, load, and block inspection are the established compatibility path.
+; Write/create/delete are experimental: their metadata updates are not
+; transactional, so use them only with a disposable ProDOS image.
 
 .setcpu "65C02"
 
