@@ -2,7 +2,7 @@
 
 Date: 2026-08-23
 
-Status: In progress; phases 1-5 complete
+Status: In progress; phases 1-6 complete, phase 7 planned
 
 Purpose: make the current code legible and truthful before portable-core
 extraction without changing behavior, blessing temporary architecture, or
@@ -250,7 +250,53 @@ changes or behavior fixes.
 This phase is intentionally independent of the portable C core and should not
 delay its first extraction.
 
-### Phase 7: Consistency sweep and closeout
+### Phase 7: Remediate issues exposed by the audit
+
+Treat the defects recorded during phases 1-6 as separate behavioral work, not
+as one cleanup commit. Preserve both targets at each completed checkpoint and
+update `docs/current-state.md` only after evidence changes.
+
+Work in this order:
+
+1. **Make destructive storage tests repeatable.** Add focused host coverage or
+   disposable-image fixtures for MSC status/error handling and ProDOS
+   allocation, catalog, create, overwrite, and delete behavior. Include
+   missing/read-only media, invalid commands and ranges, out-of-range blocks,
+   short I/O, and injected failures between metadata writes.
+2. **Repair VACI BASIC save/load as one format decision.** Move or preserve
+   scratch state so `$004A-$00FF` is captured and restored faithfully, restore
+   the missing `$0800-$0949` bytes, and prove that save then load reproduces all
+   2230 bytes. Decide whether existing malformed snapshots need compatibility
+   handling before changing the generated payload.
+3. **Harden ordinary VACI transfers.** Close successful reads, reject or safely
+   handle 64 KB length wrap and protected/overlapping ranges, accept only
+   defined status values, and add a bounded failure path. Tighten the linker
+   ceiling so payload growth cannot enter device or profile-ROM space.
+4. **Repair VCFFA1 discovery and filesystem integrity.** Correct generic `.po`
+   matching. Make create/delete updates recoverable or correctly ordered,
+   propagate all metadata-write failures, update existing-entry EOF and related
+   fields, validate bitmap/directory bounds, and either support or explicitly
+   reject volumes and storage types outside the utility's limits.
+5. **Bound VCFFA1 device polling and load ranges.** Check busy/error state while
+   waiting for DRQ, provide a timeout/error result, and reject load destinations
+   that wrap or overwrite utility, staging, I/O, or ROM regions.
+6. **Resolve cross-target deviations found earlier in the pass.** Remove or
+   retire unusable CPU backend value 2, make MSC decode enablement explicit,
+   synchronize Pico terminal publication, and give the SDL software runner
+   elapsed-time/cycle pacing. Keep architectural extraction separate from each
+   observable behavior fix.
+
+Each payload behavior change must regenerate its checked-in header in the same
+commit and prove the source/header pair agrees. Shared-machine changes require
+focused tests, SDL and both Pico-profile builds, affected-address reporting, and
+an exact Neo6502 smoke procedure. Do not claim physical validation until the
+user supplies it.
+
+Commit boundaries: one defect or tightly coupled invariant per commit. Never
+combine generated payload changes, C architecture extraction, broad renaming,
+and unrelated behavioral fixes.
+
+### Phase 8: Consistency sweep and closeout
 
 Search Neo1-owned active source for bare or stale markers such as `TODO: docs`,
 `Phase`, `M0`, `M1`, `for now`, `currently`, `thin runner`, and `emulator`.
