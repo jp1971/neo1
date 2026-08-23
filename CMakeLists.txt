@@ -83,3 +83,13 @@ elseif (NOT NEO1_PLATFORM STREQUAL "sdl")
 endif()
 
 add_subdirectory(systems)
+
+# Host tests exercise Neo1-owned protocol code without linking an SDL runner or
+# cross-compiling test executables for RP2040. BUILD_TESTING is provided by
+# CTest and remains available to ordinary SDL configure presets.
+if (NEO1_PLATFORM STREQUAL "sdl")
+    include(CTest)
+    if (BUILD_TESTING)
+        add_subdirectory(tests)
+    endif()
+endif()

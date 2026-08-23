@@ -2,7 +2,7 @@
 
 Date: 2026-08-23
 
-Status: In progress; phases 1-6 complete, phase 7 planned
+Status: In progress; phases 1-6 and Phase 7 checkpoint 1 complete
 
 Purpose: make the current code legible and truthful before portable-core
 extraction without changing behavior, blessing temporary architecture, or
@@ -274,10 +274,13 @@ change.
 
 Proceed with the active work in this order:
 
-1. **Make VACI storage tests repeatable.** Add focused host coverage or
-   disposable-media fixtures for MSC status/error and VACI file operations.
-   Include missing/read-only media, invalid commands and ranges, short I/O, and
-   the successful multi-sector write/truncate workflow.
+1. **Completed 2026-08-23 — Make VACI storage tests repeatable.** The SDL host
+   configuration now compiles the production Pico MSC register implementation
+   against a test-only in-memory FatFs backend. The focused CTest covers
+   missing/read-only media, invalid commands and seeks, directory filtering and
+   indexed open, short reads and writes, delete, multi-sector write, and exact
+   truncating overwrite. It deliberately does not claim execution coverage for
+   the 6502 VACI payload.
 2. **Repair VACI BASIC save/load as one format decision.** Move or preserve
    scratch state so `$004A-$00FF` is captured and restored faithfully, restore
    the missing `$0800-$0949` bytes, and prove that save then load reproduces all

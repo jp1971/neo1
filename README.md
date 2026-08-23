@@ -157,6 +157,23 @@ cmake --build --preset build-neo1-pico-23-full --target clean
 The SDL target remains a development and behavioral-test target, but it is not
 part of this hardware quickstart.
 
+### Host MSC contract test
+
+The SDL configure enables a CTest target that compiles the production Pico MSC
+register implementation against a test-only in-memory FatFs backend. It tests
+the `$D014-$D01C` command/data/status contract without accessing real media:
+
+```sh
+cmake --preset neo1-sdl-23-full
+cmake --build --preset build-neo1-sdl-23-full
+ctest --test-dir build-sdl --output-on-failure
+```
+
+The suite covers directory filtering and indexed open, short-read padding,
+missing and read-only media, invalid commands and seeks, short writes, delete,
+the verified multi-sector write workflow, and exact truncating overwrite. It
+does not execute the 6502 VACI payload or establish SDL storage equivalence.
+
 ## 6502-visible memory map
 
 This is the address space observed by the 65C02, not the RP2040's internal

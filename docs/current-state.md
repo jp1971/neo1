@@ -19,6 +19,9 @@ snapshot, not the architecture contract or a roadmap.
   switching back to a normal profile restores concise serial output.
 - The SDL-23 target also builds locally, but that build does not establish
   equivalent storage or hardware behavior.
+- The SDL host configuration now includes `neo1_msc_register_contract`, which
+  compiles the production Pico MSC backend against a deterministic in-memory
+  FatFs fake. It passed locally on 2026-08-23.
 - SDK 2.3.0 has not been configured, built, or hardware-tested.
 
 ## Last Neo6502 hardware validation
@@ -92,9 +95,11 @@ directory, bitmap, file-size, and destination limitations.
 8. **SDK 2.3.0 is unverified.** Upgrade validation requires both Pico profile
    builds followed by the reset, DVI, keyboard, MSC, VACI, and VCFFA1 hardware
    smoke tests.
-9. **Automated coverage is absent.** Current CMake builds define no focused
-   host tests for memory decoding, PIA behavior, storage protocols, or the VACI
-   payload.
+9. **Automated coverage remains limited.** A focused host test now covers the
+   Pico MSC register protocol, including success, error, short-I/O, indexed
+   directory, multi-sector write, and truncation paths. There are still no
+   focused tests for shared memory decoding, PIA behavior, the 6502 VACI
+   payload itself, VCFFA1, or CPU compatibility.
 10. **CPU backend value 2 is not usable.** `neo1_cpu_backend.h` declares a
    `MOS6502` backend and includes `mos6502cpu.h` when it is selected, but that
    header is not present in the repository. Current presets use the physical
