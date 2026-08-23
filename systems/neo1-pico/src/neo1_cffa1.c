@@ -1,5 +1,11 @@
 #include "neo1_cffa1.h"
 
+// Pico FatFs backend for the optional VCFFA1 register contract. Image lookup is
+// lazy: preferred CFFA1RW images are opened read/write, preferred CFFA1 images
+// and extension-discovered fallbacks are read-only. Block commands validate the
+// applicable media, LBA range, and write permission before exposing their data
+// phase. Backend I/O occurs synchronously during a servicing register access.
+
 #include "ff.h"
 
 #include <string.h>
@@ -10,10 +16,6 @@
 #endif
 
 #define NEO1_CFFA1_BLOCK_SIZE 512u
-
-// -----------------------------------------------------------------------------
-// module state
-// -----------------------------------------------------------------------------
 
 static uint8_t g_regs[NEO1_CFFA1_IO_SIZE];
 static FATFS g_fatfs;
@@ -178,7 +180,7 @@ static uint32_t get_requested_block(void) {
            (uint32_t)g_regs[NEO1_CFFA1_REG_LBA0];
 }
 
-// STATUS command: validate media/image availability.
+// STATUS command performs lazy image discovery and reports device availability.
 static void do_cmd_status(void) {
     if (!open_first_image()) {
         set_error(NEO1_CFFA1_ERR_NODEV);
@@ -187,7 +189,7 @@ static void do_cmd_status(void) {
     set_ok(0);
 }
 
-// READ command: load one 512-byte block into DATA stream buffer.
+// READ loads a complete block before asserting DRQ and resetting the stream.
 static void do_cmd_read(void) {
     const uint32_t block = get_requested_block();
 
@@ -218,7 +220,7 @@ static void do_cmd_read(void) {
     set_ok(1);
 }
 
-// WRITE command: arm data phase; commit occurs after full DATA stream received.
+// WRITE validates first, then commits and syncs after 512 DATA writes.
 static void do_cmd_write(void) {
     const uint32_t block = get_requested_block();
 
@@ -271,7 +273,7 @@ void neo1_cffa1_init(void) {
     close_image_if_open();
     g_block_offset = 0;
 
-    // Conservative ATA-like ready state.
+    // Idle device: ready and seek-complete, with no active data request.
     set_ok(0);
 }
 
@@ -294,13 +296,13 @@ uint8_t neo1_cffa1_io_read(uint16_t addr) {
     if ((addr >= NEO1_CFFA1_IO_BASE) && (addr <= NEO1_CFFA1_IO_END)) {
         const uint16_t index = (uint16_t)(addr - NEO1_CFFA1_IO_BASE);
         if (index == NEO1_CFFA1_REG_DATA) {
-            // DATA reads stream from current block buffer during DRQ phase.
+            // The caller is expected to read DATA only while DRQ is asserted.
             uint8_t data = 0x00;
             if (g_block_offset < NEO1_CFFA1_BLOCK_SIZE) {
                 data = g_block_buffer[g_block_offset++];
             }
             if (g_block_offset >= NEO1_CFFA1_BLOCK_SIZE) {
-                // End of transfer: return to ready/no-DRQ state.
+                // The 512th byte completes the read data phase.
                 set_ok(0);
             }
             return data;
@@ -317,7 +319,7 @@ void neo1_cffa1_io_write(uint16_t addr, uint8_t data) {
         g_regs[index] = data;
 
         if ((index == NEO1_CFFA1_REG_DATA) && g_write_pending) {
-            // DATA writes stream one 512-byte block for pending WRITE command.
+            // Only an armed WRITE data phase consumes DATA into the block buffer.
             if (g_block_offset < NEO1_CFFA1_BLOCK_SIZE) {
                 g_block_buffer[g_block_offset++] = data;
             }
@@ -338,7 +340,7 @@ void neo1_cffa1_io_write(uint16_t addr, uint8_t data) {
                     return;
                 }
 
-                // Transfer committed successfully.
+                // The 512th byte is not acknowledged complete until sync succeeds.
                 set_ok(0);
             }
             return;
@@ -349,7 +351,7 @@ void neo1_cffa1_io_write(uint16_t addr, uint8_t data) {
             return;
         }
 
-        // Keep status and alt-status coherent for direct manual pokes.
+        // The Pico bridge treats a DEVCTRL write as a direct status override.
         if (index == NEO1_CFFA1_REG_DEVCTRL_ALTSTATUS) {
             set_status(data);
         }

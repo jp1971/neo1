@@ -2,8 +2,8 @@
 //
 // Transitional shared Neo1 machine implementation consumed by both the Pico
 // and SDL targets. It owns the 64 KB backing store, selected top-ROM placement
-// and write protection, Apple-1 keyboard/display register behavior, optional
-// storage address decoding, and the display-byte callback.
+// and write protection, Apple-1 keyboard/display register behavior, storage
+// address decoding, and the display-byte callback.
 //
 // The CPU is still embedded through the MOS6502CPU_* macro adapter. Pico feeds
 // captured cycles from a physical W65C02; SDL's software adapter calls the same
@@ -29,7 +29,9 @@
 // Neo1-23 places and protects an 8 KB ROM at $E000-$FFFF. Neo1-50 places and
 // protects WozMon at $FF00-$FFFF. Both profiles expose Apple-1-style I/O at
 // $D010-$D013, Replica 1 display mirrors at $D0F2-$D0F3, and the Neo1 MSC
-// extension at $D014-$D01C. VCFFA1 address decoding is compile-time optional.
+// extension at $D014-$D01C. MSC decode is always present; NEO1_ENABLE_VACI only
+// controls payload installation in a runner. VCFFA1 signature/register decode
+// is compile-time optional.
 //
 // ## zlib/libpng license
 //
@@ -249,8 +251,8 @@ static inline uint16_t _neo1_normalize_io_addr(uint16_t addr) {
 
 // Bus read dispatch order:
 // 1) normalize mirrored addresses
-// 2) route VCFFA1 window first when enabled
-// 3) handle Neo1 keyboard/display and MSC registers
+// 2) route the optional Replica 1 VCFFA1 signature/register addresses
+// 3) handle Apple-1 keyboard/display and readable Neo1 MSC registers
 // 4) fall back to RAM/ROM backing store
 static inline uint8_t _neo1_mem_read(neo1_t* sys, uint16_t addr) {
     addr = _neo1_normalize_io_addr(addr);
@@ -316,8 +318,8 @@ static inline uint8_t _neo1_mem_read(neo1_t* sys, uint16_t addr) {
 
 // Bus write dispatch order mirrors read side:
 // 1) normalize mirrored addresses
-// 2) route VCFFA1 window first when enabled
-// 3) handle Neo1 keyboard/display and MSC registers
+// 2) route the optional Replica 1 VCFFA1 signature/register addresses
+// 3) handle Apple-1 keyboard/display and writable Neo1 MSC registers
 // 4) write to backing RAM unless inside protected ROM region
 static inline void _neo1_mem_write(neo1_t* sys, uint16_t addr, uint8_t data) {
     addr = _neo1_normalize_io_addr(addr);

@@ -79,6 +79,10 @@ block write. Writable operation requires a preferred writable image such as
    header is not present in the repository. Current presets use the physical
    W65C02 backend (1) or the soft-65C02 adapter (3); value 2 is not a supported
    configuration.
+8. **MSC register decoding is not independently selectable.** The shared
+   machine always routes the supported `$D014-$D01C` accesses to an MSC
+   implementation. `NEO1_ENABLE_VACI` controls installation of the 6502-side
+   VACI payload, not ownership of those addresses.
 
 ## Storage-test expectations still outstanding
 

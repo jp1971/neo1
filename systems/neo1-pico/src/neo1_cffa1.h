@@ -2,11 +2,16 @@
 
 // neo1_cffa1.h
 //
-// Neo1 virtual CFFA1 compatibility bridge.
+// Neo1 virtual VCFFA1 compatibility bridge.
 //
-// This module exposes a minimal CFFA1-like register window and signature bytes
-// so legacy monitor/tooling paths can talk to block storage semantics while the
-// backend is implemented on top of host-side FatFs file I/O.
+// This optional Replica 1 compatibility device exposes signature bytes and an
+// ATA-like register window to 6502 software. It is not part of the Apple-1 core
+// and does not define Neo1's preferred storage architecture. The Pico backend
+// maps blocks to a FatFs disk-image file; SDL reuses the register constants for
+// a separate raw-image implementation with documented deviations.
+//
+// 6502 software observes command and 512-byte data-phase state by polling
+// STATUS/DRQ. The device does not assert IRQ or NMI.
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -15,12 +20,7 @@
 extern "C" {
 #endif
 
-// CFFA1 compatibility surface for Neo1:
-// - expose CFFA1 signature bytes at $AFDC/$AFDD
-// - provide a readable/writable I/O window at $AFF0-$AFFF
-// - support ProDOS-style status, 512-byte block read, and block write commands
-
-// Signature bytes expected by CFFA1-aware software.
+// Signature bytes expected by VCFFA1-aware software.
 
 #define NEO1_CFFA1_ID1_ADDR   (0xAFDC)
 #define NEO1_CFFA1_ID2_ADDR   (0xAFDD)
@@ -31,13 +31,15 @@ extern "C" {
 #define NEO1_CFFA1_IO_END     (0xAFFF)
 #define NEO1_CFFA1_IO_SIZE    (0x10)
 
-// Register map overview for $AFF0-$AFFF window:
-// - +0x06 ALTSTATUS / DEVCTRL mirror
-// - +0x08 DATA (streams block bytes)
-// - +0x09 ERROR / FEATURE
-// - +0x0A SECTOR COUNT (currently pass-through)
-// - +0x0B..+0x0E LBA0..LBA3
-// - +0x0F STATUS / COMMAND
+// Register contract for $AFF0-$AFFF. Unassigned offsets retain ordinary
+// register bytes within the enabled device window.
+// - +0x06 read: ALTSTATUS mirror; write: DEVCTRL value mirrored to STATUS by
+//   the Pico implementation.
+// - +0x08 DATA: streams one 512-byte block during a DRQ data phase.
+// - +0x09 read: ERROR; write: FEATURE. Commands replace it with their result.
+// - +0x0A SECTOR COUNT: stored pass-through value; commands ignore it.
+// - +0x0B..+0x0E LBA0..LBA3: 32-bit block number, least-significant byte first.
+// - +0x0F read: STATUS; write: COMMAND.
 
 // ATA-like register offsets within $AFF0-$AFFF.
 #define NEO1_CFFA1_REG_DEVCTRL_ALTSTATUS  (0x06)
@@ -50,8 +52,12 @@ extern "C" {
 #define NEO1_CFFA1_REG_LBA3               (0x0E)
 #define NEO1_CFFA1_REG_STATUS_COMMAND     (0x0F)
 
-// M1 bridge command subset (written to STATUS/COMMAND register).
-// These are intentionally minimal command IDs for incremental bring-up.
+// Supported ProDOS-style commands written to STATUS/COMMAND:
+// - STATUS validates that a backing image can be opened.
+// - READ validates LBA, fills the buffer synchronously, resets DATA, and sets
+//   DRQ until 512 DATA reads complete.
+// - WRITE validates LBA and write permission, resets DATA, and sets DRQ; the
+//   512th DATA write commits and syncs the block before DRQ clears.
 #define NEO1_CFFA1_CMD_PRODOS_STATUS      (0x00)
 #define NEO1_CFFA1_CMD_PRODOS_READ        (0x01)
 #define NEO1_CFFA1_CMD_PRODOS_WRITE       (0x02)
@@ -64,16 +70,20 @@ extern "C" {
 #define NEO1_CFFA1_ERR_WRITE_PROTECT      (0x2B)
 #define NEO1_CFFA1_ERR_BADBLOCK           (0x2D)
 
-// ATA-like status bits used by this bridge.
+// ATA-like status bits. Successful idle state is DRDY|DSC; READ or WRITE data
+// phase adds DRQ. Errors report DRDY|DSC|ERR. No implemented path sets BSY.
 #define NEO1_CFFA1_STATUS_ERR             (1u << 0)
 #define NEO1_CFFA1_STATUS_DRQ             (1u << 3)
 #define NEO1_CFFA1_STATUS_DSC             (1u << 4)
 #define NEO1_CFFA1_STATUS_DRDY            (1u << 6)
 #define NEO1_CFFA1_STATUS_BSY             (1u << 7)
 
-// Public bridge API used by Neo1 runtime bus hooks.
+// Reset protocol and lazy image-selection state.
 void neo1_cffa1_init(void);
+// Report ownership of the two signature addresses and the register window.
 bool neo1_cffa1_handles_addr(uint16_t addr);
+// Service decoded 6502 accesses; the backend owns registers, block buffer, and
+// image state, while the shared machine owns conditional address decode.
 uint8_t neo1_cffa1_io_read(uint16_t addr);
 void neo1_cffa1_io_write(uint16_t addr, uint8_t data);
 

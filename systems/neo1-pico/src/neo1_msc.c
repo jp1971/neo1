@@ -1,14 +1,12 @@
 // neo1_msc.c
 //
-// Minimal MSC (Mass Storage Class) block device interface for the Neo1 6502
-// runtime. This module presents a small set of memory-mapped I/O registers that
-// the 6502 can use to open a file on the mounted USB drive and read/write 512B
-// sectors.
+// Pico FatFs backend for the Neo1 MSC register contract in neo1_msc.h. It owns
+// the mounted volume object, active file and directory handles, shared 512-byte
+// DATA buffer, and streaming offsets. The shared machine owns address decode.
 //
-// Design notes:
-// - this is a command-driven register interface, not a full filesystem API
-// - operations complete synchronously and expose completion via STATUS
-// - DATA acts as a byte stream for both sector data and command payloads
+// Filesystem calls run on the physical 6502 bus-service path. STATUS therefore
+// records synchronous completion rather than progress on a worker; BUSY is
+// observable while OPEN waits for its filename bytes.
 
 #include "neo1_msc.h"
 #include "ff.h"
@@ -16,7 +14,7 @@
 #include <stdio.h>
 #include <string.h>
 
-// Enable to print MSC debug messages to the host console.
+// The public header normally supplies the firmware-wide diagnostic setting.
 #ifndef NEO1_MSC_DEBUG
 #define NEO1_MSC_DEBUG 1
 #endif
@@ -69,10 +67,8 @@ static FRESULT ensure_mounted(void) {
     return f_mount(&g_fatfs, "0:", 1);
 }
 
-// Set STATUS register to error state with FatFs-compatible low bits.
+// Preserve a FatFs result in the low seven bits when one is available.
 static void set_error(uint8_t err) {
-    // Store a nonzero status so the CPU can detect the error.
-    // High bit indicates error; lower bits are the FatFs result code.
     g_status = NEO1_MSC_STATUS_ERROR | (err & 0x7F);
 }
 
@@ -86,7 +82,7 @@ static void set_busy(void) {
     g_status = NEO1_MSC_STATUS_BUSY;
 }
 
-// OPEN handler: open/create filename previously streamed through DATA writes.
+// Complete the OPEN transaction begun by the command-register write.
 static void do_open(void) {
     // Mount the filesystem if needed.
     // Note: the USB MSC driver mounts the volume as "0:".
@@ -115,7 +111,8 @@ static void do_open(void) {
         const FSIZE_t size = f_size(&g_file);
         g_file_size = (size > 0xFFFFu) ? 0xFFFFu : (uint16_t)size;
     }
-    // Reset data offset so the write buffer is clean after filename streaming.
+    // The next DATA stream begins at byte zero; the payload bytes are not
+    // cleared because a later WRITE consumes only its requested length.
     g_data_offset = 0;
     set_ready();
 }
@@ -345,7 +342,7 @@ static void do_read(void) {
     set_ready();
 }
 
-// WRITE handler: write DATA buffer to selected sector and sync file.
+// Commit payload bytes already streamed through DATA, then truncate and sync.
 static void do_write(void) {
     if (!g_file_open) {
         set_error(1);
@@ -447,10 +444,9 @@ uint8_t neo1_msc_io_read(uint16_t addr) {
 void neo1_msc_io_write(uint16_t addr, uint8_t data) {
     switch (addr) {
         case NEO1_IO_MSC_CMD:
-            // Command dispatch point for 6502-side control flow.
             switch (data) {
                 case NEO1_MSC_CMD_OPEN:
-                    // Prepare to receive filename via DATA port writes.
+                    // Filename collection is the only interval reported BUSY.
                     g_open_filename_pos = 0;
                     g_open_filename[0] = '\0';
                     g_open_pending = true;
@@ -501,21 +497,21 @@ void neo1_msc_io_write(uint16_t addr, uint8_t data) {
             break;
 
         case NEO1_IO_MSC_DATA:
-            // During an active OPEN command we receive filename bytes here.
+            // During an active OPEN command DATA carries filename bytes.
             if (g_open_pending) {
                 if (g_open_filename_pos < (sizeof(g_open_filename) - 1)) {
                     g_open_filename[g_open_filename_pos++] = (char)data;
                     g_open_filename[g_open_filename_pos] = '\0';
                 }
                 if (data == '\0' || g_open_filename_pos >= (sizeof(g_open_filename) - 1)) {
-                    // Filename complete (or max length reached): perform OPEN once.
+                    // Complete OPEN once, on NUL or at the accepted length limit.
                     g_open_pending = false;
                     do_open();
                 }
                 break;
             }
 
-            // Otherwise DATA targets the sector payload buffer.
+            // Otherwise DATA fills the buffer consumed by a later WRITE command.
             if (g_data_offset < sizeof(g_buffer)) {
                 g_buffer[g_data_offset++] = data;
             }

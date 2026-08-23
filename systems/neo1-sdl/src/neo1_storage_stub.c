@@ -4,8 +4,21 @@
 #include "../../neo1-pico/src/neo1_cffa1.h"
 #include "neo1_platform.h"
 
-// SDL M1 storage bridge: map Neo1 MSC/CFFA register protocols to one host
-// block image exposed by neo1_platform_disk_read/write.
+// SDL storage accommodation. Both nominal devices map to the one raw host image
+// exposed by neo1_platform_disk_read/write; this file duplicates their visible
+// state machines rather than providing a backend for the Pico implementations.
+// It must not be treated as equivalent VACI/VCFFA1 behavior or as the intended
+// shared storage boundary.
+//
+// MSC deviations: READ and WRITE address raw 512-byte sectors. OPEN, CLOSE,
+// directory, indexed-file, and unknown commands succeed as no-ops; SIZE, INFO,
+// and INDEX have no file-service effect. WRITE accepts either buffer bytes before
+// the command or exactly 512 bytes after it is armed. It never reports BUSY.
+//
+// VCFFA1 deviations: STATUS probes raw block zero; READ/WRITE delegate range and
+// media checks to the platform; WRITE does not preflight media or expose a
+// distinct write-protect error. Direct ALTSTATUS/DEVCTRL writes do not update
+// STATUS. Neither emulated device asserts IRQ or NMI.
 
 static uint8_t g_msc_regs[9];
 static uint8_t g_msc_buffer[512];
@@ -128,7 +141,7 @@ void neo1_msc_io_write(uint16_t addr, uint8_t data) {
                     break;
 
                 default:
-                    // OPEN/CLOSE/DIR commands are accepted as no-op in SDL M1.
+                    // File-oriented and unknown commands have no raw-image action.
                     msc_set_status(NEO1_MSC_STATUS_READY);
                     g_msc_write_armed = false;
                     break;
