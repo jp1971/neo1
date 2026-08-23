@@ -98,43 +98,47 @@ CLI equivalent example:
 cmake --preset neo1-pico-50-vaci-only
 ```
 
-## Current RP2040 Memory Map
+## 6502-visible memory map
 
-```
-+-----------------------+
-| FFFF  IRQ vector      |
-| FFFE                  |
-| FFFD  RESET vector    |
-| FFFC                  |
-| FFFB  NMI vector      |
-| FFFA                  |
-|                       |
-| FF00  Woz Monitor     |
-|                       |
-| F000  Krusader        |
-|                       |
-| E000  Integer BASIC   |
-+-----------------------+
-| DFFF                  |
-| D000  I/O space       |
-|       keyboard        |
-|       display         |
-|       MSC registers   |
-+-----------------------+
-| CFFF                  |
-|                       |
-| C100  VACI (RAM)      |
-|                       |
-| 0200  program RAM     |
-|                       |
-+-----------------------+
-| 01FF  stack           |
-| 0100                  |
-+-----------------------+
-| 00FF  zero page       |
-| 0000                  |
-+-----------------------+
-```
+This is the address space observed by the 65C02, not the RP2040's internal
+memory map. Neo1 provides a flat 64 KB backing store. Addresses are ordinary
+RAM unless a device intercepts them, a RAM-resident utility is installed at
+startup, or the selected personality protects the top ROM region.
+
+### Decoded device addresses
+
+| Address | Owner | Purpose |
+| --- | --- | --- |
+| `$AFDC-$AFDD` | VCFFA1, when enabled | CFFA1 compatibility signature bytes |
+| `$AFF0-$AFFF` | VCFFA1, when enabled | Replica 1-compatible block-device registers |
+| `$D010-$D013` | Apple-1 PIA-like interface | Keyboard data/control and display data/control |
+| `$D014-$D01C` | Neo1 MSC extension | File and sector command, data, status, index, information, and size registers |
+| `$D0F2-$D0F3` | Display aliases | Mirrors of `$D012-$D013` |
+
+These are sparse decoded addresses; the rest of `$D000-$DFFF` remains RAM.
+When VCFFA1 is disabled, its signature and register addresses also remain RAM.
+
+### RAM-resident utilities on Neo1 Pico
+
+| Address range | Installed when | Contents and entry point |
+| --- | --- | --- |
+| `$1800-$2C1E` | VCFFA1 enabled | 5,151-byte M2 block driver; interactive entry at `$1810` |
+| `$C100-$CA40` | VACI enabled | 2,369-byte VACI utility; enter from WozMon with `C100R` |
+
+These utilities are copied into ordinary writable RAM during Pico startup;
+their ranges are not ROM and are not separate memory-mapped devices. The SDL
+target does not currently install either utility.
+
+### Personality-specific top memory
+
+| Personality/target | `$E000-$FEFF` | `$FF00-$FFFF` |
+| --- | --- | --- |
+| Neo1-23, Pico and SDL | Protected 8 KB system ROM beginning at `$E000`; contains Integer BASIC at `$E000` and Krusader at `$F000` | Final page of the same system ROM, containing WozMon and the hardware vectors |
+| Neo1-50, Pico | Writable RAM; three-byte `JMP $FF00` startup stubs are placed at `$E000` and `$F000` until overwritten | Protected 256-byte WozMon ROM and hardware vectors |
+| Neo1-50, SDL | Writable seeded RAM; no `$E000` or `$F000` startup stubs | Protected 256-byte WozMon ROM and hardware vectors |
+
+In every profile, `$0000-$00FF` is zero-page RAM and `$0100-$01FF` is stack
+RAM. The vectors occupy `$FFFA-$FFFF`; reset enters WozMon at `$FF00`.
 
 ## Quickstart
 
