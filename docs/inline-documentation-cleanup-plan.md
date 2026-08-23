@@ -2,7 +2,7 @@
 
 Date: 2026-08-23
 
-Status: In progress; phases 1-6 and Phase 7 checkpoint 1 complete
+Status: In progress; phases 1-6 and Phase 7 checkpoints 1-2 host-complete
 
 Purpose: make the current code legible and truthful before portable-core
 extraction without changing behavior, blessing temporary architecture, or
@@ -281,11 +281,14 @@ Proceed with the active work in this order:
    indexed open, short reads and writes, delete, multi-sector write, and exact
    truncating overwrite. It deliberately does not claim execution coverage for
    the 6502 VACI payload.
-2. **Repair VACI BASIC save/load as one format decision.** Move or preserve
-   scratch state so `$004A-$00FF` is captured and restored faithfully, restore
-   the missing `$0800-$0949` bytes, and prove that save then load reproduces all
-   2230 bytes. Decide whether existing malformed snapshots need compatibility
-   handling before changing the generated payload.
+2. **Host-complete 2026-08-23; hardware smoke pending — Repair VACI BASIC
+   save/load as one format decision.** The 2,230-byte layout is unchanged.
+   VACI stages `$F0-$FC` at `$0210-$021C`, restores the missing `$0800-$0949`
+   bytes, and delays scratch restoration until the transfer is finished. A test
+   executes the generated payload on the software 65C02 and proves a byte-exact
+   round trip of `$004A-$00FF` and `$0800-$0FFF`. Existing snapshots remain
+   readable, but scratch bytes already damaged by the old saver are not
+   recoverable. The current-state document contains the required Neo6502 test.
 3. **Harden ordinary VACI transfers.** Close successful reads, reject or safely
    handle 64 KB length wrap and protected/overlapping ranges, accept only
    defined status values, and add a bounded failure path. Tighten the linker

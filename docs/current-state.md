@@ -19,9 +19,10 @@ snapshot, not the architecture contract or a roadmap.
   switching back to a normal profile restores concise serial output.
 - The SDL-23 target also builds locally, but that build does not establish
   equivalent storage or hardware behavior.
-- The SDL host configuration now includes `neo1_msc_register_contract`, which
-  compiles the production Pico MSC backend against a deterministic in-memory
-  FatFs fake. It passed locally on 2026-08-23.
+- The SDL host configuration now includes `neo1_msc_register_contract` and
+  `neo1_vaci_basic_round_trip`. Both passed locally on 2026-08-23. The first
+  compiles the production Pico MSC backend against an in-memory FatFs fake; the
+  second executes the generated VACI image on the software 65C02.
 - SDK 2.3.0 has not been configured, built, or hardware-tested.
 
 ## Last Neo6502 hardware validation
@@ -42,14 +43,14 @@ profile with VACI and VCFFA1 enabled.
 | VCFFA1 | Verified at workflow level | User reported VCFFA1 working and successfully ran a loaded `.po` image |
 
 The first VACI write was displayed by the host as rounded “2 KB,” so that test
-does not independently establish an exact 2,369-byte length. It does establish
-that the old 512-byte cap is gone. The exact 16-byte overwrite establishes
-short final-write length and truncation behavior.
+did not independently establish the then-current 2,369-byte payload length. It
+does establish that the old 512-byte cap is gone. The exact 16-byte overwrite
+establishes short final-write length and truncation behavior.
 
 ## Implemented storage commands
 
-The Pico VACI image is reproducibly generated from `neo1_vaci_v1.s`, is 2,369
-bytes, and occupies `$C100-$CA40`. Its visible commands are `R`, `W`, `L`, `S`,
+The Pico VACI image is reproducibly generated from `neo1_vaci_v1.s`, is 2,415
+bytes, and occupies `$C100-$CA6E`. Its visible commands are `R`, `W`, `L`, `S`,
 and `Q`; destructive delete `D` is hidden.
 
 The Pico VCFFA1 backend implements status, 512-byte block read, and 512-byte
@@ -65,20 +66,21 @@ directory, bitmap, file-size, and destination limitations.
 
 ## Known defects and unverified behavior
 
-1. **VACI BASIC load is not a correct inverse of save.** `S` stores 330 bytes
-   from `$0800-$0949` in sector 0, but `L` currently discards those bytes and
-   resumes copying at `$094A`. Do not rely on `L`/`S` to preserve a BASIC
-   workspace until this is fixed and hardware-tested.
-2. **VACI BASIC save/load corrupts its own snapshot state.** The packed BASIC
-   zero-page range `$004A-$00FF` includes VACI scratch at `$F0-$FC`, which is
-   modified before save. Load then restores that range through a pointer held
-   at `$F0/$F1`, allowing the restore to overwrite its own pointer.
+1. **The corrected VACI BASIC memory restore awaits physical confirmation.**
+   `L` now restores sector 0's `$0800-$0949` bytes before continuing at `$094A`.
+   The generated payload passes a software-65C02 test that round-trips all 2,230
+   bytes, but the required Neo6502 smoke test below is still outstanding.
+2. **The corrected VACI scratch preservation awaits physical confirmation.**
+   VACI now captures `$F0-$FC` at entry in `$0210-$021C`, writes those saved
+   bytes into the zero-page snapshot, and defers restoring them during load
+   until all MSC operations finish. Existing files retain the same layout, but
+   scratch bytes corrupted by the old saver cannot be reconstructed.
 3. **VACI transfer bounds and lifecycle are incomplete.** Read destinations and
    write sources are not protected from address wrap or overlap with VACI,
    page-2 filename state, I/O, stack, or ROM. A `$0000-$FFFF` write wraps its
    16-bit length to zero, and a successful ordinary read leaves its indexed
    file open. The VACI linker ceiling also permits growth beyond safe payload
-   RAM even though the current image remains at `$C100-$CA40`.
+   RAM even though the current image remains at `$C100-$CA6E`.
 4. **VACI status polling is permissive and unbounded.** `WaitReady` has no
    timeout and accepts every `$01-$7F` value as success, although the MSC
    contract assigns `$01` to ready and leaves the other positive values
@@ -95,11 +97,10 @@ directory, bitmap, file-size, and destination limitations.
 8. **SDK 2.3.0 is unverified.** Upgrade validation requires both Pico profile
    builds followed by the reset, DVI, keyboard, MSC, VACI, and VCFFA1 hardware
    smoke tests.
-9. **Automated coverage remains limited.** A focused host test now covers the
-   Pico MSC register protocol, including success, error, short-I/O, indexed
-   directory, multi-sector write, and truncation paths. There are still no
-   focused tests for shared memory decoding, PIA behavior, the 6502 VACI
-   payload itself, VCFFA1, or CPU compatibility.
+9. **Automated coverage remains limited.** Focused host tests cover the Pico MSC
+   register protocol and execute the VACI BASIC save/load round trip on the
+   software 65C02. There are still no focused tests for shared memory decoding,
+   PIA behavior, other VACI commands, VCFFA1, or broad CPU compatibility.
 10. **CPU backend value 2 is not usable.** `neo1_cpu_backend.h` declares a
    `MOS6502` backend and includes `mos6502cpu.h` when it is selected, but that
    header is not present in the repository. Current presets use the physical
@@ -142,3 +143,26 @@ Future write-path validation should use disposable media or images and cover
 missing media, read-only media, invalid commands/ranges, out-of-range blocks,
 and short I/O in addition to the successful write/truncate path already
 verified.
+
+## Required Neo6502 smoke test for the VACI BASIC fix
+
+Use a disposable USB volume and the normal Neo1-23 profile. From WozMon, set
+sentinels across both packed regions:
+
+```text
+004A: 11
+00EF: 22
+00F0: 30 31 32 33 34 35 36 37 38 39 3A 3B 3C
+00FD: 4D 4E 4F
+0800: 55
+0949: 66
+094A: 77
+0FFF: 88
+```
+
+Enter `C100R`, choose `S`, and save to a new filename. Confirm on the host that
+the file is exactly 2,230 bytes. Back in WozMon, replace every sentinel above
+with `00`. Enter `C100R`, choose `L`, and select the saved file. After VACI
+returns to WozMon, inspect `004A`, `00EF-00FF`, `0800`, `0949-094A`, and `0FFF`;
+all original sentinel values must be restored. This test affects `$004A-$00FF`,
+`$0200-$021C`, `$0800-$0FFF`, and MSC registers `$D014-$D01C`.

@@ -30,7 +30,7 @@
 ;   $D012  DSP          (display/UART)
 ;
 ; This program polls all device status; it does not use IRQ or NMI.
-; It occupies $C100-$CA40 in the generated image.
+; It occupies $C100-$CA6E in the generated image.
 
 .setcpu "65C02"
 
@@ -70,15 +70,23 @@ BASIC_MEM_LEN_LO   = $00
 BASIC_MEM_LEN_HI   = $08
 BASIC_SAVE_MIN_LO  = $B6
 BASIC_SAVE_MIN_HI  = $08
+BASIC_ZP_BEFORE_SCRATCH_LEN = $A6
+BASIC_SCRATCH_LEN = $0D
 
 ; Filename buffer, 16 bytes including NUL. This reuses $0200-$020F in WozMon's
 ; input buffer and does not preserve its previous contents.
 VACI_FNAME_BUF = $0200
 
+; BASIC save/load staging for the VACI scratch bytes $F0-$FC. Captured on VACI
+; entry so later scratch use cannot alter the snapshot; restored only after a
+; load has completed all MSC operations.
+VACI_BASIC_SCRATCH_BUF = $0210
+
 WOZMON_ENTRY = $FF00
 
-; Zero-page scratch. Every command may clobber $F0-$FC; values are not saved or
-; restored. This overlaps the BASIC snapshot range described below.
+; Zero-page scratch. Commands may clobber $F0-$FC. BASIC save stages the entry
+; values for its file image and successful BASIC load restores its saved values;
+; other command and error paths do not restore them.
 ZP_PTR_LO    = $F0
 ZP_PTR_HI    = $F1
 ZP_ADDR_LO   = $F2
@@ -98,9 +106,19 @@ ZP_END_HI    = $FC
 ;------------------------------------------------------------------------------
 ; VaciMain - VACI entry point at $C100
 ; Out: Q and successful transfers jump to WozMon at $FF00; recoverable errors
-;      return to this menu. A, X, Y, flags, $F0-$FC, and $0200-$020F clobbered.
+;      return to this menu. A, X, Y, flags, $F0-$FC, and $0200-$021C clobbered,
+;      except that successful BASIC load restores its saved $F0-$FC contents.
 ;------------------------------------------------------------------------------
 VaciMain:
+        ; Preserve BASIC zero-page bytes that VACI itself uses as scratch.
+        LDX #$00
+VmSaveScratchLoop:
+        LDA $00F0,X
+        STA VACI_BASIC_SCRATCH_BUF,X
+        INX
+        CPX #BASIC_SCRATCH_LEN
+        BCC VmSaveScratchLoop
+
         ; Print '*' immediately — sit on WozMon's "C100: A9" line
         LDA #'*'
         JSR Putc
@@ -895,10 +913,11 @@ VwCancel:
 ;   sectors 1-3: 512 bytes each
 ;   sector 4: final 182 bytes
 ;
-; WARNING: $F0-$FC is both VACI scratch and part of the saved $004A-$00FF
-; range. Menu and save processing modify those bytes before they are captured,
-; so the file is not a faithful snapshot of that part of BASIC zero page.
-; A, X, Y, flags, $F0-$FC, and $0200-$020F are clobbered.
+; $F0-$FC is both VACI scratch and part of the saved $004A-$00FF range.
+; VaciMain captures those 13 bytes at $0210-$021C before using scratch, and this
+; routine inserts the captured bytes into their normal position in sector 0.
+; The on-media layout remains compatible with existing 2230-byte snapshots.
+; A, X, Y, flags, $F0-$FC, and $0200-$021C are clobbered.
 ;------------------------------------------------------------------------------
 VaciSaveBasic:
         ; ---- Filename prompt ----
@@ -950,32 +969,38 @@ VsOpenFnDone:
         JMP VsWriteErr
 
 VsOpenOk:
-        ; Pointers: ZP_PTR -> $004A, ZP_ADDR -> $0800
-        LDA #BASIC_ZP_START_LO
-        STA ZP_PTR_LO
-        LDA #BASIC_ZP_START_HI
-        STA ZP_PTR_HI
+        ; Pointer for the main BASIC workspace.
         LDA #BASIC_MEM_START_LO
         STA ZP_ADDR_LO
         LDA #BASIC_MEM_START_HI
         STA ZP_ADDR_HI
 
         ; ---- Sector 0 (182 bytes ZP + 330 bytes MEM) ----
-        ; 182-byte ZP block
-        LDA #BASIC_ZP_LEN_LO
-        STA ZP_B0
-VsS0ZpLoop:
-        LDA ZP_B0
-        BEQ VsS0MemPart
-        LDY #$00
-        LDA (ZP_PTR_LO),Y
+        ; $004A-$00EF: bytes before VACI scratch.
+        LDX #$00
+VsS0ZpBeforeLoop:
+        LDA $004A,X
         STA MSC_DATA
-        INC ZP_PTR_LO
-        BNE VsS0ZpPtrOk
-        INC ZP_PTR_HI
-VsS0ZpPtrOk:
-        DEC ZP_B0
-        JMP VsS0ZpLoop
+        INX
+        CPX #BASIC_ZP_BEFORE_SCRATCH_LEN
+        BCC VsS0ZpBeforeLoop
+
+        ; $00F0-$00FC: entry snapshot held outside zero page.
+        LDX #$00
+VsS0ScratchLoop:
+        LDA VACI_BASIC_SCRATCH_BUF,X
+        STA MSC_DATA
+        INX
+        CPX #BASIC_SCRATCH_LEN
+        BCC VsS0ScratchLoop
+
+        ; $00FD-$00FF: bytes after VACI scratch.
+        LDA $00FD
+        STA MSC_DATA
+        LDA $00FE
+        STA MSC_DATA
+        LDA $00FF
+        STA MSC_DATA
 
 VsS0MemPart:
         ; 330-byte MEM block (0x014A)
@@ -1125,12 +1150,13 @@ VsCancel:
 ;------------------------------------------------------------------------------
 ; VaciLoadBasic - Load packed BASIC program state from one file by index
 ;
-; Requires a file of at least 2230 bytes. The current implementation is not the
-; inverse of VaciSaveBasic: it discards sector 0's saved $0800-$0949 bytes and
-; resumes at $094A. It also restores $004A-$00FF through a pointer stored at
-; $F0/$F1, so restoring the overlapping scratch bytes can corrupt that pointer.
-; Do not rely on L/S for a recoverable BASIC workspace until both defects are
-; corrected. A, X, Y, flags, and all VACI scratch locations are clobbered.
+; Requires a file of at least 2230 bytes. Restores the complete packed layout
+; written by VaciSaveBasic. Saved $F0-$FC bytes are staged at $0210-$021C while
+; the transfer uses zero-page scratch, then restored immediately before the
+; jump to WozMon. Existing snapshots keep the same layout, although bytes that
+; an older saver already corrupted cannot be reconstructed.
+; A, X, Y, and flags are clobbered; saved $004A-$00FF and $0800-$0FFF contents
+; are restored on success. Page-2 staging at $0200-$021C is not preserved.
 ;------------------------------------------------------------------------------
 VaciLoadBasic:
         ; Enumerate files
@@ -1231,49 +1257,61 @@ VlSizeOk:
         JMP VlLoadErrClose
 VlS0ReadOk:
 
-        LDA #BASIC_ZP_START_LO
-        STA ZP_PTR_LO
-        LDA #BASIC_ZP_START_HI
-        STA ZP_PTR_HI
-        LDA #BASIC_ZP_LEN_LO
-        STA ZP_B0
-VlS0Copy:
-        LDA ZP_B0
-        BEQ VlMemStart
+        ; $004A-$00EF: restore bytes before VACI scratch directly.
+        LDX #$00
+VlS0ZpBeforeLoop:
         LDA MSC_DATA
-        LDY #$00
-        STA (ZP_PTR_LO),Y
-        INC ZP_PTR_LO
-        BNE VlS0PtrOk
-        INC ZP_PTR_HI
-VlS0PtrOk:
-        DEC ZP_B0
-        JMP VlS0Copy
+        STA $004A,X
+        INX
+        CPX #BASIC_ZP_BEFORE_SCRATCH_LEN
+        BCC VlS0ZpBeforeLoop
+
+        ; $00F0-$00FC: defer restoration until MSC work is complete.
+        LDX #$00
+VlS0ScratchLoop:
+        LDA MSC_DATA
+        STA VACI_BASIC_SCRATCH_BUF,X
+        INX
+        CPX #BASIC_SCRATCH_LEN
+        BCC VlS0ScratchLoop
+
+        ; $00FD-$00FF: restore bytes after VACI scratch directly.
+        LDA MSC_DATA
+        STA $00FD
+        LDA MSC_DATA
+        STA $00FE
+        LDA MSC_DATA
+        STA $00FF
 
 VlMemStart:
-        ; Skip the remaining 330 bytes of sector 0 payload
+        ; Restore the remaining 330 bytes of sector 0 to $0800-$0949.
+        LDA #BASIC_MEM_START_LO
+        STA ZP_ADDR_LO
+        LDA #BASIC_MEM_START_HI
+        STA ZP_ADDR_HI
         LDA #$4A
         STA ZP_TENS
         LDA #$01
         STA ZP_ONES
-VlSkipS0Tail:
+VlCopyS0Tail:
         LDA ZP_TENS
         ORA ZP_ONES
         BEQ VlMemCopyInit
         LDA MSC_DATA
+        LDY #$00
+        STA (ZP_ADDR_LO),Y
+        INC ZP_ADDR_LO
+        BNE VlS0MemPtrOk
+        INC ZP_ADDR_HI
+VlS0MemPtrOk:
         LDA ZP_TENS
-        BNE VlSkipDecLo
+        BNE VlS0MemDecLo
         DEC ZP_ONES
-VlSkipDecLo:
+VlS0MemDecLo:
         DEC ZP_TENS
-        JMP VlSkipS0Tail
+        JMP VlCopyS0Tail
 
 VlMemCopyInit:
-        LDA #$4A
-        STA ZP_ADDR_LO
-        LDA #$09
-        STA ZP_ADDR_HI
-
         ; Sectors 1-3: 1536 bytes
         LDA #$01
         STA ZP_END_LO
@@ -1360,6 +1398,15 @@ VlWarmLoop:
         JMP VlWarmLoop
 VlWarmDone:
         JSR PrintCR
+
+        ; No later helper may use VACI scratch after this restoration.
+        LDX #$00
+VlRestoreScratchLoop:
+        LDA VACI_BASIC_SCRATCH_BUF,X
+        STA $00F0,X
+        INX
+        CPX #BASIC_SCRATCH_LEN
+        BCC VlRestoreScratchLoop
         JMP WOZMON_ENTRY
 
 VlLoadErrClose:
