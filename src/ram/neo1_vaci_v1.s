@@ -28,6 +28,9 @@
 ;   $D010  KBD          (keyboard data)
 ;   $D011  KBDCR        (keyboard control/strobe)
 ;   $D012  DSP          (display/UART)
+;
+; This program polls all device status; it does not use IRQ or NMI.
+; It occupies $C100-$CA40 in the generated image.
 
 .setcpu "65C02"
 
@@ -68,12 +71,14 @@ BASIC_MEM_LEN_HI   = $08
 BASIC_SAVE_MIN_LO  = $B6
 BASIC_SAVE_MIN_HI  = $08
 
-; Filename buffer in page 2 (writable, WozMon input area — safe while VACI runs)
+; Filename buffer, 16 bytes including NUL. This reuses $0200-$020F in WozMon's
+; input buffer and does not preserve its previous contents.
 VACI_FNAME_BUF = $0200
 
 WOZMON_ENTRY = $FF00
 
-; Zero page temporaries
+; Zero-page scratch. Every command may clobber $F0-$FC; values are not saved or
+; restored. This overlaps the BASIC snapshot range described below.
 ZP_PTR_LO    = $F0
 ZP_PTR_HI    = $F1
 ZP_ADDR_LO   = $F2
@@ -92,6 +97,8 @@ ZP_END_HI    = $FC
 
 ;------------------------------------------------------------------------------
 ; VaciMain - VACI entry point at $C100
+; Out: Q and successful transfers jump to WozMon at $FF00; recoverable errors
+;      return to this menu. A, X, Y, flags, $F0-$FC, and $0200-$020F clobbered.
 ;------------------------------------------------------------------------------
 VaciMain:
         ; Print '*' immediately — sit on WozMon's "C100: A9" line
@@ -167,7 +174,12 @@ MenuQuit:
 ;   3. Prompt for load address ($XXXX)
 ;   4. Display ACI-style command echo
 ;   5. Read/copy the open file to the destination (sector loop)
-;   6. Return to caller
+;   6. Jump to WozMon on success
+;
+; The backend exposes a saturated 16-bit size. The destination is not checked
+; for wraparound or overlap with VACI, I/O, stack, scratch, or protected ROM.
+; The successful path does not close the open file; error/cancel paths after an
+; indexed open do. A, X, Y, flags, and all VACI scratch locations are clobbered.
 ;------------------------------------------------------------------------------
 VaciRead:
         ; Initialize index counter
@@ -542,7 +554,14 @@ VdDeleteErr:
 ;   9. CMD_CLOSE, WaitReady
 ;  10. Return to WozMon
 ;
-; ZP usage: ZP_PTR_LO/HI=start, ZP_END_LO/HI=end, ZP_B0/B1=length(lo/hi)
+; The inclusive range must have end >= start. Its length is held in 16 bits, so
+; $0000-$FFFF wraps to zero and writes no payload sectors. A source range may
+; overlap VACI scratch or the filename buffer; those locations can change while
+; the transfer runs. Successful writes close the file and commit its true byte
+; length; each final partial sector is zero padded before CMD_WRITE.
+;
+; ZP usage: ZP_PTR_LO/HI=start, ZP_END_LO/HI=end, ZP_B0/B1=length(lo/hi).
+; A, X, Y, flags, and all VACI scratch locations are clobbered.
 ;------------------------------------------------------------------------------
 VaciWrite:
         ; ---- Filename prompt ----
@@ -662,9 +681,8 @@ VwAciMidDone:
 VwDoExecute:
 
         ; ---- Open file: CMD_OPEN then stream filename+NUL to MSC_DATA ----
-        ; Writing to MSC_DATA during OPEN fills g_open_filename; the NUL byte
-        ; triggers do_open() which (after our g_data_offset=0 fix) leaves the
-        ; write buffer clean and ready.
+        ; While OPEN is pending, MSC_DATA accepts the NUL-terminated name. The
+        ; terminating NUL performs the open and resets the sector data stream.
         LDA #CMD_OPEN
         STA MSC_CMD
         LDX #$00
@@ -876,6 +894,11 @@ VwCancel:
 ;   sector 0: 182 bytes ZP + 330 bytes from $0800
 ;   sectors 1-3: 512 bytes each
 ;   sector 4: final 182 bytes
+;
+; WARNING: $F0-$FC is both VACI scratch and part of the saved $004A-$00FF
+; range. Menu and save processing modify those bytes before they are captured,
+; so the file is not a faithful snapshot of that part of BASIC zero page.
+; A, X, Y, flags, $F0-$FC, and $0200-$020F are clobbered.
 ;------------------------------------------------------------------------------
 VaciSaveBasic:
         ; ---- Filename prompt ----
@@ -1101,6 +1124,13 @@ VsCancel:
 
 ;------------------------------------------------------------------------------
 ; VaciLoadBasic - Load packed BASIC program state from one file by index
+;
+; Requires a file of at least 2230 bytes. The current implementation is not the
+; inverse of VaciSaveBasic: it discards sector 0's saved $0800-$0949 bytes and
+; resumes at $094A. It also restores $004A-$00FF through a pointer stored at
+; $F0/$F1, so restoring the overlapping scratch bytes can corrupt that pointer.
+; Do not rely on L/S for a recoverable BASIC workspace until both defects are
+; corrected. A, X, Y, flags, and all VACI scratch locations are clobbered.
 ;------------------------------------------------------------------------------
 VaciLoadBasic:
         ; Enumerate files
@@ -1589,9 +1619,11 @@ TuDone:
         RTS
 
 ;------------------------------------------------------------------------------
-; WaitReady - Poll MSC_STATUS until ready
-; STATUS: $00=BUSY, $01=READY, $80+=ERROR
-; Returns: C=0 if ready, C=1 if error
+; WaitReady - Poll MSC_STATUS until it is nonzero
+; In: none. Out: C=0 for any positive status $01-$7F; C=1 for $80-$FF,
+; with A holding the observed status. A and flags clobbered.
+; There is no timeout or interrupt path. The protocol defines $01 as READY,
+; but this routine also accepts reserved positive status values.
 ;------------------------------------------------------------------------------
 WaitReady:
 WrPoll:
@@ -1605,14 +1637,17 @@ WrOk:
         RTS
 
 ;------------------------------------------------------------------------------
-; Putc - Write character to display
+; Putc - Write A to the Apple-1 display register
+; This target's shared machine accepts the write synchronously; no readiness
+; poll or interrupt is used. A and flags are preserved by the routine.
 ;------------------------------------------------------------------------------
 Putc:
         STA DSP
         RTS
 
 ;------------------------------------------------------------------------------
-; GetKey - Wait for keyboard, return ASCII in A (bit 7 stripped)
+; GetKey - Poll KBDCR until bit 7 is set, then read KBD
+; Out: A=7-bit ASCII. Flags clobbered; X and Y preserved. No timeout or IRQ.
 ;------------------------------------------------------------------------------
 GetKey:
 GkWait:

@@ -59,35 +59,49 @@ block write. Writable operation requires a preferred writable image such as
    from `$0800-$0949` in sector 0, but `L` currently discards those bytes and
    resumes copying at `$094A`. Do not rely on `L`/`S` to preserve a BASIC
    workspace until this is fixed and hardware-tested.
-2. **Generic VCFFA1 `.po` discovery is faulty.** The extension matcher handles
+2. **VACI BASIC save/load corrupts its own snapshot state.** The packed BASIC
+   zero-page range `$004A-$00FF` includes VACI scratch at `$F0-$FC`, which is
+   modified before save. Load then restores that range through a pointer held
+   at `$F0/$F1`, allowing the restore to overwrite its own pointer.
+3. **VACI transfer bounds and lifecycle are incomplete.** Read destinations and
+   write sources are not protected from address wrap or overlap with VACI,
+   page-2 filename state, I/O, stack, or ROM. A `$0000-$FFFF` write wraps its
+   16-bit length to zero, and a successful ordinary read leaves its indexed
+   file open. The VACI linker ceiling also permits growth beyond safe payload
+   RAM even though the current image remains at `$C100-$CA40`.
+4. **VACI status polling is permissive and unbounded.** `WaitReady` has no
+   timeout and accepts every `$01-$7F` value as success, although the MSC
+   contract assigns `$01` to ready and leaves the other positive values
+   reserved.
+5. **Generic VCFFA1 `.po` discovery is faulty.** The extension matcher handles
    `.hdv` and `.2mg`, but its `.po` comparison uses the wrong character
    positions. Preferred names such as `CFFA1RW.PO` and `CFFA1.PO` still work.
-3. **SDL does not install VACI or the VCFFA1 RAM utility.** Its MSC file and
+6. **SDL does not install VACI or the VCFFA1 RAM utility.** Its MSC file and
    directory commands are accepted as no-ops and its storage path maps raw
    sectors to one host image. SDL preset labels therefore do not imply Pico
    VACI file behavior.
-4. **Neo1-50 hardware behavior is build-verified only in this pass.** The dated
+7. **Neo1-50 hardware behavior is build-verified only in this pass.** The dated
    physical smoke result above is for Neo1-23.
-5. **SDK 2.3.0 is unverified.** Upgrade validation requires both Pico profile
+8. **SDK 2.3.0 is unverified.** Upgrade validation requires both Pico profile
    builds followed by the reset, DVI, keyboard, MSC, VACI, and VCFFA1 hardware
    smoke tests.
-6. **Automated coverage is absent.** Current CMake builds define no focused
+9. **Automated coverage is absent.** Current CMake builds define no focused
    host tests for memory decoding, PIA behavior, storage protocols, or the VACI
    payload.
-7. **CPU backend value 2 is not usable.** `neo1_cpu_backend.h` declares a
+10. **CPU backend value 2 is not usable.** `neo1_cpu_backend.h` declares a
    `MOS6502` backend and includes `mos6502cpu.h` when it is selected, but that
    header is not present in the repository. Current presets use the physical
    W65C02 backend (1) or the soft-65C02 adapter (3); value 2 is not a supported
    configuration.
-8. **MSC register decoding is not independently selectable.** The shared
+11. **MSC register decoding is not independently selectable.** The shared
    machine always routes the supported `$D014-$D01C` accesses to an MSC
    implementation. `NEO1_ENABLE_VACI` controls installation of the 6502-side
    VACI payload, not ownership of those addresses.
-9. **Pico terminal publication is not synchronized across cores.** Core 0
+12. **Pico terminal publication is not synchronized across cores.** Core 0
    mutates the caller-owned terminal while core 1 copies it at a frame boundary.
    The dirty flag and buffer indices are volatile but not lock-protected, so the
    source copy is not guaranteed to be atomic.
-10. **SDL execution is not wall-clock or cycle paced.** `neo1_exec(2000)` runs
+13. **SDL execution is not wall-clock or cycle paced.** `neo1_exec(2000)` runs
     about 2,043 soft ticks per UI iteration, but each tick is a complete
     instruction and the runner does not govern the batch using elapsed time.
 
