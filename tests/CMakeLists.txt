@@ -18,16 +18,16 @@ target_compile_options(neo1_msc_tests PRIVATE -Wall -Wextra -Werror)
 
 add_test(NAME neo1_msc_register_contract COMMAND neo1_msc_tests)
 
-add_executable(neo1_vaci_basic_tests
+add_executable(neo1_vaci_payload_tests
     test_vaci_basic.c
 )
 
-target_include_directories(neo1_vaci_basic_tests PRIVATE
+target_include_directories(neo1_vaci_payload_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/src/ram
 )
 
-target_compile_options(neo1_vaci_basic_tests PRIVATE
+target_compile_options(neo1_vaci_payload_tests PRIVATE
     -Wall
     -Wextra
     -Werror
@@ -35,4 +35,4 @@ target_compile_options(neo1_vaci_basic_tests PRIVATE
     -Wno-unused-function
 )
 
-add_test(NAME neo1_vaci_basic_round_trip COMMAND neo1_vaci_basic_tests)
+add_test(NAME neo1_vaci_payload_contract COMMAND neo1_vaci_payload_tests)

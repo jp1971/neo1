@@ -20,9 +20,10 @@ snapshot, not the architecture contract or a roadmap.
 - The SDL-23 target also builds locally, but that build does not establish
   equivalent storage or hardware behavior.
 - The SDL host configuration now includes `neo1_msc_register_contract` and
-  `neo1_vaci_basic_round_trip`. Both passed locally on 2026-08-23. The first
+  `neo1_vaci_payload_contract`. Both passed locally on 2026-08-23. The first
   compiles the production Pico MSC backend against an in-memory FatFs fake; the
-  second executes the generated VACI image on the software 65C02.
+  second executes BASIC and ordinary transfer paths in the generated VACI image
+  on the software 65C02.
 - SDK 2.3.0 has not been configured, built, or hardware-tested.
 
 ## Last Neo6502 hardware validation
@@ -50,8 +51,8 @@ establishes short final-write length and truncation behavior.
 
 ## Implemented storage commands
 
-The Pico VACI image is reproducibly generated from `neo1_vaci_v1.s`, is 2,415
-bytes, and occupies `$C100-$CA6E`. Its visible commands are `R`, `W`, `L`, `S`,
+The Pico VACI image is reproducibly generated from `neo1_vaci_v1.s`, is 2,578
+bytes, and occupies `$C100-$CB11`. Its visible commands are `R`, `W`, `L`, `S`,
 and `Q`; destructive delete `D` is hidden.
 
 The Pico VCFFA1 backend implements status, 512-byte block read, and 512-byte
@@ -59,7 +60,7 @@ block write. Writable operation requires a preferred writable image such as
 `CFFA1RW.PO` or `CFFA1RW.HDV`; fallback images are opened read-only.
 
 VCFFA1 is retained as an optional Replica 1 compatibility feature, but the
-reliability work in defects 3 and 12-15 is deferred until after the next
+reliability work in defects 2 and 11-14 is deferred until after the next
 portable-core checkpoint. VACI remains the preferred Apple-1 storage path.
 Until that work resumes, use VCFFA1 `W` and `D` only with disposable images;
 the verified catalog/load workflow may continue to be used within the stated
@@ -67,64 +68,60 @@ directory, bitmap, file-size, and destination limitations.
 
 ## Known defects and unverified behavior
 
-1. **VACI transfer bounds and lifecycle are incomplete.** Read destinations and
-   write sources are not protected from address wrap or overlap with VACI,
-   page-2 filename state, I/O, stack, or ROM. A `$0000-$FFFF` write wraps its
-   16-bit length to zero, and a successful ordinary read leaves its indexed
-   file open. The VACI linker ceiling also permits growth beyond safe payload
-   RAM even though the current image remains at `$C100-$CA6E`.
-2. **VACI status polling is permissive and unbounded.** `WaitReady` has no
-   timeout and accepts every `$01-$7F` value as success, although the MSC
-   contract assigns `$01` to ready and leaves the other positive values
-   reserved.
-3. **Generic VCFFA1 `.po` discovery is faulty.** The extension matcher handles
+1. **Hardened ordinary VACI behavior awaits physical confirmation.** The
+   software-65C02 payload test verifies safe multi-sector read/write, read
+   close, 64 KB wrap rejection, working-memory/device/VACI/ROM range rejection,
+   profile-aware `$E000` handling, reserved-status rejection, and a 65,536-poll
+   BUSY timeout. Both Pico profiles build, but the Neo1-23 smoke test below is
+   still required.
+2. **Generic VCFFA1 `.po` discovery is faulty.** The extension matcher handles
    `.hdv` and `.2mg`, but its `.po` comparison uses the wrong character
    positions. Preferred names such as `CFFA1RW.PO` and `CFFA1.PO` still work.
-4. **SDL does not install VACI or the VCFFA1 RAM utility.** Its MSC file and
+3. **SDL does not install VACI or the VCFFA1 RAM utility.** Its MSC file and
    directory commands are accepted as no-ops and its storage path maps raw
    sectors to one host image. SDL preset labels therefore do not imply Pico
    VACI file behavior.
-5. **Neo1-50 hardware behavior is build-verified only in this pass.** The dated
+4. **Neo1-50 hardware behavior is build-verified only in this pass.** The dated
    physical smoke result above is for Neo1-23.
-6. **SDK 2.3.0 is unverified.** Upgrade validation requires both Pico profile
+5. **SDK 2.3.0 is unverified.** Upgrade validation requires both Pico profile
    builds followed by the reset, DVI, keyboard, MSC, VACI, and VCFFA1 hardware
    smoke tests.
-7. **Automated coverage remains limited.** Focused host tests cover the Pico MSC
-   register protocol and execute the VACI BASIC save/load round trip on the
-   software 65C02. There are still no focused tests for shared memory decoding,
-   PIA behavior, other VACI commands, VCFFA1, or broad CPU compatibility.
-8. **CPU backend value 2 is not usable.** `neo1_cpu_backend.h` declares a
+6. **Automated coverage remains limited.** Focused host tests cover the Pico MSC
+   register protocol and execute VACI BASIC plus ordinary read/write paths on
+   the software 65C02. There are still no focused tests for shared memory
+   decoding, PIA behavior, VACI delete, VCFFA1, or broad CPU compatibility.
+7. **CPU backend value 2 is not usable.** `neo1_cpu_backend.h` declares a
    `MOS6502` backend and includes `mos6502cpu.h` when it is selected, but that
    header is not present in the repository. Current presets use the physical
    W65C02 backend (1) or the soft-65C02 adapter (3); value 2 is not a supported
    configuration.
-9. **MSC register decoding is not independently selectable.** The shared
+8. **MSC register decoding is not independently selectable.** The shared
    machine always routes the supported `$D014-$D01C` accesses to an MSC
    implementation. `NEO1_ENABLE_VACI` controls installation of the 6502-side
    VACI payload, not ownership of those addresses.
-10. **Pico terminal publication is not synchronized across cores.** Core 0
+9. **Pico terminal publication is not synchronized across cores.** Core 0
    mutates the caller-owned terminal while core 1 copies it at a frame boundary.
    The dirty flag and buffer indices are volatile but not lock-protected, so the
    source copy is not guaranteed to be atomic.
-11. **SDL execution is not wall-clock or cycle paced.** `neo1_exec(2000)` runs
+10. **SDL execution is not wall-clock or cycle paced.** `neo1_exec(2000)` runs
     about 2,043 soft ticks per UI iteration, but each tick is a complete
     instruction and the runner does not govern the batch using elapsed time.
-12. **The VCFFA1 utility's create/delete updates are not transactional.** New
+11. **The VCFFA1 utility's create/delete updates are not transactional.** New
     file creation commits allocation bits before its directory and sapling
     index writes, without rollback. Delete may free an index block after an
     index-read error, ignores a bitmap-write error, and can then remove the
     directory entry. Failures can leak blocks or leave ProDOS metadata
     inconsistent; use a disposable image for write/delete testing.
-13. **VCFFA1 existing-file writes do not update catalog metadata.** The utility
+12. **VCFFA1 existing-file writes do not update catalog metadata.** The utility
     writes the requested bytes into an existing seedling or sapling but leaves
     its EOF, blocks-used, auxtype, and other directory fields unchanged when
     source or length differs from the entry.
-14. **The VCFFA1 utility has hard-coded filesystem limits.** Catalog, lookup,
+13. **The VCFFA1 utility has hard-coded filesystem limits.** Catalog, lookup,
     create, and delete inspect only root directory block 2. Allocation/freeing
     uses only the first bitmap block and assumes at most 4096 volume blocks;
     load/create/write support only seedling and two-data-block sapling files
     through 1024 bytes. Load destinations are not range checked.
-15. **The VCFFA1 block driver can wait forever for DRQ.** Read/write checks the
+14. **The VCFFA1 block driver can wait forever for DRQ.** Read/write checks the
     error register immediately after command issue, then polls DRQ without a
     timeout or further busy/error checks. A device or backend that never raises
     DRQ stalls the 6502 utility indefinitely.
@@ -157,3 +154,22 @@ The workspace was saved with `C100R` and `S`; the host reported an exact
 with `C100R` and `L` restored all original values at `004A`, `00EF-00FF`,
 `0800`, `0949-094A`, and `0FFF`. This test exercised `$004A-$00FF`,
 `$0200-$021C`, `$0800-$0FFF`, and MSC registers `$D014-$D01C`.
+
+## Required Neo6502 smoke test for ordinary VACI hardening
+
+Use a disposable USB volume and the normal Neo1-23 profile built by this
+checkpoint. This affects VACI RAM `$C100-$CB11`, its installer-patched profile
+byte at `$C103`, ordinary transfer ranges, and MSC registers `$D014-$D01C`.
+
+1. In WozMon, inspect `C103`; it must contain `E0` for the Neo1-23 ROM boundary.
+2. Enter `0300: 10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F`.
+3. Enter `C100R`, choose `W`, name the file `VACI16.BIN`, and use start `0300`
+   and end `030F`. Confirm on the host that the file is exactly 16 bytes.
+4. Replace `$0300-$030F` with zeroes, enter VACI, choose `R`, select
+   `VACI16.BIN`, and load it at `0300`. Confirm all 16 original values returned.
+5. Enter VACI, choose `W`, name the file `REJECT.BIN`, and use start `0000` and
+   end `FFFF`. VACI must print `WRITE ERR`, return to its menu, and create no
+   file.
+6. Enter VACI, choose `R`, select `VACI16.BIN`, and request destination `E000`.
+   VACI must print `READ ERR`, return to its menu, leave `E000` unchanged, and
+   remain able to perform the valid `0300` read again.

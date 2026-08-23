@@ -53,6 +53,10 @@ static uint8_t g_info;
 static bool g_open_pending;
 static bool g_file_open;
 static bool g_directory_returned_file;
+static unsigned g_command_count[256];
+static bool g_status_override_enabled;
+static uint8_t g_status_override;
+static unsigned g_status_read_count;
 static const char* g_keys;
 static size_t g_key_offset;
 static int g_failures;
@@ -66,6 +70,7 @@ static int g_failures;
     } while (0)
 
 static void msc_command(uint8_t command) {
+    g_command_count[command]++;
     switch (command) {
         case CMD_OPEN:
             g_open_pending = true;
@@ -147,7 +152,8 @@ uint8_t read6502(uint16_t address) {
             }
             return g_sector_buffer[g_data_offset++];
         case MSC_STATUS:
-            return g_status;
+            g_status_read_count++;
+            return g_status_override_enabled ? g_status_override : g_status;
         case MSC_INFO:
             return g_info;
         case MSC_SIZE_LO:
@@ -215,6 +221,30 @@ static bool run_vaci(const char* keys) {
     return false;
 }
 
+static void reset_fixture(void) {
+    memset(g_memory, 0, sizeof(g_memory));
+    memset(g_file, 0, sizeof(g_file));
+    memset(g_sector_buffer, 0, sizeof(g_sector_buffer));
+    memset(g_command_count, 0, sizeof(g_command_count));
+    memcpy(&g_memory[NEO1_VACI_V1_ADDR], neo1_vaci_v1, sizeof(neo1_vaci_v1));
+    g_file_length = 0;
+    g_sector = 0;
+    g_size_register = 0;
+    g_data_offset = 0;
+    g_status = 1;
+    g_info = 0;
+    g_open_pending = false;
+    g_file_open = false;
+    g_directory_returned_file = false;
+    g_status_override_enabled = false;
+    g_status_override = 0;
+    g_status_read_count = 0;
+}
+
+static void set_rom_protect_page(uint8_t page) {
+    g_memory[NEO1_VACI_V1_ADDR + NEO1_VACI_V1_ROM_PROTECT_HI_OFFSET] = page;
+}
+
 static void prepare_workspace(void) {
     for (size_t i = 0; i < BASIC_ZP_SIZE; i++) {
         g_expected_zp[i] = (uint8_t)(0x31u + i * 7u);
@@ -226,11 +256,8 @@ static void prepare_workspace(void) {
     memcpy(&g_memory[BASIC_MEM_START], g_expected_mem, sizeof(g_expected_mem));
 }
 
-int main(void) {
-    memset(g_memory, 0, sizeof(g_memory));
-    memset(g_file, 0, sizeof(g_file));
-    memcpy(&g_memory[NEO1_VACI_V1_ADDR], neo1_vaci_v1, sizeof(neo1_vaci_v1));
-    g_status = 1;
+static void test_basic_round_trip(void) {
+    reset_fixture();
     prepare_workspace();
 
     CHECK(run_vaci("SBASIC.SAV\r"));
@@ -244,11 +271,153 @@ int main(void) {
     CHECK(run_vaci("L00"));
     CHECK(memcmp(&g_memory[BASIC_ZP_START], g_expected_zp, sizeof(g_expected_zp)) == 0);
     CHECK(memcmp(&g_memory[BASIC_MEM_START], g_expected_mem, sizeof(g_expected_mem)) == 0);
+}
+
+static void test_ordinary_write(void) {
+    uint8_t expected[700];
+    reset_fixture();
+    for (size_t i = 0; i < sizeof(expected); i++) {
+        expected[i] = (uint8_t)(0x5Au ^ i);
+    }
+    memcpy(&g_memory[0x0300], expected, sizeof(expected));
+
+    CHECK(run_vaci("WTEST.BIN\r030005BB"));
+    CHECK(g_file_length == sizeof(expected));
+    CHECK(memcmp(g_file, expected, sizeof(expected)) == 0);
+    CHECK(!g_file_open);
+    CHECK(g_command_count[CMD_OPEN] == 1);
+    CHECK(g_command_count[CMD_WRITE] == 2);
+    CHECK(g_command_count[CMD_CLOSE] == 1);
+}
+
+static void test_ordinary_read_closes_file(void) {
+    uint8_t expected[700];
+    reset_fixture();
+    for (size_t i = 0; i < sizeof(expected); i++) {
+        expected[i] = (uint8_t)(0xC3u + i * 3u);
+    }
+    memcpy(g_file, expected, sizeof(expected));
+    g_file_length = sizeof(expected);
+
+    CHECK(run_vaci("R000300"));
+    CHECK(memcmp(&g_memory[0x0300], expected, sizeof(expected)) == 0);
+    CHECK(!g_file_open);
+    CHECK(g_command_count[CMD_OPEN_IND] == 1);
+    CHECK(g_command_count[CMD_READ] == 2);
+    CHECK(g_command_count[CMD_CLOSE] == 1);
+}
+
+static void check_write_rejected(const char* keys) {
+    CHECK(run_vaci(keys));
+    CHECK(g_command_count[CMD_OPEN] == 0);
+    CHECK(g_command_count[CMD_WRITE] == 0);
+    CHECK(g_command_count[CMD_CLOSE] == 0);
+}
+
+static void test_ordinary_write_rejects_unsafe_ranges(void) {
+    reset_fixture();
+    check_write_rejected("WFULL.BIN\r0000FFFFQ");
+
+    reset_fixture();
+    check_write_rejected("WPAGE2.BIN\r02000300Q");
+
+    reset_fixture();
+    check_write_rejected("WVCFFA.BIN\rAF00B000Q");
+
+    reset_fixture();
+    check_write_rejected("WVACI.BIN\rC000C100Q");
+
+    reset_fixture();
+    check_write_rejected("WIO.BIN\rCFFFD100Q");
+
+    reset_fixture();
+    set_rom_protect_page(0xE0);
+    check_write_rejected("WROM23.BIN\rE000E00FQ");
+}
+
+static void test_neo1_50_upper_ram_remains_writable(void) {
+    uint8_t expected[16];
+    reset_fixture();
+    set_rom_protect_page(0xFF);
+    for (size_t i = 0; i < sizeof(expected); i++) {
+        expected[i] = (uint8_t)(0x90u + i);
+    }
+    memcpy(&g_memory[0xE000], expected, sizeof(expected));
+
+    CHECK(run_vaci("WUPPER.BIN\rE000E00F"));
+    CHECK(g_file_length == sizeof(expected));
+    CHECK(memcmp(g_file, expected, sizeof(expected)) == 0);
+    CHECK(g_command_count[CMD_CLOSE] == 1);
+}
+
+static void test_read_rejects_wrap_and_closes(void) {
+    reset_fixture();
+    set_rom_protect_page(0xFF);
+    g_file_length = 512;
+
+    CHECK(run_vaci("R00FF00Q"));
+    CHECK(g_command_count[CMD_OPEN_IND] == 1);
+    CHECK(g_command_count[CMD_READ] == 0);
+    CHECK(g_command_count[CMD_CLOSE] == 1);
+    CHECK(!g_file_open);
+}
+
+static void test_read_uses_profile_rom_boundary(void) {
+    uint8_t expected[16];
+    for (size_t i = 0; i < sizeof(expected); i++) {
+        expected[i] = (uint8_t)(0x42u + i * 5u);
+    }
+
+    reset_fixture();
+    set_rom_protect_page(0xE0);
+    memcpy(g_file, expected, sizeof(expected));
+    g_file_length = sizeof(expected);
+    CHECK(run_vaci("R00E000Q"));
+    CHECK(g_command_count[CMD_READ] == 0);
+    CHECK(g_command_count[CMD_CLOSE] == 1);
+
+    reset_fixture();
+    set_rom_protect_page(0xFF);
+    memcpy(g_file, expected, sizeof(expected));
+    g_file_length = sizeof(expected);
+    CHECK(run_vaci("R00E000"));
+    CHECK(memcmp(&g_memory[0xE000], expected, sizeof(expected)) == 0);
+    CHECK(g_command_count[CMD_READ] == 1);
+    CHECK(g_command_count[CMD_CLOSE] == 1);
+}
+
+static void test_status_contract_and_timeout(void) {
+    reset_fixture();
+    g_status_override_enabled = true;
+    g_status_override = 0x02;
+    CHECK(run_vaci("RQ"));
+    CHECK(g_command_count[CMD_DIR_OPEN] == 1);
+    CHECK(g_command_count[CMD_DIR_NEXT] == 0);
+    CHECK(g_status_read_count == 1);
+
+    reset_fixture();
+    g_status_override_enabled = true;
+    g_status_override = 0x00;
+    CHECK(run_vaci("RQ"));
+    CHECK(g_command_count[CMD_DIR_OPEN] == 1);
+    CHECK(g_command_count[CMD_DIR_NEXT] == 0);
+    CHECK(g_status_read_count == 65536u);
+}
+
+int main(void) {
+    test_basic_round_trip();
+    test_ordinary_write();
+    test_ordinary_read_closes_file();
+    test_ordinary_write_rejects_unsafe_ranges();
+    test_neo1_50_upper_ram_remains_writable();
+    test_read_rejects_wrap_and_closes();
+    test_read_uses_profile_rom_boundary();
+    test_status_contract_and_timeout();
 
     if (g_failures != 0) {
-        fprintf(stderr, "neo1_vaci_basic_tests: %d failure(s)\n", g_failures);
+        fprintf(stderr, "neo1_vaci_payload_tests: %d failure(s)\n", g_failures);
         return 1;
     }
-    puts("neo1_vaci_basic_tests: 2230-byte round trip passed");
+    puts("neo1_vaci_payload_tests: BASIC and ordinary transfer contracts passed");
     return 0;
 }

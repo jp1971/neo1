@@ -30,7 +30,9 @@
 ;   $D012  DSP          (display/UART)
 ;
 ; This program polls all device status; it does not use IRQ or NMI.
-; It occupies $C100-$CA6E in the generated image.
+; It is linked into the reserved $C100-$CFFF VACI region. The Pico installer
+; patches the profile ROM-protection page in the byte immediately after the
+; entry JMP so ordinary transfers can preserve Neo1-50's writable $E000-$FEFF.
 
 .setcpu "65C02"
 
@@ -110,6 +112,14 @@ ZP_END_HI    = $FC
 ;      except that successful BASIC load restores its saved $F0-$FC contents.
 ;------------------------------------------------------------------------------
 VaciMain:
+        JMP VaciStart
+
+; Installer-patched high byte of the selected profile's page-aligned ROM
+; protection base: $E0 for Neo1-23 or $FF for Neo1-50.
+VaciRomProtectHi:
+        .byte $E0
+
+VaciStart:
         ; Preserve BASIC zero-page bytes that VACI itself uses as scratch.
         LDX #$00
 VmSaveScratchLoop:
@@ -194,10 +204,10 @@ MenuQuit:
 ;   5. Read/copy the open file to the destination (sector loop)
 ;   6. Jump to WozMon on success
 ;
-; The backend exposes a saturated 16-bit size. The destination is not checked
-; for wraparound or overlap with VACI, I/O, stack, scratch, or protected ROM.
-; The successful path does not close the open file; error/cancel paths after an
-; indexed open do. A, X, Y, flags, and all VACI scratch locations are clobbered.
+; The backend exposes a saturated 16-bit size. A nonempty destination must not
+; wrap or intersect VACI working memory, decoded I/O, the reserved VACI image
+; region, or the selected profile's protected ROM. Every path after indexed
+; open closes the file. A, X, Y, flags, and all VACI scratch are clobbered.
 ;------------------------------------------------------------------------------
 VaciRead:
         ; Initialize index counter
@@ -209,7 +219,7 @@ VaciRead:
         STA MSC_CMD
         JSR WaitReady
         BCC VrOpenOk
-        RTS
+        JMP VrReadErr
 
 VrOpenOk:
         ; List files
@@ -222,7 +232,7 @@ ListLoop:
         STA MSC_CMD
         JSR WaitReady
         BCC VrNextOk
-        RTS
+        JMP VrReadErr
         
 VrNextOk:
         LDA MSC_INFO
@@ -276,7 +286,7 @@ VrIndexOk:
         STA MSC_CMD
         JSR WaitReady
         BCC VrOpenIndexOk
-        RTS
+        JMP VrReadErr
 
 VrOpenIndexOk:
         
@@ -297,6 +307,10 @@ AddrPromptDone:
         JMP VrAddrCancel
 VrAddrOk:
         ; ZP_ADDR_HI:ZP_ADDR_LO already set by ReadHexWord
+        LDA ZP_ADDR_LO
+        STA ZP_PTR_LO
+        LDA ZP_ADDR_HI
+        STA ZP_PTR_HI
 
         ; Compute end address for ACI-style echo:
         ;   end = start + (file_size - 1), if size>0
@@ -329,6 +343,13 @@ VrDecLenLo:
         LDA ZP_END_HI
         ADC ZP_B1
         STA ZP_END_HI
+        BCC VrRangeNoWrap
+        JMP VrRangeErr
+VrRangeNoWrap:
+
+        JSR ValidateTransferRange
+        BCC VrEndReady
+        JMP VrRangeErr
 
 VrEndReady:
         JSR PrintCR
@@ -388,10 +409,7 @@ VrSectorLoop:
         STA MSC_CMD
         JSR WaitReady
         BCC VrReadOk
-        LDA #CMD_CLOSE
-        STA MSC_CMD
-        JSR WaitReady
-        RTS
+        JMP VrReadErrClose
 
 VrReadOk:
         ; chunk = min(remaining, 512)
@@ -460,8 +478,15 @@ VrCheckRemaining:
         BNE VrSectorLoop
 
 VrCopyDone:
+        LDA #CMD_CLOSE
+        STA MSC_CMD
+        JSR WaitReady
+        BCS VrReadErr
         JSR PrintCR
         JMP WOZMON_ENTRY
+
+VrRangeErr:
+        JMP VrReadErrClose
         
 VrIndexCancel:
         RTS
@@ -470,6 +495,22 @@ VrAddrCancel:
         LDA #CMD_CLOSE
         STA MSC_CMD
         JSR WaitReady
+        RTS
+
+VrReadErrClose:
+        LDA #CMD_CLOSE
+        STA MSC_CMD
+        JSR WaitReady
+VrReadErr:
+        LDX #$00
+VrErLoop:
+        LDA TxtReadError,X
+        BEQ VrErDone
+        JSR Putc
+        INX
+        JMP VrErLoop
+VrErDone:
+        JSR PrintCR
         RTS
 
 ;------------------------------------------------------------------------------
@@ -572,11 +613,10 @@ VdDeleteErr:
 ;   9. CMD_CLOSE, WaitReady
 ;  10. Return to WozMon
 ;
-; The inclusive range must have end >= start. Its length is held in 16 bits, so
-; $0000-$FFFF wraps to zero and writes no payload sectors. A source range may
-; overlap VACI scratch or the filename buffer; those locations can change while
-; the transfer runs. Successful writes close the file and commit its true byte
-; length; each final partial sector is zero padded before CMD_WRITE.
+; The inclusive range must have end >= start, fit a nonzero 16-bit length, and
+; avoid VACI working memory, decoded I/O, the reserved VACI image region, and
+; the selected profile's protected ROM. Successful writes close the file and
+; commit its true byte length; each final partial sector is zero padded.
 ;
 ; ZP usage: ZP_PTR_LO/HI=start, ZP_END_LO/HI=end, ZP_B0/B1=length(lo/hi).
 ; A, X, Y, flags, and all VACI scratch locations are clobbered.
@@ -673,7 +713,17 @@ VwRangeOk:
         BNE VwLenNoCarry
         INC ZP_B1
 VwLenNoCarry:
-VwLenOk:
+        LDA ZP_B0
+        ORA ZP_B1
+        BNE VwLenNonzero
+        JMP VwWriteErr
+VwLenNonzero:
+
+        JSR ValidateTransferRange
+        BCC VwLenSafe
+        JMP VwWriteErr
+VwLenSafe:
+
         ; ---- ACI echo: CR "AAAA.EEEEW" ----
         JSR PrintCR
         LDA ZP_PTR_HI
@@ -1666,20 +1716,84 @@ TuDone:
         RTS
 
 ;------------------------------------------------------------------------------
-; WaitReady - Poll MSC_STATUS until it is nonzero
-; In: none. Out: C=0 for any positive status $01-$7F; C=1 for $80-$FF,
-; with A holding the observed status. A and flags clobbered.
-; There is no timeout or interrupt path. The protocol defines $01 as READY,
-; but this routine also accepts reserved positive status values.
+; ValidateTransferRange - Reject unsafe inclusive ordinary-transfer ranges
+; In: ZP_PTR=start, ZP_END=end. Out: C=0 safe, C=1 rejected. A/flags clobbered.
+; The caller has already established end >= start. Whole pages containing
+; sparse decoded I/O are reserved so a transfer cannot trigger device access.
+;------------------------------------------------------------------------------
+ValidateTransferRange:
+        ; $0000-$02FF contains zero page, stack, WozMon/VACI page-2 state.
+        LDA ZP_PTR_HI
+        CMP #$03
+        BCC VtrReject
+
+        ; Reserve $AF00-$AFFF for optional VCFFA1 signature/register decode.
+        CMP #$B0
+        BCS VtrAfterAf
+        LDA ZP_END_HI
+        CMP #$AF
+        BCS VtrReject
+VtrAfterAf:
+
+        ; Reserve the complete linked VACI region $C100-$CFFF.
+        LDA ZP_PTR_HI
+        CMP #$D0
+        BCS VtrAfterVaci
+        LDA ZP_END_HI
+        CMP #$C1
+        BCS VtrReject
+VtrAfterVaci:
+
+        ; Reserve $D000-$D0FF for Apple-1 PIA, MSC, and display aliases.
+        LDA ZP_PTR_HI
+        CMP #$D1
+        BCS VtrAfterIo
+        LDA ZP_END_HI
+        CMP #$D0
+        BCS VtrReject
+VtrAfterIo:
+
+        ; Reject the selected profile's page-aligned protected ROM aperture.
+        LDA ZP_END_HI
+        CMP VaciRomProtectHi
+        BCS VtrReject
+        CLC
+        RTS
+VtrReject:
+        SEC
+        RTS
+
+;------------------------------------------------------------------------------
+; WaitReady - Poll MSC_STATUS for the one defined completion value
+; In: none. Out: C=0 only for READY=$01; C=1 for an error, a reserved positive
+; status, or timeout. A holds the observed status, or $FF for timeout. A and
+; flags are clobbered; X and Y are preserved. No IRQ or NMI is used.
 ;------------------------------------------------------------------------------
 WaitReady:
+        PHX
+        PHY
+        LDX #$00
+        LDY #$00
 WrPoll:
         LDA MSC_STATUS
-        BEQ WrPoll          ; $00 = BUSY, keep polling
-        BPL WrOk            ; bit 7 clear = READY ($01..$7F)
-        SEC                 ; bit 7 set   = ERROR ($80+)
+        BEQ WrBusy
+        CMP #$01
+        BEQ WrOk
+        BNE WrError         ; $02-$FF = reserved or backend error
+WrBusy:
+        INX                 ; $00 = BUSY, but only for a bounded interval
+        BNE WrPoll
+        INY
+        BNE WrPoll
+        LDA #$FF
+WrError:
+        PLY
+        PLX
+        SEC
         RTS
 WrOk:
+        PLY
+        PLX
         CLC
         RTS
 
@@ -1741,6 +1855,9 @@ TxtWrEndPrompt:
 
 TxtWrError:
         .asciiz "WRITE ERR"
+
+TxtReadError:
+        .asciiz "READ ERR"
 
 TxtSaveFnamePrompt:
         .byte $0D

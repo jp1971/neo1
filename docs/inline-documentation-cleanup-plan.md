@@ -2,7 +2,8 @@
 
 Date: 2026-08-23
 
-Status: In progress; phases 1-6 and Phase 7 checkpoints 1-2 complete
+Status: In progress; phases 1-6 and Phase 7 checkpoints 1-2 complete;
+Phase 7 checkpoint 3 host-complete with hardware smoke pending
 
 Purpose: make the current code legible and truthful before portable-core
 extraction without changing behavior, blessing temporary architecture, or
@@ -267,7 +268,7 @@ VACI remains the preferred storage interface. Until remediation resumes, limit
 normal VCFFA1 use to the verified catalog/load/block-inspection workflow and
 use only disposable images for `W` or `D`.
 
-The deferral is an ordering decision, not closure: defects 3 and 12-15 remain
+The deferral is an ordering decision, not closure: defects 2 and 11-14 remain
 open in `docs/current-state.md`. A newly observed regression in the verified
 read-oriented workflow may be fixed sooner as a narrowly scoped preservation
 change.
@@ -290,10 +291,14 @@ Proceed with the active work in this order:
    readable, but scratch bytes already damaged by the old saver are not
    recoverable. The current-state document records the passing Neo6502 sentinel
    test.
-3. **Harden ordinary VACI transfers.** Close successful reads, reject or safely
-   handle 64 KB length wrap and protected/overlapping ranges, accept only
-   defined status values, and add a bounded failure path. Tighten the linker
-   ceiling so payload growth cannot enter device or profile-ROM space.
+3. **Host-complete 2026-08-23; hardware smoke pending — Harden ordinary VACI
+   transfers.** Successful reads now close, unsafe or wrapping ordinary ranges
+   fail before transfer, and the Pico installer patches the selected profile's
+   ROM boundary into the payload so Neo1-50 retains `$E000-$FEFF` RAM. Status
+   polling accepts only `$01` and times out after 65,536 BUSY reads. The linker
+   reserves `$C100-$CFFF` below the `$D000` device page. The software-65C02 test
+   covers these paths; the current-state document contains the Neo1-23 smoke
+   procedure.
 4. **Resolve cross-target deviations found earlier in the pass.** Remove or
    retire unusable CPU backend value 2, make MSC decode enablement explicit,
    synchronize Pico terminal publication, and give the SDL software runner

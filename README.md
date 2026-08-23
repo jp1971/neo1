@@ -172,9 +172,11 @@ ctest --test-dir build-sdl --output-on-failure
 against a test-only in-memory FatFs backend. It covers directory filtering and
 indexed open, short-read padding, missing and read-only media, invalid commands
 and seeks, short writes, delete, multi-sector write, and exact truncating
-overwrite. `neo1_vaci_basic_round_trip` executes the generated VACI payload on
-the software 65C02 and verifies all 2,230 BASIC snapshot bytes. These tests do
-not establish SDL storage equivalence or physical USB behavior.
+overwrite. `neo1_vaci_payload_contract` executes the generated VACI payload on
+the software 65C02. It verifies all 2,230 BASIC snapshot bytes plus ordinary
+multi-sector read/write, close behavior, transfer-range rejection, profile ROM
+boundaries, reserved status rejection, and bounded busy polling. These tests
+do not establish SDL storage equivalence or physical USB behavior.
 
 ## 6502-visible memory map
 
@@ -201,7 +203,7 @@ When VCFFA1 is disabled, its signature and register addresses also remain RAM.
 | Address range | Installed when | Contents and entry point |
 | --- | --- | --- |
 | `$1800-$2C1E` | VCFFA1 enabled | 5,151-byte M2 block driver; interactive entry at `$1810` |
-| `$C100-$CA6E` | VACI enabled | 2,415-byte VACI utility; enter from WozMon with `C100R` |
+| `$C100-$CB11` | VACI enabled | 2,578-byte VACI utility in a reserved `$C100-$CFFF` region; enter from WozMon with `C100R` |
 
 These utilities are copied into ordinary writable RAM during Pico startup;
 their ranges are not ROM and are not separate memory-mapped devices. The SDL
@@ -238,16 +240,24 @@ Place VACI files and any VCFFA1 disk image in the volume root.
 
 ### VACI — Virtual Apple-1 Cassette Interface (`C100R`)
 
-Installed at `$C100-$CA6E` on Neo1 Pico. The visible prompt is
+Installed at `$C100-$CB11` on Neo1 Pico. The visible prompt is
 `R/W/L/S/Q?:`.
 
 | Command | Behavior |
 | --- | --- |
-| `R` | List files by index, select one, and load it at a requested address |
-| `W` | Save an inclusive RAM address range to a named file; multi-sector writes and truncation are hardware-verified |
+| `R` | List files by index, select one, load it at a safe requested address, and close it |
+| `W` | Save a safe inclusive RAM address range to a named file; multi-sector writes and truncation are hardware-verified |
 | `L` | Load a packed Integer BASIC workspace by file index; the corrected 2,230-byte restore passes emulated and Neo6502 round-trip tests |
 | `S` | Save the Integer BASIC zero-page and `$0800-$0FFF` workspace; `$F0-$FC` is preserved before VACI uses it as scratch |
 | `Q` | Return to WozMon |
+
+Ordinary `R` and `W` ranges must fit without 16-bit wrap and must not cross a
+reserved range. Safe ranges are `$0300-$AEFF`, `$B000-$C0FF`, and
+`$D100` through the byte below the selected profile's protected ROM. That last
+limit is `$DFFF` on Neo1-23 and `$FEFF` on Neo1-50. This preserves Neo1-50
+loads at `$E000` and `$F000` while rejecting them on Neo1-23. Invalid ordinary
+ranges return `READ ERR` or `WRITE ERR` without transferring data. The
+specialized `L` and `S` commands retain their documented BASIC snapshot ranges.
 
 `D` is an intentionally hidden destructive command that lists files and
 deletes one by index. The corrected `L`/`S` format is compatible with existing

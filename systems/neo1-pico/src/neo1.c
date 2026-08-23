@@ -110,7 +110,10 @@ static void neo1_install_ram_tools(neo1_t* sys) {
     const uint32_t vaci_size = (uint32_t)sizeof(neo1_vaci_v1);
     const uint32_t vaci_addr = NEO1_VACI_V1_ADDR;
     CHIPS_ASSERT((vaci_addr + vaci_size) <= NEO1_ROM_BASE);
+    CHIPS_ASSERT(NEO1_VACI_V1_ROM_PROTECT_HI_OFFSET < vaci_size);
     memcpy(&sys->ram[vaci_addr], neo1_vaci_v1, vaci_size);
+    sys->ram[vaci_addr + NEO1_VACI_V1_ROM_PROTECT_HI_OFFSET] =
+        (uint8_t)(NEO1_ROM_PROTECT_BASE >> 8);
 #if NEO1_DIAGNOSTICS
     printf("[neo1] vaci v1 installed at $%04X (%lu bytes), run with %04XR\n",
            (unsigned)vaci_addr,

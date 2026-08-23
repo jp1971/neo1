@@ -15,6 +15,7 @@ def render_header(data: bytes) -> str:
         "#include <stdint.h>",
         "",
         "#define NEO1_VACI_V1_ADDR (0xC100u)",
+        "#define NEO1_VACI_V1_ROM_PROTECT_HI_OFFSET (3u)",
         "",
         "// VACI V1: Neo1 Virtual Apple Cassette Interface",
         f"// {len(data)} bytes",
