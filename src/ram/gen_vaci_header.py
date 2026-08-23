@@ -1,5 +1,28 @@
-from pathlib import Path
 import argparse
+from pathlib import Path
+
+
+def render_header(data: bytes) -> str:
+    lines = [
+        "// neo1_vaci_v1.h",
+        "// Auto-generated from neo1_vaci_v1.bin",
+        "// Do not edit manually; edit neo1_vaci_v1.s or generator inputs instead.",
+        "#pragma once",
+        "",
+        "#include <stdint.h>",
+        "",
+        "#define NEO1_VACI_V1_ADDR (0xC100u)",
+        "",
+        "// VACI V1: Neo1 Virtual Apple Cassette Interface",
+        f"// {len(data)} bytes",
+        f"static const uint8_t neo1_vaci_v1[{len(data)}] = {{",
+    ]
+    for index in range(0, len(data), 16):
+        chunk = ", ".join(f"0x{byte:02X}" for byte in data[index:index + 16])
+        suffix = "," if index + 16 < len(data) else ""
+        lines.append(f"    {chunk}{suffix}")
+    lines.extend(["};", ""])
+    return "\n".join(lines)
 
 
 def main() -> int:
@@ -13,21 +36,7 @@ def main() -> int:
     data = bin_path.read_bytes()
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    with out_path.open("w", encoding="utf-8") as f:
-        f.write("// neo1_vaci_v1.h\n")
-        f.write("// Auto-generated from neo1_vaci_v1.bin\n")
-        f.write("// Do not edit manually; edit neo1_vaci_v1.s or generator inputs instead.\n")
-        f.write("#pragma once\n\n")
-        f.write("#include <stdint.h>\n\n")
-        f.write("#define NEO1_VACI_V1_ADDR (0xC100u)\n\n")
-        f.write("// VACI V1: Neo1 Virtual Apple Cassette Interface\n")
-        f.write(f"// {len(data)} bytes\n")
-        f.write(f"static const uint8_t neo1_vaci_v1[{len(data)}] = {{\n")
-        for index in range(0, len(data), 16):
-            chunk = ", ".join(f"0x{byte:02X}" for byte in data[index:index + 16])
-            suffix = "," if index + 16 < len(data) else ""
-            f.write(f"    {chunk}{suffix}\n")
-        f.write("};\n")
+    out_path.write_text(render_header(data), encoding="utf-8")
 
     print(f"Wrote {out_path} ({len(data)} bytes)")
     return 0

@@ -1,15 +1,18 @@
-; Neo1 Virtual Apple Cassette Interface (VACI) — V1 Read Flow
+; Neo1 Virtual Apple Cassette Interface (VACI) — V1
 ;
 ; Entry: C100R from WozMon
 ; Menu:  R = read cassette (by index 00-99) to address
-;        W = write cassette (deferred V2)
+;        W = write a RAM address range to a named file
+;        L = load an Integer BASIC program
+;        S = save an Integer BASIC program
 ;        Q = quit to WozMon
+; Hidden: D = delete a file by index
 ;
 ; ACI-style flow:
-;   - user selects file index
-;   - user enters load address
-;   - display synthesized command (e.g., "0300 . 0328R")
-;   - user presses CR to execute transfer
+;   - R selects a file index and load address
+;   - W accepts a filename and inclusive start/end addresses
+;   - display synthesized command (e.g., "0300.0328R" or "0300.0328W")
+;   - execute the transfer immediately after the command echo
 ;   - return to WozMon on success
 ;
 ; MSC backend registers:
@@ -163,9 +166,8 @@ MenuQuit:
 ;   2. Prompt for index (00-99)
 ;   3. Prompt for load address ($XXXX)
 ;   4. Display ACI-style command echo
-;   5. Wait for CR to execute
-;   6. Open file by index, read/copy full file to destination (sector loop)
-;   7. Return to caller
+;   5. Read/copy the open file to the destination (sector loop)
+;   6. Return to caller
 ;------------------------------------------------------------------------------
 VaciRead:
         ; Initialize index counter
@@ -533,7 +535,7 @@ VdDeleteErr:
 ;   2. Prompt "* START ($XXXX): " - ReadHexWord -> start addr (ZP_PTR)
 ;   3. Prompt "* END ($XXXX): "   - ReadHexWord -> end addr  (ZP_END)
 ;   4. Compute length = end - start + 1
-;   5. Echo "* AAAA . EEEEW", wait for CR (other key = cancel)
+;   5. Echo "* AAAA.EEEEW" and execute immediately
 ;   6. CMD_OPEN, stream filename+NUL to MSC_DATA (triggers do_open())
 ;   7. Sector loop: chunk=min(remaining,512), stream+pad to 512, CMD_WRITE
 ;   8. Repeat until remaining=0
