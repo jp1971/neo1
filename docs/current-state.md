@@ -104,6 +104,25 @@ block write. Writable operation requires a preferred writable image such as
 13. **SDL execution is not wall-clock or cycle paced.** `neo1_exec(2000)` runs
     about 2,043 soft ticks per UI iteration, but each tick is a complete
     instruction and the runner does not govern the batch using elapsed time.
+14. **The VCFFA1 utility's create/delete updates are not transactional.** New
+    file creation commits allocation bits before its directory and sapling
+    index writes, without rollback. Delete may free an index block after an
+    index-read error, ignores a bitmap-write error, and can then remove the
+    directory entry. Failures can leak blocks or leave ProDOS metadata
+    inconsistent; use a disposable image for write/delete testing.
+15. **VCFFA1 existing-file writes do not update catalog metadata.** The utility
+    writes the requested bytes into an existing seedling or sapling but leaves
+    its EOF, blocks-used, auxtype, and other directory fields unchanged when
+    source or length differs from the entry.
+16. **The VCFFA1 utility has hard-coded filesystem limits.** Catalog, lookup,
+    create, and delete inspect only root directory block 2. Allocation/freeing
+    uses only the first bitmap block and assumes at most 4096 volume blocks;
+    load/create/write support only seedling and two-data-block sapling files
+    through 1024 bytes. Load destinations are not range checked.
+17. **The VCFFA1 block driver can wait forever for DRQ.** Read/write checks the
+    error register immediately after command issue, then polls DRQ without a
+    timeout or further busy/error checks. A device or backend that never raises
+    DRQ stalls the 6502 utility indefinitely.
 
 ## Storage-test expectations still outstanding
 

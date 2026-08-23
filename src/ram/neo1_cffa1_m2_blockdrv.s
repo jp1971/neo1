@@ -1,7 +1,6 @@
 ; neo1_cffa1_m2_blockdrv.s
 ;
-; M8.2 CFFA1 mini-menu: catalog, load-by-index, block inspect,
-; and CFFA1-style Write File prompts (existing-file overwrite path).
+; Neo1 CFFA1-compatible block driver and ProDOS root-directory utility.
 ;
 ; Provides:
 ;   CFBlockDriver  ($1800) - ProDOS block driver with STATUS, READ, WRITE
@@ -42,6 +41,10 @@
 ;
 ; Run from WozMon:
 ;   1810R
+;
+; The driver and utility poll devices synchronously and do not use IRQ or NMI.
+; The utility understands only root directory block 2, the first bitmap block,
+; and seedling/sapling files of at most 1024 bytes.
 
 .setcpu "65C02"
 
@@ -94,10 +97,11 @@ DSP          = $D012
 DSPCR        = $D013
 WOZMON_ENTRY = $FF00
 
-; 512-byte staging buffer for block reads/writes.
+; 512-byte staging buffer for block reads/writes. The caller must reserve
+; $3000-$31FF while TestMain or its utility commands are running.
 READ_VERIFY_BUFFER= $3000
 
-; Scratch ZP
+; Scratch zero page. TestMain and its helpers clobber $F0-$F8 without saving it.
 ZP_PTR_LO    = $F0
 ZP_PTR_HI    = $F1
 TMP_N0       = $F2
@@ -108,6 +112,8 @@ TMP_E_LEN    = $F6
 TMP_E_COUNT  = $F7
 TMP_NLEN     = $F8
 
+; Utility state reuses $0208-$0232 in WozMon's input area and does not preserve
+; its previous contents. CFBlockDriver itself does not require this state.
 CAT_FOUND    = $0208
 CAT_KEY_LO   = $0209
 CAT_KEY_HI   = $020A
@@ -143,23 +149,18 @@ SEL_ENTRY_INDEX = $0232
 ; CFBlockDriver entrypoint at $1800.
 ; Keep this stable for callers, and trampoline to the actual implementation.
 ; We pad out to $1810 so TestMain is always physically at $1810.
+; See DriverImpl for parameter, result, polling, and clobber contracts.
 ;------------------------------------------------------------------------------
 CFBlockDriver:
         JMP DriverImpl
         .res $1810-*, $EA
 
 ;------------------------------------------------------------------------------
-; TestMain  ($1810)
-;
-; 1. Print banner
-; 2. Check CFFA1 signature bytes
-; 3. Call CFBlockDriver with STATUS
-; 4. Read/parse ProDOS catalog block 2 and print entries
-; 5. Attempt first-entry seedling payload load to $0300
-; 6. Prompt for block HHLL (CR exits)
-; 7. Call CFBlockDriver with READ from requested block into READ_VERIFY_BUFFER
-; 8. Print first 128 bytes (hex, 16 bytes per line)
-; 9. Loop back to prompt
+; TestMain ($1810) - interactive C/L/B/W/D/Q utility
+; Checks the CFFA1 signature and STATUS, shows root directory block 2, then
+; enters the command loop. Q jumps to WozMon. A failed signature or initial
+; STATUS executes BRK. A, X, Y, flags, $F0-$F8, $0208-$0232, and $3000-$31FF
+; are clobbered.
 ;------------------------------------------------------------------------------
 TestMain:
         ; --- Print banner ---
@@ -309,10 +310,12 @@ MenuDoQuit:
 ;   TYPE (BIN): $   (CR accepts BIN default)
 ;   NAME:
 ;
-; Current scope:
-; - Overwrite existing seedling/sapling files only.
-; - File must already exist in catalog block 2.
-; - Requested TYPE must match existing filetype.
+; Finds or creates a named entry in root directory block 2. New seedling files
+; may be at most 512 bytes and new sapling files at most 1024 bytes. Existing
+; entries must already be seedling/sapling and the requested type must match
+; (an existing type $00 is treated as BIN $06). Existing-entry writes do not
+; update EOF, blocks-used, auxtype, or other directory metadata when the
+; requested source or length differs from the catalog entry.
 ;------------------------------------------------------------------------------
 MenuWriteFile:
         LDX #$00
@@ -425,8 +428,7 @@ MwfCreatedEntry:
         JMP MwfTypeMatch
 
 MwfHaveEntry:
-        ; TYPE must match existing entry type for this stage.
-        ; Transitional compatibility: treat existing filetype $00 as BIN ($06).
+        ; TYPE must match the existing entry. Type $00 is accepted as BIN $06.
         LDA CAT_FILETYPE
         BNE MwfTypeNormDone
         LDA #$06
@@ -470,6 +472,10 @@ MwfTypeMatch:
 ; decrements the volume file count, and writes both blocks back.
 ;
 ; Supports seedling (type 1) and sapling (type 2) only.
+; This is not transactional: an index read failure still frees the sapling
+; index block, a bitmap write failure is ignored, and later directory failures
+; are not rolled back. Interrupted or failed deletion can leave the bitmap and
+; directory inconsistent. Use only with a disposable image pending repair.
 ;------------------------------------------------------------------------------
 MenuDeleteFile:
         ; -- Prompt: DELETE:
@@ -547,7 +553,7 @@ MdfFound:
         STA pdIOBufferHigh
         JSR CFBlockDriver
         BCC MdfIdxOk
-        ; read error — still attempt dir cleanup
+        ; Current error path still frees the index block and directory entry.
         JMP MdfFreeIndexBlock
 MdfIdxOk:
         ; data block 0 (lo byte from $00, hi byte from $100)
@@ -614,7 +620,7 @@ MdfWriteBitmap:
         LDA #>READ_VERIFY_BUFFER
         STA pdIOBufferHigh
         JSR CFBlockDriver
-        ; ignore write error — proceed to zero dir entry
+        ; Current error path ignores failure and proceeds to zero the entry.
 
         ; -- Reload directory block into buffer.
         JSR ReadCatalogBlock2
@@ -697,6 +703,8 @@ MdfOkDone:
 ;      READ_VERIFY_BUFFER contains loaded bitmap block
 ; Out: corresponding bit set (freed) in READ_VERIFY_BUFFER
 ;      (caller must write bitmap back when done)
+; Only the first 512-byte bitmap block is represented. The calculation assumes
+; a volume of at most 4096 blocks and is not valid for larger block numbers.
 ;------------------------------------------------------------------------------
 MdfFreeOneBlock:
         ; Byte index = block_number / 8.  High half if block >= 2048.
@@ -751,9 +759,12 @@ MfobLoApply:
 ; CreateEntryForWrite
 ;
 ; Create a new root-directory file entry for current NAME/TYPE/LENGTH/SOURCE.
-; Supports seedling (<=512 bytes) and sapling (<=1024 bytes) for now.
+; Supports seedling (<=512 bytes) and sapling (<=1024 bytes).
 ;
 ; Out: CLC on success (CAT_* populated for write path), SEC on error.
+; Allocation, directory update, and sapling-index initialization are separate
+; writes with no rollback. A failure can leak allocated blocks or leave a
+; directory entry whose index block was not initialized.
 ;------------------------------------------------------------------------------
 CreateEntryForWrite:
         ; Determine storage type and blocks needed from requested length.
@@ -1090,6 +1101,9 @@ CefTooBigDone:
 ;
 ; In:  WRITE_NEED_BLOCKS = 1(seedling) or 3(sapling)
 ; Out: WRITE_ALLOC0..2 set, bitmap updated on disk.
+; Searches only the first bitmap block (volume blocks 0-4095). The bitmap is
+; committed before the caller writes a directory entry; later errors leak the
+; selected blocks because no rollback is attempted.
 ;------------------------------------------------------------------------------
 AllocateBlocksForCreate:
         ; Read block 2 to find bitmap start block.
@@ -1333,6 +1347,9 @@ AbfcOk:
 ;   Source pointer in TMP_N3:TMP_N2
 ;   Remaining byte length in TMP_E_COUNT:TMP_E_LEN
 ;   CAT_* metadata populated from catalog entry
+; Output: selected data blocks contain the requested bytes, with the remainder
+; of the final 512-byte block zero-filled. Existing catalog metadata is not
+; changed. A, X, Y, flags, zero-page scratch, and staging memory are clobbered.
 ;------------------------------------------------------------------------------
 WriteCurrentEntryFromAddr:
         LDA CAT_TYPE
@@ -1660,7 +1677,7 @@ SabWrite:
         RTS
 
 ;------------------------------------------------------------------------------
-; RunBlockInspector - existing M6-style HHLL block inspector
+; RunBlockInspector - prompt for an HHLL block and display its first 128 bytes
 ; Returns to caller when user presses CR at prompt.
 ;------------------------------------------------------------------------------
 RunBlockInspector:
@@ -1766,7 +1783,7 @@ ReadCatalogBlock2:
         RTS
 
 ;------------------------------------------------------------------------------
-; ShowCatalog - read block 2 and print active directory entries
+; ShowCatalog - read block 2 and print active entries from that block only
 ;------------------------------------------------------------------------------
 ShowCatalog:
         LDA #$00
@@ -2128,7 +2145,7 @@ FcnAdvanceNoCarry:
         JMP FcnEntryLoop
 
 ;------------------------------------------------------------------------------
-; MenuLoadByIndex - load command (00-99 index)
+; MenuLoadByIndex - load a block-2 directory slot by 00-99 index
 ;------------------------------------------------------------------------------
 MenuLoadByIndex:
         LDX #$00
@@ -2163,7 +2180,7 @@ MlnNoFileDone:
         RTS
 
 MlnHaveEntry:
-        ; BA1 special path intentionally deferred for now.
+        ; BA1 file type $F1 is recognized but rejected as unsupported.
         LDA CAT_FILETYPE
         CMP #$F1
         BNE MlnNotBa1
@@ -2243,6 +2260,9 @@ MlnDoLoad:
 ;------------------------------------------------------------------------------
 ; LoadCurrentEntryAtAddr
 ; Uses CAT_* metadata and destination in TMP_N3:TMP_N2
+; Supports a seedling through 512 bytes or a sapling through 1024 bytes. The
+; destination is not checked for wraparound or overlap with utility code,
+; scratch, staging memory, I/O, or ROM.
 ;------------------------------------------------------------------------------
 LoadCurrentEntryAtAddr:
         ; Seedling and sapling.
@@ -2405,7 +2425,7 @@ LcaBigDone:
 ; CAT_KEY = index block, EOF = payload byte length, destination in TMP_N3:TMP_N2
 ;------------------------------------------------------------------------------
 LoadSaplingAtAddr:
-        ; Keep this compact: support sapling payload up to 2 data blocks (EOF <= $0400).
+        ; This utility supports only the first two data blocks (EOF <= $0400).
         LDA CAT_EOF2
         BEQ LsaChkEof1
         JMP LsaTooBig
@@ -2677,9 +2697,15 @@ CcbFull1:
 ;------------------------------------------------------------------------------
 ; DriverImpl  - ProDOS block driver over Neo1 CFFA1 shim
 ;
-; Accepts pdCommandCode = $00 (STATUS), $01 (READ), or $02 (WRITE)
+; In: $42 command ($00 STATUS, $01 READ, $02 WRITE); $43 unit is ignored;
+;     $44/$45 is the 512-byte buffer for READ/WRITE; $46/$47 is the block.
+; The 16-bit block number is zero-extended into the shim's 32-bit LBA.
 ; Returns: CLC, A=0 on success
 ;          SEC, A=error code on failure
+; READ and WRITE transfer exactly 512 bytes. They check ERROR immediately after
+; issuing the command, then poll DRQ without timeout or further BSY/ERR checks.
+; A, Y, flags, $F0/$F1, and the buffer contents on READ are clobbered; X is
+; preserved. Completion is synchronous and no interrupt is generated.
 ;------------------------------------------------------------------------------
 DriverImpl:
         LDA pdCommandCode
@@ -2816,7 +2842,8 @@ WriteError:
         RTS                     ; A already holds the error code
 
 ;------------------------------------------------------------------------------
-; Putc  - output char in A to Neo1 DSP
+; Putc - poll DSPCR bit 7, then write A with bit 7 set to DSP
+; Out: A has bit 7 set; flags clobbered. No timeout or interrupt path.
 ;------------------------------------------------------------------------------
 Putc:
         BIT DSPCR
@@ -2833,7 +2860,8 @@ PrintCR:
         JMP Putc
 
 ;------------------------------------------------------------------------------
-; GetKey - wait for key and return ASCII (bit7 stripped) in A
+; GetKey - poll KBDCR bit 7, then read KBD
+; Out: A=7-bit ASCII. Flags clobbered; X and Y preserved. No timeout or IRQ.
 ;------------------------------------------------------------------------------
 GetKey:
 KeyWait:
