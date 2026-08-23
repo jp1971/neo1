@@ -17,6 +17,24 @@ cmake_minimum_required(VERSION 3.12)
 set(NEO1_PLATFORM "pico" CACHE STRING "Neo1 platform target: pico or sdl")
 set_property(CACHE NEO1_PLATFORM PROPERTY STRINGS pico sdl)
 
+# The Pico SDK import must happen before project() so CMake selects the ARM
+# toolchain on a clean configure. The VS Code Pico extension's generated block
+# above supplies its managed PICO_SDK_PATH. Standalone builds without that
+# block/environment fall back to the checked-in SDK submodule.
+if (NEO1_PLATFORM STREQUAL "pico")
+    if (NOT PICO_SDK_PATH)
+        set(PICO_SDK_PATH "${CMAKE_CURRENT_LIST_DIR}/lib/pico-sdk")
+    endif()
+    # Olimex Neo6502 is a project-specific RP2040 board definition carried by
+    # the checked-in SDK fork; expose just that board header to managed SDKs.
+    list(APPEND PICO_BOARD_HEADER_DIRS
+        "${CMAKE_CURRENT_LIST_DIR}/lib/pico-sdk/src/boards/include/boards")
+    list(REMOVE_DUPLICATES PICO_BOARD_HEADER_DIRS)
+    set(PICO_BOARD olimex_neo6502 CACHE STRING "Pico SDK board")
+    set(PICO_TINYUSB_PATH "${CMAKE_CURRENT_LIST_DIR}/lib/tinyusb")
+    include(pico_sdk_import.cmake)
+endif()
+
 # CPU backend selector used by chips/neo1_cpu_backend.h.
 # 1 = wdc65C02 hardware glue (current neo1-pico path)
 # 2 = mos6502 software core (NMOS 6502)
@@ -28,12 +46,6 @@ project(neo1                           C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 if (NEO1_PLATFORM STREQUAL "pico")
-    set(PICO_SDK_PATH ${CMAKE_CURRENT_LIST_DIR}/lib/pico-sdk)
-    set(PICO_TINYUSB_PATH ${CMAKE_CURRENT_LIST_DIR}/lib/tinyusb)
-
-    include(pico_sdk_import.cmake)
-
-    set(PICO_BOARD olimex_neo6502)
     pico_sdk_init()
 
     # Neo1 wants DVI output by default; enabling this adds the PicoDVI library and
@@ -55,6 +67,12 @@ if (NEO1_PLATFORM STREQUAL "pico")
     if (ENABLE_DVI)
         include_directories(${CMAKE_CURRENT_SOURCE_DIR}/lib/PicoDVI/software/include)
         add_subdirectory(lib/PicoDVI/software/libdvi)
+        # This pinned PicoDVI revision predates the SDK 2.x rename of the DMA
+        # debug transfer-count field from tcr to dbg_tcr. Keep the compatibility
+        # alias on PicoDVI's interface rather than modifying the submodule.
+        if (PICO_SDK_VERSION_MAJOR GREATER_EQUAL 2)
+            target_compile_definitions(libdvi INTERFACE tcr=dbg_tcr)
+        endif()
     else()
         message(FATAL_ERROR "ENABLE_DVI=OFF is not currently supported by systems/neo1-pico (neo1_video requires PicoDVI).")
     endif()

@@ -37,7 +37,6 @@
 #include <string.h>
 #include <ctype.h>
 
-#include <pico/platform.h>
 #include "pico/stdlib.h"
 
 #include "chips/chips_common.h"
