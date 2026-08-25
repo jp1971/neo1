@@ -267,7 +267,7 @@ VACI remains the preferred storage interface. Until remediation resumes, limit
 normal VCFFA1 use to the verified catalog/load/block-inspection workflow and
 use only disposable images for `W` or `D`.
 
-The deferral is an ordering decision, not closure: defects 1 and 10-13 remain
+The deferral is an ordering decision, not closure: defects 1 and 9-12 remain
 open in `docs/current-state.md`. A newly observed regression in the verified
 read-oriented workflow may be fixed sooner as a narrowly scoped preservation
 change.
@@ -299,10 +299,12 @@ Proceed with the active work in this order:
    covers these paths, and the Neo1-23 functional smoke passed. That smoke
    exposed error messages beginning on the address-prompt line; the follow-up
    leading carriage returns were also visually confirmed on Neo1-23.
-4. **Resolve cross-target deviations found earlier in the pass.** Remove or
-   retire unusable CPU backend value 2, make MSC decode enablement explicit,
-   synchronize Pico terminal publication, and give the SDL software runner
-   elapsed-time/cycle pacing. Keep architectural extraction separate from each
+4. **In progress — Resolve cross-target deviations found earlier in the pass.**
+   Unusable CPU backend value 2 was retired on 2026-08-24: configure accepts
+   only the two implemented adapters, and each runner enforces its required
+   backend. Remaining checkpoints are explicit MSC decode enablement,
+   synchronized Pico terminal publication, and elapsed-time/cycle pacing for
+   the SDL software runner. Keep architectural extraction separate from each
    observable behavior fix.
 
 After the portable-core checkpoint, resume the deferred VCFFA1 track in this

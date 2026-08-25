@@ -2,6 +2,10 @@
 # storage protocols. No Pico service or RAM-payload source is linked here.
 find_package(SDL2 REQUIRED)
 
+if (NOT NEO1_CPU_BACKEND STREQUAL "3")
+    message(FATAL_ERROR "neo1-sdl requires NEO1_CPU_BACKEND=3 (soft65C02 backend)")
+endif()
+
 add_executable(neo1
     ${CMAKE_CURRENT_SOURCE_DIR}/src/main.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1_platform_sdl.c

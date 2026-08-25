@@ -24,7 +24,7 @@ set(NEO1_DIAGNOSTICS "0" CACHE STRING "Enable verbose Neo1 serial diagnostics (1
 
 # The Pico runner services a physical W65C02 bus and accepts only adapter 1.
 if (NOT NEO1_CPU_BACKEND STREQUAL "1")
-    message(FATAL_ERROR "neo1-pico requires NEO1_CPU_BACKEND=1 (wdc65C02 hardware backend) for now")
+    message(FATAL_ERROR "neo1-pico requires NEO1_CPU_BACKEND=1 (wdc65C02 hardware backend)")
 endif()
 
 if (NOT NEO1_ENABLE_VACI MATCHES "^[01]$")
