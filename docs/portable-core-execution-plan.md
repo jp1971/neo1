@@ -97,7 +97,7 @@ or preserving behavior requires target conditionals in the shared grid.
 
 ## Checkpoint 2: explicit optional-device ports
 
-Status: host/build gates passed 2026-08-24; awaiting the physical gate.
+Status: completed 2026-08-24.
 
 ### Boundary
 
@@ -160,8 +160,8 @@ Using the normal Neo1-23 image and read-only workflows:
 4. enter `C100R`, list the VACI directory, then use `Q` to return to WozMon;
 5. confirm USB keyboard and serial input remain responsive.
 
-No storage write is required. The checkpoint remains incomplete until the user
-supplies this physical result.
+No storage write is required. The user confirmed that this complete physical
+gate passed on 2026-08-24.
 
 ### Evidence to date
 
@@ -181,7 +181,10 @@ supplies this physical result.
   payload installation, CPU/PIA behavior, ROM/RAM policy, DVI, USB, or physical
   bus timing. The duplicated target-side VCFFA1 address filters were removed;
   decode now has the one shared-machine owner described above.
-- Physical Neo1-23 evidence is still required before this checkpoint closes.
+- The normal Neo1-23 image passed the physical gate: WozMon appeared on DVI and
+  serial, `AFDC.AFDD` returned the VCFFA1 signature, `AFFF` remained readable,
+  VACI listed the USB directory and returned to WozMon, and USB keyboard plus
+  serial input remained responsive.
 
 ### Rollback condition
 

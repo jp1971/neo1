@@ -43,7 +43,8 @@ snapshot, not the architecture contract or a roadmap.
   storage calls from the shared machine. The machine now owns MSC and VCFFA1
   address decode and invokes explicit runner-attached ports. Both SDL profiles
   reach WozMon headlessly, both Pico profiles build, and all eight host tests
-  pass; the read-only Neo1-23 physical gate remains outstanding.
+  pass. The Neo1-23 DVI/serial reset, VCFFA1 signature/status, VACI directory,
+  WozMon return, USB keyboard, and serial-input gate passed on 2026-08-24.
 - SDK 2.3.0 has not been configured, built, or hardware-tested.
 
 ## Last Neo6502 hardware validation
@@ -63,7 +64,7 @@ profile with VACI and VCFFA1 enabled.
 | VACI write | Verified | A write larger than 512 bytes produced a host-reported 2 KB file; rewriting the same name produced an exact 16-byte file, confirming multi-sector operation and truncation |
 | VACI BASIC save/load | Verified | The 2,230-byte sentinel test restored all checked values across `$004A-$00FF` and `$0800-$0FFF` |
 | VACI ordinary-transfer hardening | Verified | The 2026-08-24 smoke test confirmed the profile marker, valid 16-byte write/read, 64 KB write rejection, Neo1-23 ROM-destination rejection, close behavior, unchanged ROM data, and error messages beginning on new lines |
-| VCFFA1 | Verified at workflow level | User reported VCFFA1 working and successfully ran a loaded `.po` image |
+| VCFFA1 | Verified at workflow level | User reported VCFFA1 working and successfully ran a loaded `.po` image; checkpoint 2 also preserved `$AFDC-$AFDD` signature and `$AFFF` status reads |
 
 The first VACI write was displayed by the host as rounded “2 KB,” so that test
 did not independently establish the then-current 2,369-byte payload length. It
