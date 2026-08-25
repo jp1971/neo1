@@ -49,13 +49,14 @@ snapshot, not the architecture contract or a roadmap.
 - Portable-core checkpoint 3 gives both runners one ordinary shared C model for
   `$D010-$D013` and `$D0F2-$D0F3`. The software runner now follows the physical
   DDR selection and first-pending-key rules. All nine host tests pass, both SDL
-  profiles reach WozMon headlessly, and both Pico profiles build; the Neo1-23
-  physical keyboard/display gate remains outstanding.
+  profiles reach WozMon headlessly, and both Pico profiles build. The Neo1-23
+  WozMon, memory examine/deposit, DVI/serial output, USB/serial input, VACI
+  directory/return, and scrolling gate passed on 2026-08-25.
 - SDK 2.3.0 has not been configured, built, or hardware-tested.
 
 ## Last Neo6502 hardware validation
 
-User-supplied results from 2026-08-22 through 2026-08-24 used the Neo1-23
+User-supplied results from 2026-08-22 through 2026-08-25 used the Neo1-23
 profile with VACI and VCFFA1 enabled.
 
 | Capability | Result | Evidence |
@@ -65,6 +66,7 @@ profile with VACI and VCFFA1 enabled.
 | DVI video | Verified | The shared-grid checkpoint passed sustained WozMon output/scrolling, form-feed clear, cursor, keyboard, and VACI-return checks on Neo1-23 |
 | Serial console | Verified | Normal and diagnostic profiles produced their intended transcripts while preserving monitor output |
 | USB HID keyboard | Verified | User explicitly verified keyboard input |
+| Apple-1 PIA-like interface | Verified | Checkpoint 3 preserved WozMon memory examine/deposit, DVI/serial display output, USB/serial input, VACI directory/return, and stable scrolling |
 | USB MSC/FatFs | Verified | Media mounted and directory/file workflows operated |
 | VACI read/load | Verified | `.BIN` files loaded and ran |
 | VACI write | Verified | A write larger than 512 bytes produced a host-reported 2 KB file; rewriting the same name produced an exact 16-byte file, confirming multi-sector operation and truncation |

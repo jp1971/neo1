@@ -194,7 +194,7 @@ fails, or the physical read-only storage smoke regresses.
 
 ## Checkpoint 3: shared Apple-1 keyboard/display device
 
-Status: host/build gates passed 2026-08-25; awaiting the physical gate.
+Status: completed 2026-08-25.
 
 ### Boundary
 
@@ -264,8 +264,8 @@ Using the normal Neo1-23 image:
    then use `Q` to return to WozMon;
 5. confirm the display remains stable while the directory scrolls.
 
-No storage write is required. The checkpoint remains incomplete until the user
-supplies this physical result.
+No storage write is required. The user confirmed that this complete physical
+gate passed on 2026-08-25.
 
 ### Evidence to date
 
@@ -287,7 +287,10 @@ supplies this physical result.
 - Diff review found no change to the CPU adapter implementation, software-core
   globals, `$0000-$0002` accommodation, reset signal, RAM/ROM policy, storage,
   terminal byte policy, platform I/O, DVI, USB, or physical bus timing.
-- Physical Neo1-23 evidence is still required before this checkpoint closes.
+- The normal Neo1-23 image passed the physical gate: WozMon appeared on DVI and
+  serial, memory examine/deposit worked, USB keyboard and serial input remained
+  responsive, VACI listed the directory and returned to WozMon, and scrolling
+  remained stable.
 
 ### Rollback condition
 
