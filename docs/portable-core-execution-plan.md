@@ -10,6 +10,9 @@ and defects remain in `docs/current-state.md`.
 
 ## Checkpoint 1: shared terminal grid
 
+Status: implementation and host/build gates passed on 2026-08-24; awaiting the
+Neo1-23 physical gate.
+
 ### Boundary
 
 Extract the duplicated 40×24 character-grid state and its primitive mutations
@@ -64,12 +67,25 @@ After the host/build gates pass, flash the normal Neo1-23 image and confirm:
 
 1. reset reaches WozMon on DVI and serial;
 2. `0000.0FFF` wraps and scrolls without corrupt rows or DVI instability;
-3. form feed still clears the DVI terminal and the cursor continues blinking;
+3. enter `D012:0C` and confirm form feed clears the DVI terminal, then confirm
+   the cursor continues blinking;
 4. UART and USB keyboard input still work;
 5. `C100R`, followed by `Q`, returns cleanly to WozMon.
 
 The checkpoint remains awaiting hardware confirmation until the user supplies
 that result.
+
+### Evidence to date
+
+- `neo1_terminal_grid_contract` passes with clear, wrap, scroll, backspace,
+  eight-bit glyph, Pico-policy, and SDL-policy fixtures.
+- All six host tests pass under the SDL-23 configuration.
+- SDL personalities 23 and 50 build and reach the WozMon `\` prompt with a
+  disposable raw-image startup probe.
+- Pico personalities 23 and 50 build with SDK 2.1.0; `build/` is restored to
+  Neo1-23 and `build-sdl/` is restored to SDL-23.
+- Diff review found no change to memory/PIA decoding, CPU integration, physical
+  bus timing, storage, PicoDVI scanout, or terminal snapshot publication.
 
 ### Rollback condition
 

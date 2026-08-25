@@ -29,10 +29,15 @@ snapshot, not the architecture contract or a roadmap.
 - `NEO1_ENABLE_MSC` now controls `$D014-$D01C` ownership explicitly. Focused
   host tests prove enabled accesses reach the device and disabled accesses use
   backing RAM; VACI-without-MSC configurations are rejected.
-- The SDL host configuration now includes five focused tests. All passed
+- The SDL host configuration now includes six focused tests. All passed
   locally on 2026-08-24: the production Pico MSC contract against an in-memory
   FatFs fake, the generated VACI BASIC/ordinary transfer paths, enabled and
-  disabled MSC address decode, and software-CPU cycle budgeting.
+  disabled MSC address decode, software-CPU cycle budgeting, and the shared
+  terminal grid plus preserved Pico/SDL control-byte policies.
+- Portable-core checkpoint 1 now gives Pico and SDL one shared 40×24 terminal
+  grid while leaving control-byte policy and rendering target-owned. Both SDL
+  profiles reach WozMon headlessly, both Pico profiles build, and the six host
+  tests pass. Neo1-23 physical confirmation is still required.
 - SDK 2.3.0 has not been configured, built, or hardware-tested.
 
 ## Last Neo6502 hardware validation
@@ -70,7 +75,7 @@ block write. Writable operation requires a preferred writable image such as
 `CFFA1RW.PO` or `CFFA1RW.HDV`; fallback images are opened read-only.
 
 VCFFA1 is retained as an optional Replica 1 compatibility feature, but the
-reliability work in defects 1 and 6-9 is deferred until after the next
+reliability work in defects 1 and 7-10 is deferred until after the next
 portable-core checkpoint. VACI remains the preferred Apple-1 storage path.
 Until that work resumes, use VCFFA1 `W` and `D` only with disposable images;
 the verified catalog/load workflow may continue to be used within the stated
@@ -96,22 +101,26 @@ directory, bitmap, file-size, and destination limitations.
    budgeting are also covered. There are still no focused tests for the rest
    of shared memory decoding, PIA behavior, VACI delete, VCFFA1, or broad CPU
    compatibility.
-6. **The VCFFA1 utility's create/delete updates are not transactional.** New
+6. **Portable-core terminal extraction awaits physical confirmation.** Pico
+   and SDL now share grid state and primitive mutations. Host policy tests,
+   both SDL WozMon smokes, and both Pico builds pass; the documented Neo1-23
+   DVI, serial, form-feed, and input regression smoke remains outstanding.
+7. **The VCFFA1 utility's create/delete updates are not transactional.** New
     file creation commits allocation bits before its directory and sapling
     index writes, without rollback. Delete may free an index block after an
     index-read error, ignores a bitmap-write error, and can then remove the
     directory entry. Failures can leak blocks or leave ProDOS metadata
     inconsistent; use a disposable image for write/delete testing.
-7. **VCFFA1 existing-file writes do not update catalog metadata.** The utility
+8. **VCFFA1 existing-file writes do not update catalog metadata.** The utility
     writes the requested bytes into an existing seedling or sapling but leaves
     its EOF, blocks-used, auxtype, and other directory fields unchanged when
     source or length differs from the entry.
-8. **The VCFFA1 utility has hard-coded filesystem limits.** Catalog, lookup,
+9. **The VCFFA1 utility has hard-coded filesystem limits.** Catalog, lookup,
     create, and delete inspect only root directory block 2. Allocation/freeing
     uses only the first bitmap block and assumes at most 4096 volume blocks;
     load/create/write support only seedling and two-data-block sapling files
     through 1024 bytes. Load destinations are not range checked.
-9. **The VCFFA1 block driver can wait forever for DRQ.** Read/write checks the
+10. **The VCFFA1 block driver can wait forever for DRQ.** Read/write checks the
     error register immediately after command issue, then polls DRQ without a
     timeout or further busy/error checks. A device or backend that never raises
     DRQ stalls the 6502 utility indefinitely.

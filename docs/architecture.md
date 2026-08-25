@@ -68,6 +68,21 @@ newest key.
 This interface does not assert IRQ or NMI. Keyboard readiness and display
 readiness are polled.
 
+## Shared terminal grid
+
+Display callbacks on both runners feed one shared host-side 40×24 character
+grid implementation. The grid owns cells, cursor position, clear, newline,
+wrap, scroll, glyph placement, and backspace erase as explicit primitives. It
+is presentation state outside the 6502 address space, not part of the Apple-1
+PIA contract.
+
+Each target retains its observable byte policy and rendering transport. Pico
+uses CR for newline, form feed for clear, ignores LF/backspace, and publishes
+snapshots to PicoDVI. SDL uses CR for newline, backspace for erase, ignores
+LF/form feed, and renders the cells with SDL. Both target callbacks strip the
+Apple-1 output high bit before applying those policies; the shared grid itself
+preserves all eight bits supplied to its glyph primitive.
+
 ## Neo1 MSC file interface
 
 The optional storage service at `$D014-$D01C` is a Neo1 extension used by VACI.
