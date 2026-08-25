@@ -298,3 +298,85 @@ Revert this checkpoint if any PIA register result differs from the documented
 physical semantics, WozMon keyboard/display behavior regresses on either
 target, a build/smoke gate fails, or target-specific PIA behavior is required
 inside the shared device.
+
+## Checkpoint 4: CPU-neutral machine address space
+
+Status: planned 2026-08-25.
+
+### Boundary
+
+Extract the 6502-visible address space from the transitional CPU-bearing
+`neo1_t` wrapper into ordinary shared C under `src/systems/`:
+
+- own the 64 KB backing array, deterministic power-on pattern, ROM placement,
+  and ROM write-protection boundary in `neo1_machine_t`;
+- own the shared Apple-1 PIA-like device and optional MSC/VCFFA1 decode there;
+- expose explicit `neo1_machine_read()` and `neo1_machine_write()` bus
+  operations plus keyboard injection and reset-state operations;
+- select optional-device ownership from attached ports rather than compiling
+  CPU-dependent address-space variants;
+- have the existing physical/software CPU wrapper service both adapters through
+  that explicit machine surface.
+
+This establishes the portable machine boundary without moving either CPU in
+the same checkpoint. The transitional wrapper may still own CPU selection,
+execution budgeting, reset signaling, startup tracing, and snapshots.
+
+### Preserved behavior and non-goals
+
+- Both profiles retain the even `$00`/odd `$FF` initial RAM pattern, ROM bytes,
+  reset vectors, and current write-protection boundaries.
+- PIA, MSC, and VCFFA1 address ownership and disabled-device RAM fallthrough
+  remain exactly as documented.
+- The SDL-only `$0000-$0002` BRK-recovery patch remains in the transitional CPU
+  wrapper for a later behavior decision; it is not portable machine policy.
+- The software CPU remains process-global and embedded through the existing
+  macro adapter; the physical bus adapter remains embedded and timing-identical.
+- No payload installation, terminal byte policy, storage protocol/backend,
+  platform event loop, DVI, USB, or physical GPIO/latch change.
+
+### Acceptance criteria recorded before implementation
+
+Focused CPU-free host tests must prove:
+
+1. initialization fills ordinary memory with the even/odd pattern before ROM;
+2. Neo1-23-style ROM placement/protection preserves `$E000-$FFFF`;
+3. Neo1-50-style ROM placement/protection preserves `$FF00-$FFFF` while
+   `$E000` and `$F000` remain writable RAM;
+4. ordinary RAM reads and writes succeed immediately below protection;
+5. PIA addresses route to the shared PIA and adjacent addresses remain RAM;
+6. attached MSC and VCFFA1 ports receive only their documented addresses;
+7. unattached optional-device addresses remain RAM;
+8. machine reset clears PIA state without changing RAM or ROM;
+9. existing PIA, MSC/VCFFA1 decode, protocol, VACI, cycle-budget, and terminal
+   tests continue to pass through the transitional wrapper.
+
+Build and runtime gates:
+
+- all host tests pass under SDL-23;
+- SDL personalities 23 and 50 build and reach WozMon headlessly;
+- Pico personalities 23 and 50 build with SDK 2.1.0;
+- both working build directories are restored to personality 23;
+- diff review finds the CPU adapters, reset sequence, external-bus service,
+  storage backends, platform I/O, and physical timing unchanged.
+
+### Physical gate
+
+Using the normal Neo1-23 image:
+
+1. confirm reset reaches WozMon on DVI and serial;
+2. confirm `E000R` enters Integer BASIC and return to WozMon with reset;
+3. confirm `F000R` enters Krusader and return to WozMon with reset;
+4. use WozMon to deposit and examine a byte at `$0300`;
+5. enter `C100R`, list the VACI directory, cancel with Return, and use `Q` to
+   return to WozMon;
+6. confirm USB keyboard, serial input, DVI output, and scrolling remain stable.
+
+No storage write is required. The checkpoint remains incomplete until the user
+supplies this physical result.
+
+### Rollback condition
+
+Revert this checkpoint if any RAM, ROM, vector, PIA, or optional-device address
+result changes, either target fails its build/runtime gate, or extracting the
+address space requires CPU- or target-specific semantics in `neo1_machine_t`.
