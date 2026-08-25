@@ -43,7 +43,7 @@ profile with VACI and VCFFA1 enabled.
 | VACI read/load | Verified | `.BIN` files loaded and ran |
 | VACI write | Verified | A write larger than 512 bytes produced a host-reported 2 KB file; rewriting the same name produced an exact 16-byte file, confirming multi-sector operation and truncation |
 | VACI BASIC save/load | Verified | The 2,230-byte sentinel test restored all checked values across `$004A-$00FF` and `$0800-$0FFF` |
-| VACI ordinary-transfer hardening | Verified | The 2026-08-24 smoke test confirmed the profile marker, valid 16-byte write/read, 64 KB write rejection, Neo1-23 ROM-destination rejection, close behavior, and unchanged ROM data |
+| VACI ordinary-transfer hardening | Verified | The 2026-08-24 smoke test confirmed the profile marker, valid 16-byte write/read, 64 KB write rejection, Neo1-23 ROM-destination rejection, close behavior, unchanged ROM data, and error messages beginning on new lines |
 | VCFFA1 | Verified at workflow level | User reported VCFFA1 working and successfully ran a loaded `.po` image |
 
 The first VACI write was displayed by the host as rounded “2 KB,” so that test
@@ -62,7 +62,7 @@ block write. Writable operation requires a preferred writable image such as
 `CFFA1RW.PO` or `CFFA1RW.HDV`; fallback images are opened read-only.
 
 VCFFA1 is retained as an optional Replica 1 compatibility feature, but the
-reliability work in defects 2 and 11-14 is deferred until after the next
+reliability work in defects 1 and 10-13 is deferred until after the next
 portable-core checkpoint. VACI remains the preferred Apple-1 storage path.
 Until that work resumes, use VCFFA1 `W` and `D` only with disposable images;
 the verified catalog/load workflow may continue to be used within the stated
@@ -70,59 +70,54 @@ directory, bitmap, file-size, and destination limitations.
 
 ## Known defects and unverified behavior
 
-1. **The VACI error-line formatting fix awaits physical confirmation.** The
-   ordinary-transfer smoke test passed, but showed `WRITE ERR` and `READ ERR`
-   immediately after the final address digit. Both error paths now emit a
-   leading carriage return, and the software-65C02 payload test asserts the
-   resulting `CR + message + CR` sequence. A quick Neo1-23 visual check remains.
-2. **Generic VCFFA1 `.po` discovery is faulty.** The extension matcher handles
+1. **Generic VCFFA1 `.po` discovery is faulty.** The extension matcher handles
    `.hdv` and `.2mg`, but its `.po` comparison uses the wrong character
    positions. Preferred names such as `CFFA1RW.PO` and `CFFA1.PO` still work.
-3. **SDL does not install VACI or the VCFFA1 RAM utility.** Its MSC file and
+2. **SDL does not install VACI or the VCFFA1 RAM utility.** Its MSC file and
    directory commands are accepted as no-ops and its storage path maps raw
    sectors to one host image. SDL preset labels therefore do not imply Pico
    VACI file behavior.
-4. **Neo1-50 hardware behavior is build-verified only in this pass.** The dated
+3. **Neo1-50 hardware behavior is build-verified only in this pass.** The dated
    physical smoke result above is for Neo1-23.
-5. **SDK 2.3.0 is unverified.** Upgrade validation requires both Pico profile
+4. **SDK 2.3.0 is unverified.** Upgrade validation requires both Pico profile
    builds followed by the reset, DVI, keyboard, MSC, VACI, and VCFFA1 hardware
    smoke tests.
-6. **Automated coverage remains limited.** Focused host tests cover the Pico MSC
+5. **Automated coverage remains limited.** Focused host tests cover the Pico MSC
    register protocol and execute VACI BASIC plus ordinary read/write paths on
    the software 65C02. There are still no focused tests for shared memory
    decoding, PIA behavior, VACI delete, VCFFA1, or broad CPU compatibility.
-7. **CPU backend value 2 is not usable.** `neo1_cpu_backend.h` declares a
+6. **CPU backend value 2 is not usable.** `neo1_cpu_backend.h` declares a
    `MOS6502` backend and includes `mos6502cpu.h` when it is selected, but that
    header is not present in the repository. Current presets use the physical
    W65C02 backend (1) or the soft-65C02 adapter (3); value 2 is not a supported
    configuration.
-8. **MSC register decoding is not independently selectable.** The shared
+7. **MSC register decoding is not independently selectable.** The shared
    machine always routes the supported `$D014-$D01C` accesses to an MSC
    implementation. `NEO1_ENABLE_VACI` controls installation of the 6502-side
    VACI payload, not ownership of those addresses.
-9. **Pico terminal publication is not synchronized across cores.** Core 0
+8. **Pico terminal publication is not synchronized across cores.** Core 0
    mutates the caller-owned terminal while core 1 copies it at a frame boundary.
    The dirty flag and buffer indices are volatile but not lock-protected, so the
    source copy is not guaranteed to be atomic.
-10. **SDL execution is not wall-clock or cycle paced.** `neo1_exec(2000)` runs
+9. **SDL execution is not wall-clock or cycle paced.** `neo1_exec(2000)` runs
     about 2,043 soft ticks per UI iteration, but each tick is a complete
     instruction and the runner does not govern the batch using elapsed time.
-11. **The VCFFA1 utility's create/delete updates are not transactional.** New
+10. **The VCFFA1 utility's create/delete updates are not transactional.** New
     file creation commits allocation bits before its directory and sapling
     index writes, without rollback. Delete may free an index block after an
     index-read error, ignores a bitmap-write error, and can then remove the
     directory entry. Failures can leak blocks or leave ProDOS metadata
     inconsistent; use a disposable image for write/delete testing.
-12. **VCFFA1 existing-file writes do not update catalog metadata.** The utility
+11. **VCFFA1 existing-file writes do not update catalog metadata.** The utility
     writes the requested bytes into an existing seedling or sapling but leaves
     its EOF, blocks-used, auxtype, and other directory fields unchanged when
     source or length differs from the entry.
-13. **The VCFFA1 utility has hard-coded filesystem limits.** Catalog, lookup,
+12. **The VCFFA1 utility has hard-coded filesystem limits.** Catalog, lookup,
     create, and delete inspect only root directory block 2. Allocation/freeing
     uses only the first bitmap block and assumes at most 4096 volume blocks;
     load/create/write support only seedling and two-data-block sapling files
     through 1024 bytes. Load destinations are not range checked.
-14. **The VCFFA1 block driver can wait forever for DRQ.** Read/write checks the
+13. **The VCFFA1 block driver can wait forever for DRQ.** Read/write checks the
     error register immediately after command issue, then polls DRQ without a
     timeout or further busy/error checks. A device or backend that never raises
     DRQ stalls the 6502 utility indefinitely.
@@ -180,6 +175,6 @@ The passing procedure was:
    VACI must print `READ ERR`, return to its menu, leave `E000` unchanged, and
    remain able to perform the valid `0300` read again.
 
-After flashing the follow-up image, repeat steps 5 and 6 and confirm each error
-message begins on a new line. No data-path retest is required for that
-formatting-only follow-up.
+The follow-up image was then flashed and steps 5 and 6 were repeated. The user
+confirmed that both error messages begin on a new line, closing the
+formatting-only follow-up without another data-path retest.

@@ -2,9 +2,7 @@
 
 Date: 2026-08-23
 
-Status: In progress; phases 1-6 and Phase 7 checkpoints 1-2 complete;
-Phase 7 checkpoint 3 behavior verified, with error-line formatting confirmation
-pending
+Status: In progress; phases 1-6 and Phase 7 checkpoints 1-3 complete
 
 Purpose: make the current code legible and truthful before portable-core
 extraction without changing behavior, blessing temporary architecture, or
@@ -269,7 +267,7 @@ VACI remains the preferred storage interface. Until remediation resumes, limit
 normal VCFFA1 use to the verified catalog/load/block-inspection workflow and
 use only disposable images for `W` or `D`.
 
-The deferral is an ordering decision, not closure: defects 2 and 11-14 remain
+The deferral is an ordering decision, not closure: defects 1 and 10-13 remain
 open in `docs/current-state.md`. A newly observed regression in the verified
 read-oriented workflow may be fixed sooner as a narrowly scoped preservation
 change.
@@ -292,16 +290,15 @@ Proceed with the active work in this order:
    readable, but scratch bytes already damaged by the old saver are not
    recoverable. The current-state document records the passing Neo6502 sentinel
    test.
-3. **Behavior verified 2026-08-24; error-line formatting confirmation pending —
-   Harden ordinary VACI transfers.** Successful reads now close, unsafe or
-   wrapping ordinary ranges
-   fail before transfer, and the Pico installer patches the selected profile's
+3. **Completed 2026-08-24 — Harden ordinary VACI transfers.** Successful reads
+   now close, unsafe or wrapping ordinary ranges fail before transfer, and the
+   Pico installer patches the selected profile's
    ROM boundary into the payload so Neo1-50 retains `$E000-$FEFF` RAM. Status
    polling accepts only `$01` and times out after 65,536 BUSY reads. The linker
    reserves `$C100-$CFFF` below the `$D000` device page. The software-65C02 test
    covers these paths, and the Neo1-23 functional smoke passed. That smoke
-   exposed error messages beginning on the address-prompt line; a host-tested
-   follow-up now emits a leading carriage return and awaits a quick visual check.
+   exposed error messages beginning on the address-prompt line; the follow-up
+   leading carriage returns were also visually confirmed on Neo1-23.
 4. **Resolve cross-target deviations found earlier in the pass.** Remove or
    retire unusable CPU backend value 2, make MSC decode enablement explicit,
    synchronize Pico terminal publication, and give the SDL software runner
