@@ -43,7 +43,7 @@ memory-mapped devices:
 | Range | Condition | Entry |
 | --- | --- | --- |
 | `$1800-$2C1E` | VCFFA1 enabled | M2 block driver at `$1800`; interactive utility at `$1810` |
-| `$C100-$CB11` | VACI enabled | VACI at `$C100`; ordinary transfers reserve `$C100-$CFFF` for payload growth |
+| `$C100-$CB17` | VACI enabled | VACI at `$C100`; ordinary transfers reserve `$C100-$CFFF` for payload growth |
 
 Because these ranges remain RAM, a 6502 program may overwrite them. The SDL
 runner does not currently install either image.

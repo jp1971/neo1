@@ -502,6 +502,7 @@ VrReadErrClose:
         STA MSC_CMD
         JSR WaitReady
 VrReadErr:
+        JSR PrintCR
         LDX #$00
 VrErLoop:
         LDA TxtReadError,X
@@ -936,6 +937,7 @@ VwWriteErrClose:
         JMP VwWriteErr
 
 VwWriteErr:
+        JSR PrintCR
         LDX #$00
 VwErLoop:
         LDA TxtWrError,X

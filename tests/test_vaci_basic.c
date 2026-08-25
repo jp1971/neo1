@@ -57,6 +57,8 @@ static unsigned g_command_count[256];
 static bool g_status_override_enabled;
 static uint8_t g_status_override;
 static unsigned g_status_read_count;
+static char g_display[8192];
+static size_t g_display_length;
 static const char* g_keys;
 static size_t g_key_offset;
 static int g_failures;
@@ -168,6 +170,10 @@ uint8_t read6502(uint16_t address) {
 void write6502(uint16_t address, uint8_t value) {
     switch (address) {
         case DSP:
+            if (g_display_length + 1 < sizeof(g_display)) {
+                g_display[g_display_length++] = (char)value;
+                g_display[g_display_length] = '\0';
+            }
             break;
         case MSC_CMD:
             msc_command(value);
@@ -239,6 +245,8 @@ static void reset_fixture(void) {
     g_status_override_enabled = false;
     g_status_override = 0;
     g_status_read_count = 0;
+    memset(g_display, 0, sizeof(g_display));
+    g_display_length = 0;
 }
 
 static void set_rom_protect_page(uint8_t page) {
@@ -309,6 +317,7 @@ static void test_ordinary_read_closes_file(void) {
 
 static void check_write_rejected(const char* keys) {
     CHECK(run_vaci(keys));
+    CHECK(strstr(g_display, "\rWRITE ERR\r") != NULL);
     CHECK(g_command_count[CMD_OPEN] == 0);
     CHECK(g_command_count[CMD_WRITE] == 0);
     CHECK(g_command_count[CMD_CLOSE] == 0);
@@ -356,6 +365,7 @@ static void test_read_rejects_wrap_and_closes(void) {
     g_file_length = 512;
 
     CHECK(run_vaci("R00FF00Q"));
+    CHECK(strstr(g_display, "\rREAD ERR\r") != NULL);
     CHECK(g_command_count[CMD_OPEN_IND] == 1);
     CHECK(g_command_count[CMD_READ] == 0);
     CHECK(g_command_count[CMD_CLOSE] == 1);
@@ -373,6 +383,7 @@ static void test_read_uses_profile_rom_boundary(void) {
     memcpy(g_file, expected, sizeof(expected));
     g_file_length = sizeof(expected);
     CHECK(run_vaci("R00E000Q"));
+    CHECK(strstr(g_display, "\rREAD ERR\r") != NULL);
     CHECK(g_command_count[CMD_READ] == 0);
     CHECK(g_command_count[CMD_CLOSE] == 1);
 

@@ -1,6 +1,6 @@
 # Neo1 Current State
 
-Last updated: 2026-08-23
+Last updated: 2026-08-24
 
 This document records evidence-backed capabilities and known defects. It is a
 snapshot, not the architecture contract or a roadmap.
@@ -11,16 +11,17 @@ snapshot, not the architecture contract or a roadmap.
   with CMake Tools and the named CMake configure/build presets.
 - Raspberry Pi Pico SDK 2.1.0 and Arm GNU Toolchain 13.3.Rel1 are the verified
   hardware-build baseline.
-- Builds passed on 2026-08-23 for the normal and diagnostic Neo1-23 and
-  Neo1-50 Pico presets. ELF inspection confirmed that normal builds omit the
-  verbose trace strings and diagnostic builds retain them. The working
-  `build/` directory was restored to the normal Neo1-23 profile afterward.
+- Normal Neo1-23 and Neo1-50 Pico builds passed on 2026-08-24 with the VACI
+  error-line follow-up. Normal and diagnostic builds for both profiles passed
+  on 2026-08-23; ELF inspection confirmed normal builds omit verbose trace
+  strings and diagnostic builds retain them. The working `build/` directory
+  was restored to the normal Neo1-23 profile afterward.
 - Normal and diagnostic Pico presets set `NEO1_DIAGNOSTICS` explicitly so
   switching back to a normal profile restores concise serial output.
 - The SDL-23 target also builds locally, but that build does not establish
   equivalent storage or hardware behavior.
 - The SDL host configuration now includes `neo1_msc_register_contract` and
-  `neo1_vaci_payload_contract`. Both passed locally on 2026-08-23. The first
+  `neo1_vaci_payload_contract`. Both passed locally on 2026-08-24. The first
   compiles the production Pico MSC backend against an in-memory FatFs fake; the
   second executes BASIC and ordinary transfer paths in the generated VACI image
   on the software 65C02.
@@ -28,7 +29,7 @@ snapshot, not the architecture contract or a roadmap.
 
 ## Last Neo6502 hardware validation
 
-User-supplied results from 2026-08-22 through 2026-08-23 used the Neo1-23
+User-supplied results from 2026-08-22 through 2026-08-24 used the Neo1-23
 profile with VACI and VCFFA1 enabled.
 
 | Capability | Result | Evidence |
@@ -42,6 +43,7 @@ profile with VACI and VCFFA1 enabled.
 | VACI read/load | Verified | `.BIN` files loaded and ran |
 | VACI write | Verified | A write larger than 512 bytes produced a host-reported 2 KB file; rewriting the same name produced an exact 16-byte file, confirming multi-sector operation and truncation |
 | VACI BASIC save/load | Verified | The 2,230-byte sentinel test restored all checked values across `$004A-$00FF` and `$0800-$0FFF` |
+| VACI ordinary-transfer hardening | Verified | The 2026-08-24 smoke test confirmed the profile marker, valid 16-byte write/read, 64 KB write rejection, Neo1-23 ROM-destination rejection, close behavior, and unchanged ROM data |
 | VCFFA1 | Verified at workflow level | User reported VCFFA1 working and successfully ran a loaded `.po` image |
 
 The first VACI write was displayed by the host as rounded “2 KB,” so that test
@@ -51,8 +53,8 @@ establishes short final-write length and truncation behavior.
 
 ## Implemented storage commands
 
-The Pico VACI image is reproducibly generated from `neo1_vaci_v1.s`, is 2,578
-bytes, and occupies `$C100-$CB11`. Its visible commands are `R`, `W`, `L`, `S`,
+The Pico VACI image is reproducibly generated from `neo1_vaci_v1.s`, is 2,584
+bytes, and occupies `$C100-$CB17`. Its visible commands are `R`, `W`, `L`, `S`,
 and `Q`; destructive delete `D` is hidden.
 
 The Pico VCFFA1 backend implements status, 512-byte block read, and 512-byte
@@ -68,12 +70,11 @@ directory, bitmap, file-size, and destination limitations.
 
 ## Known defects and unverified behavior
 
-1. **Hardened ordinary VACI behavior awaits physical confirmation.** The
-   software-65C02 payload test verifies safe multi-sector read/write, read
-   close, 64 KB wrap rejection, working-memory/device/VACI/ROM range rejection,
-   profile-aware `$E000` handling, reserved-status rejection, and a 65,536-poll
-   BUSY timeout. Both Pico profiles build, but the Neo1-23 smoke test below is
-   still required.
+1. **The VACI error-line formatting fix awaits physical confirmation.** The
+   ordinary-transfer smoke test passed, but showed `WRITE ERR` and `READ ERR`
+   immediately after the final address digit. Both error paths now emit a
+   leading carriage return, and the software-65C02 payload test asserts the
+   resulting `CR + message + CR` sequence. A quick Neo1-23 visual check remains.
 2. **Generic VCFFA1 `.po` discovery is faulty.** The extension matcher handles
    `.hdv` and `.2mg`, but its `.po` comparison uses the wrong character
    positions. Preferred names such as `CFFA1RW.PO` and `CFFA1.PO` still work.
@@ -155,11 +156,16 @@ with `C100R` and `L` restored all original values at `004A`, `00EF-00FF`,
 `0800`, `0949-094A`, and `0FFF`. This test exercised `$004A-$00FF`,
 `$0200-$021C`, `$0800-$0FFF`, and MSC registers `$D014-$D01C`.
 
-## Required Neo6502 smoke test for ordinary VACI hardening
+## Neo6502 ordinary VACI hardening validation
 
-Use a disposable USB volume and the normal Neo1-23 profile built by this
-checkpoint. This affects VACI RAM `$C100-$CB11`, its installer-patched profile
-byte at `$C103`, ordinary transfer ranges, and MSC registers `$D014-$D01C`.
+Result: functional test passed on 2026-08-24 using a disposable USB volume and
+the normal Neo1-23 profile. The test covered VACI RAM `$C100-$CB11`, its
+installer-patched profile byte at `$C103`, ordinary transfer ranges, and MSC
+registers `$D014-$D01C`. The only issue observed was that `WRITE ERR` and
+`READ ERR` began on the address-prompt line; the follow-up image moves both to
+a new line and occupies `$C100-$CB17`.
+
+The passing procedure was:
 
 1. In WozMon, inspect `C103`; it must contain `E0` for the Neo1-23 ROM boundary.
 2. Enter `0300: 10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F`.
@@ -173,3 +179,7 @@ byte at `$C103`, ordinary transfer ranges, and MSC registers `$D014-$D01C`.
 6. Enter VACI, choose `R`, select `VACI16.BIN`, and request destination `E000`.
    VACI must print `READ ERR`, return to its menu, leave `E000` unchanged, and
    remain able to perform the valid `0300` read again.
+
+After flashing the follow-up image, repeat steps 5 and 6 and confirm each error
+message begins on a new line. No data-path retest is required for that
+formatting-only follow-up.

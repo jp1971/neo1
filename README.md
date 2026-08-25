@@ -203,7 +203,7 @@ When VCFFA1 is disabled, its signature and register addresses also remain RAM.
 | Address range | Installed when | Contents and entry point |
 | --- | --- | --- |
 | `$1800-$2C1E` | VCFFA1 enabled | 5,151-byte M2 block driver; interactive entry at `$1810` |
-| `$C100-$CB11` | VACI enabled | 2,578-byte VACI utility in a reserved `$C100-$CFFF` region; enter from WozMon with `C100R` |
+| `$C100-$CB17` | VACI enabled | 2,584-byte VACI utility in a reserved `$C100-$CFFF` region; enter from WozMon with `C100R` |
 
 These utilities are copied into ordinary writable RAM during Pico startup;
 their ranges are not ROM and are not separate memory-mapped devices. The SDL
@@ -240,7 +240,7 @@ Place VACI files and any VCFFA1 disk image in the volume root.
 
 ### VACI — Virtual Apple-1 Cassette Interface (`C100R`)
 
-Installed at `$C100-$CB11` on Neo1 Pico. The visible prompt is
+Installed at `$C100-$CB17` on Neo1 Pico. The visible prompt is
 `R/W/L/S/Q?:`.
 
 | Command | Behavior |
@@ -256,8 +256,9 @@ reserved range. Safe ranges are `$0300-$AEFF`, `$B000-$C0FF`, and
 `$D100` through the byte below the selected profile's protected ROM. That last
 limit is `$DFFF` on Neo1-23 and `$FEFF` on Neo1-50. This preserves Neo1-50
 loads at `$E000` and `$F000` while rejecting them on Neo1-23. Invalid ordinary
-ranges return `READ ERR` or `WRITE ERR` without transferring data. The
-specialized `L` and `S` commands retain their documented BASIC snapshot ranges.
+ranges print `READ ERR` or `WRITE ERR` on a new line without transferring data.
+The specialized `L` and `S` commands retain their documented BASIC snapshot
+ranges.
 
 `D` is an intentionally hidden destructive command that lists files and
 deletes one by index. The corrected `L`/`S` format is compatible with existing
