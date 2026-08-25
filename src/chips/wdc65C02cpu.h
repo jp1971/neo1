@@ -69,8 +69,9 @@ void wdc65C02cpu_set_reset(bool state);
 // Pulse active-low NMI for 1 ms.
 void wdc65C02cpu_nmi();
 
-// Advance one physical clock transition pair and capture address/R/W.
-void wdc65C02cpu_tick(wdc6502cpu_t* c);
+// Advance one physical clock transition pair, capture address/R/W, and report
+// the one represented W65C02 bus cycle.
+uint32_t wdc65C02cpu_tick(wdc6502cpu_t* c);
 
 // Read the address bus through the low-byte and high-byte latches, in order.
 uint16_t wdc65C02cpu_get_addr();
@@ -163,7 +164,7 @@ void wdc65C02cpu_nmi() {
     gpio_put(_NMI_PIN, 1);
 }
 
-void wdc65C02cpu_tick(wdc6502cpu_t* c) {
+uint32_t wdc65C02cpu_tick(wdc6502cpu_t* c) {
     // Address and R/W are sampled during the low phase. The shared machine
     // services the captured access after this function raises PHI2.
     gpio_put(_CLOCK_PIN, 0);
@@ -172,6 +173,7 @@ void wdc65C02cpu_tick(wdc6502cpu_t* c) {
     c->rw = gpio_get(_RW_PIN);
 
     gpio_put(_CLOCK_PIN, 1);
+    return 1;
 }
 
 uint16_t wdc65C02cpu_get_addr() {

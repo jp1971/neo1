@@ -347,7 +347,19 @@ bool neo1_platform_poll_key(uint8_t* out_apple1_keycode, bool* out_pressed) {
 }
 
 uint64_t neo1_platform_time_us(void) {
-    return (uint64_t)SDL_GetTicks64() * 1000ULL;
+    const uint64_t frequency = SDL_GetPerformanceFrequency();
+    const uint64_t counter = SDL_GetPerformanceCounter();
+    if (!frequency) {
+        return 0;
+    }
+    // Split whole seconds from the remainder so a long-running performance
+    // counter cannot overflow during the microsecond conversion.
+    return ((counter / frequency) * 1000000ULL) +
+           (((counter % frequency) * 1000000ULL) / frequency);
+}
+
+void neo1_platform_sleep_ms(uint32_t milliseconds) {
+    SDL_Delay(milliseconds);
 }
 
 bool neo1_platform_disk_read(uint32_t lba, uint8_t* buf, uint32_t count) {

@@ -25,9 +25,10 @@ bool neo1_platform_should_reset(void);
 // SDL_TEXTINPUT; Return and Backspace come from KEYDOWN. Ctrl-L clears only the
 // host terminal. Outputs are initialized to zero/false on every call.
 bool neo1_platform_poll_key(uint8_t* out_apple1_keycode, bool* out_pressed);
-// Return SDL's millisecond timer converted to microseconds. The runner does not
-// use this function for pacing.
+// Return SDL's monotonic performance counter converted to microseconds.
 uint64_t neo1_platform_time_us(void);
+// Yield the runner thread for at least the requested whole milliseconds.
+void neo1_platform_sleep_ms(uint32_t milliseconds);
 // Transfer `count` contiguous 512-byte sectors to/from the one host image.
 // Writes flush before reporting success; reads require the full byte count.
 bool neo1_platform_disk_read(uint32_t lba, uint8_t* buf, uint32_t count);

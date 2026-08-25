@@ -12,7 +12,8 @@
 // user pointer and active-adapter pointer, so it supports one machine/CPU
 // instance at a time. One soft65C02cpu_tick() executes one complete instruction,
 // not one physical bus cycle. These are SDL accommodations, not portable
-// machine semantics.
+// machine semantics. The tick return value is fake65c02's cycle count for that
+// complete instruction so a runner can schedule the adapter in CPU time.
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -43,7 +44,7 @@ extern "C" {
 void soft65C02cpu_init(soft65c02cpu_t* c, void* user);
 void soft65C02cpu_reset(soft65c02cpu_t* c);
 void soft65C02cpu_nmi(soft65c02cpu_t* c);
-void soft65C02cpu_tick(soft65c02cpu_t* c);
+uint32_t soft65C02cpu_tick(soft65c02cpu_t* c);
 void soft65C02cpu_set_data(soft65c02cpu_t* c, uint8_t data);
 void soft65C02cpu_set_irq(soft65c02cpu_t* c, bool state);
 void soft65C02cpu_set_reset(soft65c02cpu_t* c, bool state);
@@ -107,14 +108,15 @@ void soft65C02cpu_nmi(soft65c02cpu_t* c) {
 	nmi6502();
 }
 
-void soft65C02cpu_tick(soft65c02cpu_t* c) {
+uint32_t soft65C02cpu_tick(soft65c02cpu_t* c) {
 	_soft65c02_active = c;
 	// Level-held IRQ state is presented before each complete instruction step.
 	if (c->irq) {
 		irq6502();
 	}
-	step6502();
+	const uint32_t cycles = step6502();
 	_soft65c02_active = 0;
+	return cycles;
 }
 
 void soft65C02cpu_set_data(soft65c02cpu_t* c, uint8_t data) {

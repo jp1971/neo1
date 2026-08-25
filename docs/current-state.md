@@ -18,19 +18,21 @@ snapshot, not the architecture contract or a roadmap.
   was restored to the normal Neo1-23 profile afterward.
 - Normal and diagnostic Pico presets set `NEO1_DIAGNOSTICS` explicitly so
   switching back to a normal profile restores concise serial output.
-- The SDL-23 target also builds locally, but that build does not establish
-  equivalent storage or hardware behavior.
+- The SDL-23 target builds locally and now schedules the software CPU from a
+  monotonic elapsed-time budget using fake65c02's instruction cycle counts. A
+  headless WozMon startup smoke and the focused cycle-budget test passed on
+  2026-08-24; this does not establish equivalent Pico storage or hardware
+  behavior.
 - CPU adapter selector 2 has been retired. Configure now accepts only the
   physical W65C02 adapter (1) or software 65C02 adapter (3), and each runner
   rejects the other target's adapter explicitly.
 - `NEO1_ENABLE_MSC` now controls `$D014-$D01C` ownership explicitly. Focused
   host tests prove enabled accesses reach the device and disabled accesses use
   backing RAM; VACI-without-MSC configurations are rejected.
-- The SDL host configuration now includes `neo1_msc_register_contract` and
-  `neo1_vaci_payload_contract`. Both passed locally on 2026-08-24. The first
-  compiles the production Pico MSC backend against an in-memory FatFs fake; the
-  second executes BASIC and ordinary transfer paths in the generated VACI image
-  on the software 65C02.
+- The SDL host configuration now includes five focused tests. All passed
+  locally on 2026-08-24: the production Pico MSC contract against an in-memory
+  FatFs fake, the generated VACI BASIC/ordinary transfer paths, enabled and
+  disabled MSC address decode, and software-CPU cycle budgeting.
 - SDK 2.3.0 has not been configured, built, or hardware-tested.
 
 ## Last Neo6502 hardware validation
@@ -68,7 +70,7 @@ block write. Writable operation requires a preferred writable image such as
 `CFFA1RW.PO` or `CFFA1RW.HDV`; fallback images are opened read-only.
 
 VCFFA1 is retained as an optional Replica 1 compatibility feature, but the
-reliability work in defects 1 and 8-11 is deferred until after the next
+reliability work in defects 1 and 7-10 is deferred until after the next
 portable-core checkpoint. VACI remains the preferred Apple-1 storage path.
 Until that work resumes, use VCFFA1 `W` and `D` only with disposable images;
 the verified catalog/load workflow may continue to be used within the stated
@@ -90,33 +92,31 @@ directory, bitmap, file-size, and destination limitations.
    smoke tests.
 5. **Automated coverage remains limited.** Focused host tests cover the Pico MSC
    register protocol and execute VACI BASIC plus ordinary read/write paths on
-   the software 65C02; enabled and disabled MSC decode are also covered. There
-   are still no focused tests for the rest of shared memory decoding, PIA
-   behavior, VACI delete, VCFFA1, or broad CPU compatibility.
+   the software 65C02; enabled/disabled MSC decode and soft-instruction cycle
+   budgeting are also covered. There are still no focused tests for the rest
+   of shared memory decoding, PIA behavior, VACI delete, VCFFA1, or broad CPU
+   compatibility.
 6. **Synchronized Pico terminal publication awaits physical confirmation.**
    Core 0 now copies into a producer-owned snapshot before publishing it under
    a short cross-core critical section; core 1 accepts only completed snapshots
    at a frame boundary. Both Pico profiles build, but Neo1-23 still needs a DVI
    stress smoke test before this defect can be closed.
-7. **SDL execution is not wall-clock or cycle paced.** `neo1_exec(2000)` runs
-    about 2,043 soft ticks per UI iteration, but each tick is a complete
-    instruction and the runner does not govern the batch using elapsed time.
-8. **The VCFFA1 utility's create/delete updates are not transactional.** New
+7. **The VCFFA1 utility's create/delete updates are not transactional.** New
     file creation commits allocation bits before its directory and sapling
     index writes, without rollback. Delete may free an index block after an
     index-read error, ignores a bitmap-write error, and can then remove the
     directory entry. Failures can leak blocks or leave ProDOS metadata
     inconsistent; use a disposable image for write/delete testing.
-9. **VCFFA1 existing-file writes do not update catalog metadata.** The utility
+8. **VCFFA1 existing-file writes do not update catalog metadata.** The utility
     writes the requested bytes into an existing seedling or sapling but leaves
     its EOF, blocks-used, auxtype, and other directory fields unchanged when
     source or length differs from the entry.
-10. **The VCFFA1 utility has hard-coded filesystem limits.** Catalog, lookup,
+9. **The VCFFA1 utility has hard-coded filesystem limits.** Catalog, lookup,
     create, and delete inspect only root directory block 2. Allocation/freeing
     uses only the first bitmap block and assumes at most 4096 volume blocks;
     load/create/write support only seedling and two-data-block sapling files
     through 1024 bytes. Load destinations are not range checked.
-11. **The VCFFA1 block driver can wait forever for DRQ.** Read/write checks the
+10. **The VCFFA1 block driver can wait forever for DRQ.** Read/write checks the
     error register immediately after command issue, then polls DRQ without a
     timeout or further busy/error checks. A device or backend that never raises
     DRQ stalls the 6502 utility indefinitely.
@@ -177,3 +177,22 @@ The passing procedure was:
 The follow-up image was then flashed and steps 5 and 6 were repeated. The user
 confirmed that both error messages begin on a new line, closing the
 formatting-only follow-up without another data-path retest.
+
+## Neo6502 terminal-publication validation still required
+
+The synchronized three-buffer publication path changes only how Pico core 0
+hands completed terminal snapshots to the core-1 DVI renderer. It does not
+change 6502 memory decoding; the relevant visible output path remains
+`$D012/$D013`.
+
+Using the normal Neo1-23 build:
+
+1. Flash and confirm reset reaches a stable WozMon display.
+2. Enter `0000.0FFF` several times to produce sustained output and scrolling.
+3. While output is active and after it stops, confirm there are no corrupted or
+   partially mixed rows, DVI dropouts, or hangs.
+4. Confirm the keyboard still responds, enter `C100R`, then use `Q` to return to
+   WozMon.
+
+Report whether the display remained stable and input continued working. That
+result will either close defect 6 or provide a reproducible hardware symptom.

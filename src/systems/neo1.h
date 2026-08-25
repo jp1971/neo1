@@ -190,7 +190,11 @@ typedef struct {
 void neo1_init(neo1_t* sys, const neo1_desc_t* desc);
 void neo1_discard(neo1_t* sys);
 void neo1_reset(neo1_t* sys);
-void neo1_tick(neo1_t* sys);
+// Advance one adapter step and return the number of represented CPU cycles:
+// one physical bus cycle on Pico or one complete instruction on SDL.
+uint32_t neo1_tick(neo1_t* sys);
+// Execute until at least the requested host-time budget has been represented;
+// a software instruction may overshoot the exact cycle target.
 uint32_t neo1_exec(neo1_t* sys, uint32_t micro_seconds);
 
 // Inject one ASCII keyboard byte. LF is normalized to CR and bit 7 is set.
@@ -513,40 +517,44 @@ void neo1_reset(neo1_t* sys) {
     MOS6502CPU_SET_RESET(&sys->cpu, false);
 }
 
-void neo1_tick(neo1_t* sys) {
+uint32_t neo1_tick(neo1_t* sys) {
     CHIPS_ASSERT(sys && sys->valid);
 
     // The physical adapter advances PHI2 and captures address/R/W first; the
     // machine then services that observed access. The software adapter performs
     // memory callbacks inside its complete-instruction step and therefore skips
     // the external-bus service below.
-    MOS6502CPU_TICK(&sys->cpu);
+    const uint32_t cpu_cycles = MOS6502CPU_TICK(&sys->cpu);
+    CHIPS_ASSERT(cpu_cycles > 0);
 #if MOS6502CPU_NEEDS_EXTERNAL_BUS
     _neo1_mem_rw(sys, sys->cpu.addr, sys->cpu.rw);
 #endif
 
-    sys->system_ticks++;
+    sys->system_ticks += cpu_cycles;
+    return cpu_cycles;
 }
 
-// Execute for a host-time budget by converting microseconds to machine ticks.
+// Execute for a host-time budget measured in represented CPU cycles. A physical
+// tick is exactly one cycle; a soft tick is one instruction and may overshoot.
 uint32_t neo1_exec(neo1_t* sys, uint32_t micro_seconds) {
     CHIPS_ASSERT(sys && sys->valid);
 
-    uint32_t num_ticks = clk_us_to_ticks(NEO1_FREQUENCY, micro_seconds);
+    const uint32_t requested_cycles = clk_us_to_ticks(NEO1_FREQUENCY, micro_seconds);
+    uint32_t executed_cycles = 0;
 
     if (0 == sys->debug.callback.func) {
-        for (uint32_t ticks = 0; ticks < num_ticks; ticks++) {
-            neo1_tick(sys);
+        while (executed_cycles < requested_cycles) {
+            executed_cycles += neo1_tick(sys);
         }
     } else {
         // Debug callback mode allows cooperative stop conditions.
-        for (uint32_t ticks = 0; (ticks < num_ticks) && !(*sys->debug.stopped); ticks++) {
-            neo1_tick(sys);
+        while ((executed_cycles < requested_cycles) && !(*sys->debug.stopped)) {
+            executed_cycles += neo1_tick(sys);
             sys->debug.callback.func(sys->debug.callback.user_data, 0);
         }
     }
 
-    return num_ticks;
+    return executed_cycles;
 }
 
 void neo1_key_down(neo1_t* sys, uint8_t ascii) {
