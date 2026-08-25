@@ -45,11 +45,12 @@ The Pico build exposes these CMake cache variables:
 
 - `NEO1_PERSONALITY` = `23` or `50`
 - `NEO1_ENABLE_VACI` = `1` or `0`
+- `NEO1_ENABLE_MSC` = `1` or `0`
 - `NEO1_ENABLE_VCFFA1` = `1` or `0`
 - `NEO1_DIAGNOSTICS` = `1` for verbose host-side serial diagnostics, otherwise `0`
 
-Neo1-23 requires both storage interfaces. The supplied Pico configure presets
-select the supported combinations:
+VACI requires the Neo1 MSC register device. Neo1-23 requires VACI, MSC, and
+VCFFA1. The supplied Pico configure presets select the supported combinations:
 
 - `neo1-pico-23-full` selects Neo1-23 with VACI and VCFFA1 enabled.
 - `neo1-pico-50-full` selects Neo1-50 with VACI and VCFFA1 enabled.
@@ -122,8 +123,8 @@ build/systems/neo1-pico/neo1.uf2
 ```
 
 Before flashing after a profile switch, check the configure output for the
-expected `NEO1_PERSONALITY`, `NEO1_ENABLE_VACI`, and `NEO1_ENABLE_VCFFA1`
-values.
+expected `NEO1_PERSONALITY`, `NEO1_ENABLE_VACI`, `NEO1_ENABLE_MSC`, and
+`NEO1_ENABLE_VCFFA1` values.
 
 ### Serial diagnostics
 
@@ -192,11 +193,11 @@ startup, or the selected personality protects the top ROM region.
 | `$AFDC-$AFDD` | VCFFA1, when enabled | CFFA1 compatibility signature bytes |
 | `$AFF0-$AFFF` | VCFFA1, when enabled | Replica 1-compatible block-device registers |
 | `$D010-$D013` | Apple-1 PIA-like interface | Keyboard data/control and display data/control |
-| `$D014-$D01C` | Neo1 MSC extension | File and sector command, data, status, index, information, and size registers |
+| `$D014-$D01C` | Neo1 MSC extension, when enabled | File and sector command, data, status, index, information, and size registers |
 | `$D0F2-$D0F3` | Display aliases | Mirrors of `$D012-$D013` |
 
 These are sparse decoded addresses; the rest of `$D000-$DFFF` remains RAM.
-When VCFFA1 is disabled, its signature and register addresses also remain RAM.
+When MSC or VCFFA1 is disabled, its decoded addresses remain ordinary RAM.
 
 ### RAM-resident utilities on Neo1 Pico
 

@@ -71,7 +71,10 @@ readiness are polled.
 ## Neo1 MSC file interface
 
 The optional storage service at `$D014-$D01C` is a Neo1 extension used by VACI.
-It exposes file/directory commands and a 512-byte sector buffer.
+`NEO1_ENABLE_MSC` owns its decode independently from VACI payload installation;
+supported configurations require MSC when VACI is enabled. When MSC is
+disabled, these addresses fall through to backing RAM. The enabled device
+exposes file/directory commands and a 512-byte sector buffer.
 
 | Address | Access | Meaning |
 | --- | --- | --- |
@@ -135,6 +138,7 @@ VCFFA1 does not assert IRQ or NMI. Software polls status and DRQ.
 ## Address ownership and expansion
 
 Device decoding is sparse. Addresses elsewhere in `$D000-$DFFF` remain RAM.
-When VCFFA1 is disabled, `$AFDC-$AFDD` and `$AFF0-$AFFF` also remain RAM. This
-explicit enablement and ownership allows a future physical expansion device to
-replace an internal service without changing ordinary memory semantics.
+When MSC is disabled, `$D014-$D01C` remains RAM; when VCFFA1 is disabled,
+`$AFDC-$AFDD` and `$AFF0-$AFFF` also remain RAM. This explicit enablement and
+ownership allows a future physical expansion device to replace an internal
+service without changing ordinary memory semantics.

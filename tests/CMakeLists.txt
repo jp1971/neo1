@@ -36,3 +36,31 @@ target_compile_options(neo1_vaci_payload_tests PRIVATE
 )
 
 add_test(NAME neo1_vaci_payload_contract COMMAND neo1_vaci_payload_tests)
+
+foreach(msc_enabled IN ITEMS 0 1)
+    set(msc_decode_target neo1_msc_decode_${msc_enabled}_tests)
+    add_executable(${msc_decode_target}
+        test_neo1_msc_decode.c
+    )
+    target_include_directories(${msc_decode_target} PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/systems/neo1-pico/src
+    )
+    target_compile_definitions(${msc_decode_target} PRIVATE
+        NEO1_CPU_BACKEND=3
+        NEO1_ROM_BASE=0xFF00
+        NEO1_ROM_PROTECT_BASE=0xFF00
+        NEO1_ENABLE_MSC=${msc_enabled}
+        NEO1_ENABLE_VCFFA1=0
+        NEO1_DIAGNOSTICS=0
+    )
+    target_compile_options(${msc_decode_target} PRIVATE
+        -Wall
+        -Wextra
+        -Werror
+        -Wno-unused-function
+    )
+endforeach()
+
+add_test(NAME neo1_msc_decode_disabled_uses_ram COMMAND neo1_msc_decode_0_tests)
+add_test(NAME neo1_msc_decode_enabled_uses_device COMMAND neo1_msc_decode_1_tests)

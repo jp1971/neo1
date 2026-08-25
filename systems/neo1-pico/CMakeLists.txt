@@ -19,6 +19,7 @@ add_executable(neo1
 set(NEO1_PERSONALITY "50" CACHE STRING "Neo1 personality: 23 or 50")
 set_property(CACHE NEO1_PERSONALITY PROPERTY STRINGS 23 50)
 set(NEO1_ENABLE_VACI "1" CACHE STRING "Enable VACI runtime support (1 or 0)")
+set(NEO1_ENABLE_MSC "1" CACHE STRING "Enable Neo1 MSC register decode (1 or 0)")
 set(NEO1_ENABLE_VCFFA1 "1" CACHE STRING "Enable VCFFA1 runtime support (1 or 0)")
 set(NEO1_DIAGNOSTICS "0" CACHE STRING "Enable verbose Neo1 serial diagnostics (1 or 0)")
 
@@ -31,6 +32,14 @@ if (NOT NEO1_ENABLE_VACI MATCHES "^[01]$")
     message(FATAL_ERROR "NEO1_ENABLE_VACI must be 0 or 1")
 endif()
 
+if (NOT NEO1_ENABLE_MSC MATCHES "^[01]$")
+    message(FATAL_ERROR "NEO1_ENABLE_MSC must be 0 or 1")
+endif()
+
+if (NEO1_ENABLE_VACI STREQUAL "1" AND NOT NEO1_ENABLE_MSC STREQUAL "1")
+    message(FATAL_ERROR "NEO1_ENABLE_VACI=1 requires NEO1_ENABLE_MSC=1")
+endif()
+
 if (NOT NEO1_ENABLE_VCFFA1 MATCHES "^[01]$")
     message(FATAL_ERROR "NEO1_ENABLE_VCFFA1 must be 0 or 1")
 endif()
@@ -41,8 +50,8 @@ endif()
 
 # Pico profile policy: Neo1-23 requires both RAM tools and device interfaces.
 if (NEO1_PERSONALITY STREQUAL "23")
-    if (NOT (NEO1_ENABLE_VACI STREQUAL "1" AND NEO1_ENABLE_VCFFA1 STREQUAL "1"))
-        message(FATAL_ERROR "NEO1_PERSONALITY=23 requires NEO1_ENABLE_VACI=1 and NEO1_ENABLE_VCFFA1=1")
+    if (NOT (NEO1_ENABLE_VACI STREQUAL "1" AND NEO1_ENABLE_MSC STREQUAL "1" AND NEO1_ENABLE_VCFFA1 STREQUAL "1"))
+        message(FATAL_ERROR "NEO1_PERSONALITY=23 requires NEO1_ENABLE_VACI=1, NEO1_ENABLE_MSC=1, and NEO1_ENABLE_VCFFA1=1")
     endif()
 endif()
 
@@ -64,6 +73,7 @@ target_compile_definitions(neo1 PRIVATE
     # Runtime personality/features passed through to firmware C sources.
     NEO1_PERSONALITY=${NEO1_PERSONALITY}
     NEO1_ENABLE_VACI=${NEO1_ENABLE_VACI}
+    NEO1_ENABLE_MSC=${NEO1_ENABLE_MSC}
     NEO1_ENABLE_VCFFA1=${NEO1_ENABLE_VCFFA1}
     NEO1_DIAGNOSTICS=${NEO1_DIAGNOSTICS}
     NEO1_CPU_BACKEND=${NEO1_CPU_BACKEND}

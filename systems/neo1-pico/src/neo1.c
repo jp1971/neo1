@@ -297,7 +297,9 @@ static void app_init(void) {
 #if NEO1_ENABLE_VCFFA1
     neo1_cffa1_init();
 #endif
+#if NEO1_ENABLE_MSC
     neo1_msc_init();
+#endif
     neo1_usb_init(neo1_usb_char_in, 0);
 
    neo1_video_sync_terminal();

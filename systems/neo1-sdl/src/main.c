@@ -76,7 +76,9 @@ int main(void) {
         printf("[neo1-sdl] storage self-test: sector 0 read FAILED\n");
     }
 
+#if NEO1_ENABLE_MSC
     neo1_msc_init();
+#endif
 #if NEO1_ENABLE_VCFFA1
     neo1_cffa1_init();
 #endif

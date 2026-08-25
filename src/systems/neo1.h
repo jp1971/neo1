@@ -28,10 +28,10 @@
 // The including target defines the machine profile before including this file.
 // Neo1-23 places and protects an 8 KB ROM at $E000-$FFFF. Neo1-50 places and
 // protects WozMon at $FF00-$FFFF. Both profiles expose Apple-1-style I/O at
-// $D010-$D013, Replica 1 display mirrors at $D0F2-$D0F3, and the Neo1 MSC
-// extension at $D014-$D01C. MSC decode is always present; NEO1_ENABLE_VACI only
-// controls payload installation in a runner. VCFFA1 signature/register decode
-// is compile-time optional.
+// $D010-$D013 and Replica 1 display mirrors at $D0F2-$D0F3. The Neo1 MSC
+// extension at $D014-$D01C and VCFFA1 signature/register decode are separately
+// compile-time optional. NEO1_ENABLE_VACI controls payload installation in a
+// runner and requires MSC decode in supported build configurations.
 //
 // ## zlib/libpng license
 //
@@ -81,11 +81,17 @@
 #define NEO1_ENABLE_VCFFA1 (1)
 #endif
 
+#ifndef NEO1_ENABLE_MSC
+#define NEO1_ENABLE_MSC (1)
+#endif
+
 #ifndef NEO1_DIAGNOSTICS
 #define NEO1_DIAGNOSTICS (0)
 #endif
 
+#if NEO1_ENABLE_MSC
 #include "../../systems/neo1-pico/src/neo1_msc.h"
+#endif
 #if NEO1_ENABLE_VCFFA1
 #include "../../systems/neo1-pico/src/neo1_cffa1.h"
 #endif
@@ -303,6 +309,7 @@ static inline uint8_t _neo1_mem_read(neo1_t* sys, uint16_t addr) {
             // Preserve programmed control bits and report ready in bit 7.
             return (sys->dsp_cr & 0x7F) | 0x80;
 
+#if NEO1_ENABLE_MSC
         case NEO1_IO_MSC_STATUS:
         case NEO1_IO_MSC_DATA:
         case NEO1_IO_MSC_INDEX:
@@ -310,6 +317,7 @@ static inline uint8_t _neo1_mem_read(neo1_t* sys, uint16_t addr) {
         case NEO1_IO_MSC_SIZE_LO:
         case NEO1_IO_MSC_SIZE_HI:
             return neo1_msc_io_read(addr);
+#endif
 
         default:
             return mem_rd(&sys->mem, addr);
@@ -360,6 +368,7 @@ static inline void _neo1_mem_write(neo1_t* sys, uint16_t addr, uint8_t data) {
             sys->dsp_cr = data;
             break;
 
+#if NEO1_ENABLE_MSC
         case NEO1_IO_MSC_CMD:
         case NEO1_IO_MSC_SECTOR_LO:
         case NEO1_IO_MSC_SECTOR_HI:
@@ -369,6 +378,7 @@ static inline void _neo1_mem_write(neo1_t* sys, uint16_t addr, uint8_t data) {
         case NEO1_IO_MSC_SIZE_HI:
             neo1_msc_io_write(addr, data);
             break;
+#endif
 
         default:
             // Protect the ROM region starting at NEO1_ROM_PROTECT_BASE.
