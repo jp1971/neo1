@@ -94,3 +94,77 @@ The user confirmed that this complete physical gate passed on 2026-08-24.
 Revert this checkpoint if any golden terminal state changes, either target
 fails to build, SDL WozMon output changes, the Neo6502 physical smoke regresses,
 or preserving behavior requires target conditionals in the shared grid.
+
+## Checkpoint 2: explicit optional-device ports
+
+Status: planned 2026-08-24.
+
+### Boundary
+
+Remove the shared machine header's direct dependency on Pico-owned MSC and
+VCFFA1 backend headers and target-global I/O symbols:
+
+- move the stable register/address contracts to shared headers under
+  `src/devices/`;
+- keep MSC ownership at `$D014-$D01C` conditional on `NEO1_ENABLE_MSC`;
+- keep VCFFA1 ownership at `$AFDC-$AFDD` and `$AFF0-$AFFF` conditional on
+  `NEO1_ENABLE_VCFFA1`;
+- add explicit optional-device read/write ports to `neo1_desc_t` and retain
+  those ports in the machine instance;
+- have the Pico and SDL runners attach their existing implementations.
+
+The shared machine continues to own address decode and RAM fallthrough. The
+device implementations continue to own their existing register/protocol state
+and backend I/O.
+
+### Preserved behavior and non-goals
+
+- Pico MSC remains the canonical FatFs file service used by VACI.
+- SDL MSC remains its documented divergent raw-image/no-op accommodation.
+- Pico and SDL VCFFA1 implementations remain separate and behaviorally
+  divergent; deferred VCFFA1 reliability work is not part of this checkpoint.
+- Device initialization order, synchronous command completion, status/error
+  meanings, data phases, payload installation, and storage writes are unchanged.
+- Disabled device addresses continue to use ordinary backing RAM.
+- No CPU adapter, PIA, ROM/RAM policy, terminal, DVI, USB, FatFs, SDL renderer,
+  or physical bus timing code changes.
+
+### Acceptance criteria recorded before implementation
+
+Focused host tests must prove:
+
+1. enabled MSC readable/writable addresses invoke the attached MSC port once;
+2. disabled MSC addresses read and write backing RAM without port calls;
+3. enabled VCFFA1 signature and register addresses invoke the attached VCFFA1
+   port once;
+4. disabled VCFFA1 signature/register addresses use backing RAM;
+5. addresses outside each device's documented ownership never reach its port;
+6. builds with an enabled device require complete read and write callbacks;
+7. existing MSC protocol, VACI payload, cycle-budget, and terminal tests pass.
+
+Build and runtime gates:
+
+- all host tests pass under SDL-23;
+- SDL personalities 23 and 50 build and reach WozMon headlessly;
+- Pico personalities 23 and 50 build with SDK 2.1.0;
+- both working build directories are restored to personality 23;
+- diff review finds no protocol-state or backend-I/O behavior changes.
+
+### Physical gate
+
+Using the normal Neo1-23 image and read-only workflows:
+
+1. confirm reset reaches WozMon on DVI and serial;
+2. enter `AFDC.AFDD` and confirm `$CF,$FA`;
+3. enter `AFFF` and confirm VCFFA1 status remains readable;
+4. enter `C100R`, list the VACI directory, then use `Q` to return to WozMon;
+5. confirm USB keyboard and serial input remain responsive.
+
+No storage write is required. The checkpoint remains incomplete until the user
+supplies this physical result.
+
+### Rollback condition
+
+Revert this checkpoint if callback routing changes any enabled/disabled address
+result, either target's existing storage behavior changes, a build/smoke gate
+fails, or the physical read-only storage smoke regresses.
