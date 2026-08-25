@@ -7,6 +7,7 @@ add_executable(neo1_msc_tests
 # production Pico register state machine against deterministic disposable data.
 target_include_directories(neo1_msc_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/fake_fatfs
+    ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/systems/neo1-pico/src
 )
 
@@ -64,6 +65,33 @@ endforeach()
 
 add_test(NAME neo1_msc_decode_disabled_uses_ram COMMAND neo1_msc_decode_0_tests)
 add_test(NAME neo1_msc_decode_enabled_uses_device COMMAND neo1_msc_decode_1_tests)
+
+foreach(cffa1_enabled IN ITEMS 0 1)
+    set(cffa1_decode_target neo1_cffa1_decode_${cffa1_enabled}_tests)
+    add_executable(${cffa1_decode_target}
+        test_neo1_cffa1_decode.c
+    )
+    target_include_directories(${cffa1_decode_target} PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    target_compile_definitions(${cffa1_decode_target} PRIVATE
+        NEO1_CPU_BACKEND=3
+        NEO1_ROM_BASE=0xFF00
+        NEO1_ROM_PROTECT_BASE=0xFF00
+        NEO1_ENABLE_MSC=0
+        NEO1_ENABLE_VCFFA1=${cffa1_enabled}
+        NEO1_DIAGNOSTICS=0
+    )
+    target_compile_options(${cffa1_decode_target} PRIVATE
+        -Wall
+        -Wextra
+        -Werror
+        -Wno-unused-function
+    )
+endforeach()
+
+add_test(NAME neo1_cffa1_decode_disabled_uses_ram COMMAND neo1_cffa1_decode_0_tests)
+add_test(NAME neo1_cffa1_decode_enabled_uses_device COMMAND neo1_cffa1_decode_1_tests)
 
 add_executable(neo1_soft_timing_tests
     test_neo1_soft_timing.c

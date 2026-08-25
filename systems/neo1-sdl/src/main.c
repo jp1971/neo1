@@ -28,8 +28,33 @@
 
 #include "systems/neo1.h"
 #include "roms/neo1_roms.h"
+#include "neo1_storage_stub.h"
 
 static bool g_stdout_echo = false;
+
+#if NEO1_ENABLE_MSC
+static uint8_t neo1_msc_port_read(void* user_data, uint16_t addr) {
+    (void)user_data;
+    return neo1_msc_io_read(addr);
+}
+
+static void neo1_msc_port_write(void* user_data, uint16_t addr, uint8_t data) {
+    (void)user_data;
+    neo1_msc_io_write(addr, data);
+}
+#endif
+
+#if NEO1_ENABLE_VCFFA1
+static uint8_t neo1_cffa1_port_read(void* user_data, uint16_t addr) {
+    (void)user_data;
+    return neo1_cffa1_io_read(addr);
+}
+
+static void neo1_cffa1_port_write(void* user_data, uint16_t addr, uint8_t data) {
+    (void)user_data;
+    neo1_cffa1_io_write(addr, data);
+}
+#endif
 
 enum {
     // Do not execute an unbounded backlog after a debugger stop, window drag,
@@ -72,6 +97,20 @@ int main(void) {
         .roms.rom = rom_range,
         .char_out.func = neo1_host_char_out,
         .char_out.user_data = NULL,
+        .devices = {
+#if NEO1_ENABLE_MSC
+            .msc = {
+                .read = neo1_msc_port_read,
+                .write = neo1_msc_port_write,
+            },
+#endif
+#if NEO1_ENABLE_VCFFA1
+            .vcffa1 = {
+                .read = neo1_cffa1_port_read,
+                .write = neo1_cffa1_port_write,
+            },
+#endif
+        },
     };
 
     neo1_platform_init(window_width, window_height, "Neo1 Host (M0)");

@@ -7,9 +7,8 @@
 //
 // The CPU is still embedded through the MOS6502CPU_* macro adapter. Pico feeds
 // captured cycles from a physical W65C02; SDL's software adapter calls the same
-// read/write dispatch directly. This header also includes storage declarations
-// from the Pico target. Those are present implementation leaks, not the desired
-// portable-core boundary.
+// read/write dispatch directly. Optional target devices attach through explicit
+// read/write ports; the machine retains ownership of their address decode.
 //
 // Use this header the same way as the other Chips-style headers:
 //
@@ -89,12 +88,8 @@
 #define NEO1_DIAGNOSTICS (0)
 #endif
 
-#if NEO1_ENABLE_MSC
-#include "../../systems/neo1-pico/src/neo1_msc.h"
-#endif
-#if NEO1_ENABLE_VCFFA1
-#include "../../systems/neo1-pico/src/neo1_cffa1.h"
-#endif
+#include "devices/neo1_cffa1.h"
+#include "devices/neo1_msc.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -126,6 +121,14 @@ enum {
 // -----------------------------------------------------------------------------
 
 typedef void (*neo1_char_out_t)(uint8_t ch, void* user_data);
+typedef uint8_t (*neo1_device_read_t)(void* user_data, uint16_t addr);
+typedef void (*neo1_device_write_t)(void* user_data, uint16_t addr, uint8_t data);
+
+typedef struct {
+    neo1_device_read_t read;
+    neo1_device_write_t write;
+    void* user_data;
+} neo1_device_port_t;
 
 typedef struct {
     uint16_t addr;
@@ -144,6 +147,11 @@ typedef struct {
         neo1_char_out_t func; // optional display output callback
         void* user_data;
     } char_out;
+
+    struct {
+        neo1_device_port_t msc;
+        neo1_device_port_t vcffa1;
+    } devices;
 } neo1_desc_t;
 
 typedef struct {
@@ -173,6 +181,10 @@ typedef struct {
     // Optional consumer for bytes written through the display data register.
     neo1_char_out_t char_out;
     void* char_out_user_data;
+
+    // Target-provided implementations behind machine-owned optional decode.
+    neo1_device_port_t msc;
+    neo1_device_port_t vcffa1;
 
     // First physical external-bus accesses captured by _neo1_mem_rw(). The
     // soft adapter bypasses that helper, so SDL does not populate this trace.
@@ -259,6 +271,12 @@ static inline uint16_t _neo1_normalize_io_addr(uint16_t addr) {
     }
 }
 
+static inline bool _neo1_cffa1_handles_addr(uint16_t addr) {
+    return (addr == NEO1_CFFA1_ID1_ADDR) ||
+           (addr == NEO1_CFFA1_ID2_ADDR) ||
+           ((addr >= NEO1_CFFA1_IO_BASE) && (addr <= NEO1_CFFA1_IO_END));
+}
+
 // Bus read dispatch order:
 // 1) normalize mirrored addresses
 // 2) route the optional Replica 1 VCFFA1 signature/register addresses
@@ -268,8 +286,8 @@ static inline uint8_t _neo1_mem_read(neo1_t* sys, uint16_t addr) {
     addr = _neo1_normalize_io_addr(addr);
 
 #if NEO1_ENABLE_VCFFA1
-    if (neo1_cffa1_handles_addr(addr)) {
-        return neo1_cffa1_io_read(addr);
+    if (_neo1_cffa1_handles_addr(addr)) {
+        return sys->vcffa1.read(sys->vcffa1.user_data, addr);
     }
 #endif
 
@@ -320,7 +338,7 @@ static inline uint8_t _neo1_mem_read(neo1_t* sys, uint16_t addr) {
         case NEO1_IO_MSC_INFO:
         case NEO1_IO_MSC_SIZE_LO:
         case NEO1_IO_MSC_SIZE_HI:
-            return neo1_msc_io_read(addr);
+            return sys->msc.read(sys->msc.user_data, addr);
 #endif
 
         default:
@@ -337,8 +355,8 @@ static inline void _neo1_mem_write(neo1_t* sys, uint16_t addr, uint8_t data) {
     addr = _neo1_normalize_io_addr(addr);
 
 #if NEO1_ENABLE_VCFFA1
-    if (neo1_cffa1_handles_addr(addr)) {
-        neo1_cffa1_io_write(addr, data);
+    if (_neo1_cffa1_handles_addr(addr)) {
+        sys->vcffa1.write(sys->vcffa1.user_data, addr, data);
         return;
     }
 #endif
@@ -380,7 +398,7 @@ static inline void _neo1_mem_write(neo1_t* sys, uint16_t addr, uint8_t data) {
         case NEO1_IO_MSC_INDEX:
         case NEO1_IO_MSC_SIZE_LO:
         case NEO1_IO_MSC_SIZE_HI:
-            neo1_msc_io_write(addr, data);
+            sys->msc.write(sys->msc.user_data, addr, data);
             break;
 #endif
 
@@ -427,6 +445,14 @@ void neo1_init(neo1_t* sys, const neo1_desc_t* desc) {
     sys->rom = desc->roms.rom.ptr;
     sys->char_out = desc->char_out.func;
     sys->char_out_user_data = desc->char_out.user_data;
+#if NEO1_ENABLE_MSC
+    CHIPS_ASSERT(desc->devices.msc.read && desc->devices.msc.write);
+    sys->msc = desc->devices.msc;
+#endif
+#if NEO1_ENABLE_VCFFA1
+    CHIPS_ASSERT(desc->devices.vcffa1.read && desc->devices.vcffa1.write);
+    sys->vcffa1 = desc->devices.vcffa1;
+#endif
 
     // Build flat memory map and preload memory.
     _neo1_init_memorymap(sys);
@@ -601,10 +627,14 @@ bool neo1_load_snapshot(neo1_t* sys, uint32_t version, neo1_t* src) {
         return false;
     }
 
+    const neo1_device_port_t current_msc = sys->msc;
+    const neo1_device_port_t current_vcffa1 = sys->vcffa1;
     static neo1_t im;
     im = *src;
     chips_debug_snapshot_onload(&im.debug, &sys->debug);
     mem_snapshot_onload(&im.mem, sys);
+    im.msc = current_msc;
+    im.vcffa1 = current_vcffa1;
     *sys = im;
     return true;
 }

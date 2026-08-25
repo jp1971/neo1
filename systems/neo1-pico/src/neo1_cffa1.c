@@ -277,14 +277,6 @@ void neo1_cffa1_init(void) {
     set_ok(0);
 }
 
-// Address filter for Neo1 bus layer interception.
-bool neo1_cffa1_handles_addr(uint16_t addr) {
-    if ((addr == NEO1_CFFA1_ID1_ADDR) || (addr == NEO1_CFFA1_ID2_ADDR)) {
-        return true;
-    }
-    return (addr >= NEO1_CFFA1_IO_BASE) && (addr <= NEO1_CFFA1_IO_END);
-}
-
 // Read side of CFFA1 register bridge.
 uint8_t neo1_cffa1_io_read(uint16_t addr) {
     if (addr == NEO1_CFFA1_ID1_ADDR) {

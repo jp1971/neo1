@@ -1,8 +1,7 @@
 #include <string.h>
 
-#include "../../neo1-pico/src/neo1_msc.h"
-#include "../../neo1-pico/src/neo1_cffa1.h"
 #include "neo1_platform.h"
+#include "neo1_storage_stub.h"
 
 // SDL storage accommodation. Both nominal devices map to the one raw host image
 // exposed by neo1_platform_disk_read/write; this file duplicates their visible
@@ -157,13 +156,6 @@ void neo1_cffa1_init(void) {
     g_cffa_write_lba = 0;
     g_cffa_write_pending = false;
     cffa_set_ok(0);
-}
-
-bool neo1_cffa1_handles_addr(uint16_t addr) {
-    if ((addr == NEO1_CFFA1_ID1_ADDR) || (addr == NEO1_CFFA1_ID2_ADDR)) {
-        return true;
-    }
-    return (addr >= NEO1_CFFA1_IO_BASE) && (addr <= NEO1_CFFA1_IO_END);
 }
 
 uint8_t neo1_cffa1_io_read(uint16_t addr) {

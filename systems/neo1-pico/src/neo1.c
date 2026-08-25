@@ -243,6 +243,30 @@ static void neo1_char_out(uint8_t ch, void* user_data) {
 // machine description and initialization
 // -----------------------------------------------------------------------------
 
+#if NEO1_ENABLE_MSC
+static uint8_t neo1_msc_port_read(void* user_data, uint16_t addr) {
+    (void)user_data;
+    return neo1_msc_io_read(addr);
+}
+
+static void neo1_msc_port_write(void* user_data, uint16_t addr, uint8_t data) {
+    (void)user_data;
+    neo1_msc_io_write(addr, data);
+}
+#endif
+
+#if NEO1_ENABLE_VCFFA1
+static uint8_t neo1_cffa1_port_read(void* user_data, uint16_t addr) {
+    (void)user_data;
+    return neo1_cffa1_io_read(addr);
+}
+
+static void neo1_cffa1_port_write(void* user_data, uint16_t addr, uint8_t data) {
+    (void)user_data;
+    neo1_cffa1_io_write(addr, data);
+}
+#endif
+
 //
 // Build the machine description consumed by the Neo1 runtime.
 //
@@ -265,6 +289,20 @@ static neo1_desc_t neo1_desc(void) {
         .char_out = {
             .func = neo1_char_out,
             .user_data = 0,
+        },
+        .devices = {
+#if NEO1_ENABLE_MSC
+            .msc = {
+                .read = neo1_msc_port_read,
+                .write = neo1_msc_port_write,
+            },
+#endif
+#if NEO1_ENABLE_VCFFA1
+            .vcffa1 = {
+                .read = neo1_cffa1_port_read,
+                .write = neo1_cffa1_port_write,
+            },
+#endif
         },
     };
 }

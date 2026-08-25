@@ -8,7 +8,7 @@
 #include "chips/neo1_cpu_backend.h"
 #include "chips/mem.h"
 #include "chips/clk.h"
-#include "neo1_msc.h"
+#include "devices/neo1_msc.h"
 #include "systems/neo1.h"
 
 static unsigned g_msc_reads;
@@ -25,15 +25,14 @@ static int g_failures;
         } \
     } while (0)
 
-void neo1_msc_init(void) {
-}
-
-uint8_t neo1_msc_io_read(uint16_t addr) {
+static uint8_t test_msc_read(void* user_data, uint16_t addr) {
+    CHECK(user_data == &g_msc_reads);
     g_msc_reads++;
     return (uint8_t)(0xA5u ^ (uint8_t)addr);
 }
 
-void neo1_msc_io_write(uint16_t addr, uint8_t data) {
+static void test_msc_write(void* user_data, uint16_t addr, uint8_t data) {
+    CHECK(user_data == &g_msc_reads);
     g_msc_writes++;
     g_last_write_addr = addr;
     g_last_write_data = data;
@@ -50,13 +49,22 @@ int main(void) {
             .ptr = rom,
             .size = sizeof(rom),
         },
+#if NEO1_ENABLE_MSC
+        .devices.msc = {
+            .read = test_msc_read,
+            .write = test_msc_write,
+            .user_data = &g_msc_reads,
+        },
+#endif
     };
     neo1_t machine;
     neo1_init(&machine, &desc);
 
     machine.ram[NEO1_IO_MSC_STATUS] = 0x3C;
+    machine.ram[0xD01D] = 0x6C;
     const uint8_t status = neo1_soft65c02_mem_read(&machine, NEO1_IO_MSC_STATUS);
     neo1_soft65c02_mem_write(&machine, NEO1_IO_MSC_CMD, 0x5A);
+    const uint8_t outside = neo1_soft65c02_mem_read(&machine, 0xD01D);
 
 #if NEO1_ENABLE_MSC
     CHECK(status == (uint8_t)(0xA5u ^ (uint8_t)NEO1_IO_MSC_STATUS));
@@ -71,6 +79,7 @@ int main(void) {
     CHECK(g_msc_writes == 0);
     CHECK(machine.ram[NEO1_IO_MSC_CMD] == 0x5A);
 #endif
+    CHECK(outside == 0x6C);
 
     neo1_discard(&machine);
     if (g_failures != 0) {
