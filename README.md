@@ -310,6 +310,8 @@ ledger.
 - `systems/neo1-pico/` — RP2040-side platform target
 - `systems/neo1-sdl/` — SDL2 host platform target
 - `src/systems/` — core Neo1 runtime/memory model
+- `src/devices/` — shared 6502-visible device contracts and Apple-1 PIA model
+- `src/terminal/` — shared host-side character-grid state
 - `src/roms/` — ROM images/assets
 - `src/ram/` — RAM-loaded utility payloads (VACI and VCFFA1 support)
 - `lib/` — Pico SDK, TinyUSB, PicoDVI, FatFs

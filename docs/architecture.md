@@ -61,12 +61,15 @@ control/data-direction behavior required by WozMon, not a complete 6820/6821.
 | `$D013` DSPCR | Stored control bits with ready bit 7 set | Store display control byte |
 
 `$D0F2-$D0F3` mirror `$D012-$D013` for Replica 1 compatibility. Input bytes
-are latched with bit 7 set. The hardware path keeps the first pending key until
-the 6502 consumes it; the SDL accommodation currently replaces it with the
-newest key.
+are latched with bit 7 set. The first pending key remains latched until the
+6502 consumes it; later input is ignored while that byte is pending.
 
 This interface does not assert IRQ or NMI. Keyboard readiness and display
 readiness are polled.
+
+Both runners use the ordinary shared `neo1_apple1_pia` C module for this
+6502-visible state machine. Runners supply input bytes and consume emitted
+display bytes, but do not redefine register or latch behavior.
 
 ## Shared terminal grid
 

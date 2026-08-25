@@ -194,7 +194,7 @@ fails, or the physical read-only storage smoke regresses.
 
 ## Checkpoint 3: shared Apple-1 keyboard/display device
 
-Status: planned 2026-08-24.
+Status: host/build gates passed 2026-08-25; awaiting the physical gate.
 
 ### Boundary
 
@@ -266,6 +266,28 @@ Using the normal Neo1-23 image:
 
 No storage write is required. The checkpoint remains incomplete until the user
 supplies this physical result.
+
+### Evidence to date
+
+- `neo1_apple1_pia` is an ordinary shared C module linked by both runners. It
+  owns the four Apple-1 registers, two Replica 1 display mirrors, DDR/control
+  selection, keyboard latch, and display-byte event.
+- The shared machine now contains that device state and has no CPU-backend
+  conditional in keyboard/display decode or input injection. SDL therefore
+  uses the physical first-pending-byte and KBDCR-bit-2 semantics.
+- `neo1_apple1_pia_contract` proves reset state, DDR/data selection, LF
+  normalization, high-bit input, first-byte retention, consume-on-read, status,
+  display events, mirrors, machine routing, and RAM immediately outside the
+  device addresses. All nine host tests pass.
+- SDL personalities 23 and 50 build and reach WozMon headlessly with disposable
+  images. Pico personalities 23 and 50 build with SDK 2.1.0. The working Pico
+  and SDL build directories are restored to personality 23.
+- The state-layout extraction advances the internal snapshot version from 1 to
+  2 so an older layout is rejected rather than misread.
+- Diff review found no change to the CPU adapter implementation, software-core
+  globals, `$0000-$0002` accommodation, reset signal, RAM/ROM policy, storage,
+  terminal byte policy, platform I/O, DVI, USB, or physical bus timing.
+- Physical Neo1-23 evidence is still required before this checkpoint closes.
 
 ### Rollback condition
 

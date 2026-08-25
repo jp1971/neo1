@@ -1,6 +1,6 @@
 # Neo1 Current State
 
-Last updated: 2026-08-24
+Last updated: 2026-08-25
 
 This document records evidence-backed capabilities and known defects. It is a
 snapshot, not the architecture contract or a roadmap.
@@ -29,11 +29,12 @@ snapshot, not the architecture contract or a roadmap.
 - `NEO1_ENABLE_MSC` now controls `$D014-$D01C` ownership explicitly. Focused
   host tests prove enabled accesses reach the device and disabled accesses use
   backing RAM; VACI-without-MSC configurations are rejected.
-- The SDL host configuration now includes eight focused tests. All passed
-  locally on 2026-08-24: the production Pico MSC contract against an in-memory
-  FatFs fake, the generated VACI BASIC/ordinary transfer paths, enabled and
-  disabled MSC and VCFFA1 address decode, software-CPU cycle budgeting, and the
-  shared terminal grid plus preserved Pico/SDL control-byte policies.
+- The SDL host configuration now includes nine focused tests. All passed
+  locally through 2026-08-25: the production Pico MSC contract against an
+  in-memory FatFs fake, the generated VACI BASIC/ordinary transfer paths,
+  enabled and disabled MSC and VCFFA1 address decode, the shared Apple-1 PIA
+  contract, software-CPU cycle budgeting, and the shared terminal grid plus
+  preserved Pico/SDL control-byte policies.
 - Portable-core checkpoint 1 now gives Pico and SDL one shared 40×24 terminal
   grid while leaving control-byte policy and rendering target-owned. Both SDL
   profiles reach WozMon headlessly, both Pico profiles build, and the eight host
@@ -45,6 +46,11 @@ snapshot, not the architecture contract or a roadmap.
   reach WozMon headlessly, both Pico profiles build, and all eight host tests
   pass. The Neo1-23 DVI/serial reset, VCFFA1 signature/status, VACI directory,
   WozMon return, USB keyboard, and serial-input gate passed on 2026-08-24.
+- Portable-core checkpoint 3 gives both runners one ordinary shared C model for
+  `$D010-$D013` and `$D0F2-$D0F3`. The software runner now follows the physical
+  DDR selection and first-pending-key rules. All nine host tests pass, both SDL
+  profiles reach WozMon headlessly, and both Pico profiles build; the Neo1-23
+  physical keyboard/display gate remains outstanding.
 - SDK 2.3.0 has not been configured, built, or hardware-tested.
 
 ## Last Neo6502 hardware validation
@@ -104,10 +110,11 @@ directory, bitmap, file-size, and destination limitations.
    smoke tests.
 5. **Automated coverage remains limited.** Focused host tests cover the Pico MSC
    register protocol and execute VACI BASIC plus ordinary read/write paths on
-   the software 65C02; enabled/disabled MSC and VCFFA1 address decode and
-   soft-instruction cycle budgeting are also covered. There are still no
-   focused tests for the rest of shared memory decoding, PIA behavior, VACI
-   delete, VCFFA1 protocol behavior, or broad CPU compatibility.
+   the software 65C02; enabled/disabled MSC and VCFFA1 address decode, the
+   Apple-1 PIA-like register/latch contract, and soft-instruction cycle
+   budgeting are also covered. There are still no focused tests for the rest
+   of shared memory decoding, VACI delete, VCFFA1 protocol behavior, or broad
+   CPU compatibility.
 6. **The VCFFA1 utility's create/delete updates are not transactional.** New
     file creation commits allocation bits before its directory and sapling
     index writes, without rollback. Delete may free an index block after an
