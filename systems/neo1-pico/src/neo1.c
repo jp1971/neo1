@@ -128,11 +128,8 @@ static void neo1_install_ram_tools(neo1_t* sys) {
 }
 
 //
-// Mark the caller-owned terminal state for a core-1 snapshot at a frame boundary.
-//
-// The terminal remains owned and mutated on core 0. The video module owns its
-// snapshot buffers and DVI rendering; its present volatile-flag handoff is not
-// a lock or an atomic snapshot.
+// Copy the core-0 terminal state into the video module's producer-owned
+// snapshot. Core 1 accepts only completed publications at a frame boundary.
 //
 static void neo1_video_sync_terminal(void) {
    neo1_video_set_terminal(&state.term);
@@ -279,7 +276,7 @@ static neo1_desc_t neo1_desc(void) {
 // 2. initialize memory/ROM and configure the adapter, including its reset pulse
 // 3. install Neo1-50 safety stubs, issue machine RESET, then install RAM tools
 // 4. reset optional storage protocol state and initialize TinyUSB host
-// 5. publish terminal state; DVI clocks/core 1 are started later by main
+// 5. DVI initialization snapshots terminal state later in main
 //
 static void app_init(void) {
     neo1_terminal_clear(&state.term);
@@ -302,7 +299,6 @@ static void app_init(void) {
 #endif
     neo1_usb_init(neo1_usb_char_in, 0);
 
-   neo1_video_sync_terminal();
 }
 
 // -----------------------------------------------------------------------------

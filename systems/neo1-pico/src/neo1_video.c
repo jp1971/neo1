@@ -4,14 +4,15 @@
 //
 // Pipeline summary:
 // - terminal state is produced on core 0 (machine loop)
-// - core 1 copies caller state into one of two internal snapshots at frame end
+// - core 0 copies caller state into a producer-owned internal snapshot
+// - core 1 accepts a published snapshot and swaps it at frame end
 // - scanlines are generated continuously for a 640x480@60 mode
 // - monochrome 1-bpp lines are TMDS-encoded and submitted to PicoDVI
 //
 // Text is doubled to 16x16 pixels per cell, filling 640x384 and leaving 48 blank
 // scanlines above and below. A blinking '@' glyph is overlaid at the cursor.
-// The producer/consumer flags are volatile but not lock-protected; preserve the
-// frame-boundary swap and caller lifetime until synchronization is redesigned.
+// A short cross-core critical section protects snapshot-index publication; the
+// terminal-sized copy stays outside that lock and outside the DVI IRQ path.
 
 #include <stdint.h>
 #include <string.h>
@@ -19,6 +20,7 @@
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
 #include "pico/sem.h"
+#include "pico/critical_section.h"
 
 #include "hardware/clocks.h"
 #include "hardware/dma.h"
@@ -65,16 +67,18 @@ static struct semaphore dvi_start_sem;
 static volatile uint32_t dvi_frame_counter = 0;
 static volatile uint32_t dvi_line_counter = 0;
 
-// Terminal snapshot ownership:
-// - g_term points at caller-owned terminal state
-// - g_term_buffers[front] is consumed by scanline rendering
-// - core 1 copies to the non-front buffer and flips it only at frame boundary
-static neo1_terminal_t* g_term = 0;
-static neo1_terminal_t g_term_buffers[2];
+// Terminal snapshot ownership uses three buffers:
+// - front is read only by core 1 scanline rendering
+// - producer is written only by core 0, outside the publication lock
+// - pending, when present, is immutable until core 1 accepts or core 0 replaces it
+// The lock protects only index/flag changes, never a terminal-sized memcpy.
+static critical_section_t g_term_publication_lock;
+static neo1_terminal_t g_term_buffers[3];
+static volatile bool g_term_bound = false;
 static volatile uint32_t g_front_buffer_index = 0;
+static uint32_t g_producer_buffer_index = 1;
 static volatile uint32_t g_pending_buffer_index = 0;
 static volatile bool g_has_pending_buffer = false;
-static volatile bool g_term_dirty = false;
 static volatile uint32_t g_set_terminal_calls = 0;
 static volatile uint32_t g_terminal_buffer_swaps = 0;
 #define NEO1_CURSOR_BLINK_FRAMES 30
@@ -105,7 +109,7 @@ static void __not_in_flash_func(neo1_video_prepare_scanline)(uint32_t line) {
     static uint8_t scanbuf[FRAME_WIDTH / 8];
     memset(scanbuf, 0, sizeof(scanbuf));
 
-    if (!g_term) {
+    if (!g_term_bound) {
         goto encode_line;
     }
 
@@ -155,19 +159,13 @@ static void __not_in_flash_func(_scanline_callback)(void) {
         dvi_frame_counter++;
         dvi_line_counter = 0;
 
-        if (g_term && g_term_dirty) {
-            uint32_t target_index = 1u - g_front_buffer_index;
-            memcpy(&g_term_buffers[target_index], g_term, sizeof(g_term_buffers[target_index]));
-            g_pending_buffer_index = target_index;
-            g_has_pending_buffer = true;
-            g_term_dirty = false;
-        }
-
+        critical_section_enter_blocking(&g_term_publication_lock);
         if (g_has_pending_buffer) {
             g_front_buffer_index = g_pending_buffer_index;
             g_has_pending_buffer = false;
             g_terminal_buffer_swaps++;
         }
+        critical_section_exit(&g_term_publication_lock);
     }
 
     neo1_video_prepare_scanline(dvi_line_counter);
@@ -185,13 +183,35 @@ static void __not_in_flash_func(core1_main)(void) {
 }
 
 void neo1_video_set_terminal(neo1_terminal_t* term) {
-    // Caller state stays in place; only the dirty notification is immediate.
-    g_term = term;
-    g_set_terminal_calls++;
-
-    if (g_term) {
-        g_term_dirty = true;
+    if (!term) {
+        critical_section_enter_blocking(&g_term_publication_lock);
+        g_term_bound = false;
+        g_has_pending_buffer = false;
+        g_set_terminal_calls++;
+        critical_section_exit(&g_term_publication_lock);
+        return;
     }
+
+    // Only core 0 writes the producer buffer. Core 1 cannot select it until
+    // the completed copy is published below.
+    const uint32_t published_index = g_producer_buffer_index;
+    memcpy(&g_term_buffers[published_index], term, sizeof(g_term_buffers[published_index]));
+
+    critical_section_enter_blocking(&g_term_publication_lock);
+    uint32_t next_producer_index;
+    if (g_has_pending_buffer) {
+        // Replace an older unpublished frame and reclaim its immutable buffer.
+        next_producer_index = g_pending_buffer_index;
+    } else {
+        // Indices are 0, 1, and 2; the sum identifies the third buffer.
+        next_producer_index = 3u - g_front_buffer_index - published_index;
+    }
+    g_pending_buffer_index = published_index;
+    g_has_pending_buffer = true;
+    g_producer_buffer_index = next_producer_index;
+    g_term_bound = true;
+    g_set_terminal_calls++;
+    critical_section_exit(&g_term_publication_lock);
 }
 
 void neo1_video_init(neo1_terminal_t* term) {
@@ -200,20 +220,18 @@ void neo1_video_init(neo1_terminal_t* term) {
     sleep_ms(10);
     set_sys_clock_khz(DVI_TIMING.bit_clk_khz, true);
 
+    critical_section_init(&g_term_publication_lock);
+    memset(g_term_buffers, 0, sizeof(g_term_buffers));
     g_front_buffer_index = 0;
+    g_producer_buffer_index = 1;
     g_pending_buffer_index = 0;
     g_has_pending_buffer = false;
-    g_term_dirty = false;
+    g_term_bound = (term != 0);
     g_set_terminal_calls = 0;
     g_terminal_buffer_swaps = 0;
 
-    neo1_video_set_terminal(term);
-
-    if (g_term) {
-        memcpy(&g_term_buffers[0], g_term, sizeof(g_term_buffers[0]));
-        g_pending_buffer_index = 0;
-        g_has_pending_buffer = false;
-        g_term_dirty = false;
+    if (term) {
+        memcpy(&g_term_buffers[0], term, sizeof(g_term_buffers[0]));
     }
 
     const uint8_t* font_src = apple1_vid;

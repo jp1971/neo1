@@ -93,10 +93,11 @@ directory, bitmap, file-size, and destination limitations.
    the software 65C02; enabled and disabled MSC decode are also covered. There
    are still no focused tests for the rest of shared memory decoding, PIA
    behavior, VACI delete, VCFFA1, or broad CPU compatibility.
-6. **Pico terminal publication is not synchronized across cores.** Core 0
-   mutates the caller-owned terminal while core 1 copies it at a frame boundary.
-   The dirty flag and buffer indices are volatile but not lock-protected, so the
-   source copy is not guaranteed to be atomic.
+6. **Synchronized Pico terminal publication awaits physical confirmation.**
+   Core 0 now copies into a producer-owned snapshot before publishing it under
+   a short cross-core critical section; core 1 accepts only completed snapshots
+   at a frame boundary. Both Pico profiles build, but Neo1-23 still needs a DVI
+   stress smoke test before this defect can be closed.
 7. **SDL execution is not wall-clock or cycle paced.** `neo1_exec(2000)` runs
     about 2,043 soft ticks per UI iteration, but each tick is a complete
     instruction and the runner does not govern the batch using elapsed time.

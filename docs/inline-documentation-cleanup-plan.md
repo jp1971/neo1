@@ -305,9 +305,9 @@ Proceed with the active work in this order:
    backend. MSC decode enablement was completed on 2026-08-24: the new switch
    controls device ownership independently from payload installation, disabled
    addresses fall through to RAM, and VACI requires MSC. Remaining checkpoints
-   are synchronized Pico terminal publication and elapsed-time/cycle pacing for
-   the SDL software runner. Keep architectural extraction separate from each
-   observable behavior fix.
+   are physical confirmation of the synchronized three-buffer Pico terminal
+   publication and elapsed-time/cycle pacing for the SDL software runner. Keep
+   architectural extraction separate from each observable behavior fix.
 
 After the portable-core checkpoint, resume the deferred VCFFA1 track in this
 order:

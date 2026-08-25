@@ -4,10 +4,10 @@
 //
 // Neo1 DVI text video module.
 //
-// This Pico-only module consumes a caller-owned `neo1_terminal_t` and renders a
-// centered 640x384 text area in a 640x480 monochrome DVI mode. It owns system
-// clock/voltage setup, font expansion, snapshot buffers, the PicoDVI instance,
-// and core 1. The caller must keep the terminal alive after initialization.
+// This Pico-only module snapshots a caller-owned `neo1_terminal_t` and renders
+// a centered 640x384 text area in a 640x480 monochrome DVI mode. It owns system
+// clock/voltage setup, font expansion, three publication buffers, the PicoDVI
+// instance, and core 1.
 
 #include <stdint.h>
 #include "neo1_terminal.h"
@@ -19,7 +19,7 @@ void neo1_video_init(neo1_terminal_t* term);
 // Launch the DVI engine on core 1 and begin continuous scanline output.
 void neo1_video_start(void);
 
-// Mark the bound terminal dirty. Core 1 copies it and changes the front snapshot
-// at a frame boundary. The current volatile-flag handoff has no lock, so this is
-// frame-boundary publication but not a guaranteed atomic source snapshot.
+// Copy a complete terminal snapshot into a core-0 producer buffer and publish
+// it under a short cross-core critical section. Core 1 changes the front
+// snapshot only at a frame boundary. Passing null disables terminal rendering.
 void neo1_video_set_terminal(neo1_terminal_t* term);
