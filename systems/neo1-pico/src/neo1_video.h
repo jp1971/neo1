@@ -10,7 +10,7 @@
 // instance, and core 1.
 
 #include <stdint.h>
-#include "neo1_terminal.h"
+#include "terminal/neo1_terminal.h"
 
 // Initialize clocks/DVI state, prepare font data, and bind the terminal source.
 // Must be called before `neo1_video_start()`.

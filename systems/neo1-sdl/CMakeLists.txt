@@ -17,6 +17,7 @@ endif()
 add_executable(neo1
     ${CMAKE_CURRENT_SOURCE_DIR}/src/main.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1_platform_sdl.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1_terminal_sdl.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1_storage_stub.c
 )
 
@@ -34,7 +35,7 @@ target_include_directories(neo1 PRIVATE
     ${CMAKE_SOURCE_DIR}
 )
 
-target_link_libraries(neo1 PRIVATE SDL2::SDL2)
+target_link_libraries(neo1 PRIVATE neo1_terminal_grid SDL2::SDL2)
 
 if (APPLE)
     target_link_libraries(neo1 PRIVATE SDL2::SDL2main)

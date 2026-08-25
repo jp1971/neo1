@@ -87,3 +87,21 @@ target_compile_options(neo1_soft_timing_tests PRIVATE
 )
 
 add_test(NAME neo1_soft_cycle_budget COMMAND neo1_soft_timing_tests)
+
+add_executable(neo1_terminal_tests
+    test_neo1_terminal.c
+    ${CMAKE_SOURCE_DIR}/systems/neo1-pico/src/neo1_terminal_pico.c
+    ${CMAKE_SOURCE_DIR}/systems/neo1-sdl/src/neo1_terminal_sdl.c
+)
+target_include_directories(neo1_terminal_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/systems/neo1-pico/src
+    ${CMAKE_SOURCE_DIR}/systems/neo1-sdl/src
+)
+target_compile_options(neo1_terminal_tests PRIVATE
+    -Wall
+    -Wextra
+    -Werror
+)
+target_link_libraries(neo1_terminal_tests PRIVATE neo1_terminal_grid)
+
+add_test(NAME neo1_terminal_grid_contract COMMAND neo1_terminal_tests)

@@ -34,7 +34,6 @@
 #include "tmds_encode.h"
 #include "../../../src/roms/neo1_apple1_video_rom_image.h"
 
-#include "neo1_terminal.h"
 #include "neo1_video.h"
 
 // -----------------------------------------------------------------------------

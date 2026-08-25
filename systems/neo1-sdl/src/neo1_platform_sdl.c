@@ -1,9 +1,9 @@
 #include "neo1_platform.h"
 
 // SDL implementation of the target-local mixed service surface. Display bytes
-// feed a private 40x24 grid rendered on the main thread; this is a second
-// terminal state machine, not an adapter around the Pico terminal. Input is
-// sourced from SDL events, and storage is one seekable raw host image.
+// feed the shared 40x24 grid through SDL-owned control-byte policy and render it
+// on the main thread. Input is sourced from SDL events, and storage is one
+// seekable raw host image.
 //
 // Observable terminal differences from Pico are intentional preservation of
 // current behavior: SDL erases for Backspace, ignores LF and form feed, uses six
@@ -18,6 +18,7 @@
 #include <string.h>
 
 #include "../../../src/roms/neo1_apple1_video_rom_image.h"
+#include "neo1_terminal_sdl.h"
 
 static SDL_Window* window_handle;
 static SDL_Renderer* renderer_handle;
@@ -26,15 +27,11 @@ static FILE* disk_handle;
 static char disk_path[512];
 
 enum {
-    NEO1_TERM_COLS = 40,
-    NEO1_TERM_ROWS = 24,
     NEO1_CELL_W = 14,
     NEO1_CELL_H = 16,
 };
 
-static uint8_t term_cells[NEO1_TERM_ROWS][NEO1_TERM_COLS];
-static int term_cursor_x;
-static int term_cursor_y;
+static neo1_terminal_t terminal;
 static bool term_dirty;
 static uint64_t frame_count;
 
@@ -70,32 +67,6 @@ static bool neo1_platform_open_disk_image(void) {
     return true;
 }
 
-static void neo1_term_scroll_up(void) {
-    memmove(&term_cells[0][0], &term_cells[1][0], (NEO1_TERM_ROWS - 1) * NEO1_TERM_COLS);
-    memset(&term_cells[NEO1_TERM_ROWS - 1][0], ' ', NEO1_TERM_COLS);
-}
-
-static void neo1_term_newline(void) {
-    term_cursor_x = 0;
-    term_cursor_y++;
-    if (term_cursor_y >= NEO1_TERM_ROWS) {
-        neo1_term_scroll_up();
-        term_cursor_y = NEO1_TERM_ROWS - 1;
-    }
-}
-
-static void neo1_term_put_glyph(uint8_t ch) {
-    if (term_cursor_x < 0 || term_cursor_x >= NEO1_TERM_COLS ||
-        term_cursor_y < 0 || term_cursor_y >= NEO1_TERM_ROWS) {
-        return;
-    }
-    term_cells[term_cursor_y][term_cursor_x] = ch;
-    term_cursor_x++;
-    if (term_cursor_x >= NEO1_TERM_COLS) {
-        neo1_term_newline();
-    }
-}
-
 static void neo1_term_draw(void) {
     if (!renderer_handle) {
         return;
@@ -107,7 +78,7 @@ static void neo1_term_draw(void) {
 
     for (int row = 0; row < NEO1_TERM_ROWS; row++) {
         for (int col = 0; col < NEO1_TERM_COLS; col++) {
-            const uint8_t ch = term_cells[row][col] & 0x7F;
+            const uint8_t ch = terminal.chars[row][col] & 0x7F;
             const int glyph_base = ((int)ch) * 8;
             if ((glyph_base + 7) >= (int)sizeof(apple1_vid)) {
                 continue;
@@ -136,11 +107,11 @@ static void neo1_term_draw(void) {
     // Overlay a blinking '@' cursor at about 1.3 Hz using SDL wall-clock time.
     const uint64_t ms = SDL_GetTicks64();
     if (((ms / 375) & 1u) == 0u &&
-        term_cursor_x >= 0 && term_cursor_x < NEO1_TERM_COLS &&
-        term_cursor_y >= 0 && term_cursor_y < NEO1_TERM_ROWS) {
+        terminal.cursor_x < NEO1_TERM_COLS &&
+        terminal.cursor_y < NEO1_TERM_ROWS) {
         const int cbx = ((int)'@') * 8;
-        const int cdx = term_cursor_x * NEO1_CELL_W;
-        const int cdy = term_cursor_y * NEO1_CELL_H;
+        const int cdx = terminal.cursor_x * NEO1_CELL_W;
+        const int cdy = terminal.cursor_y * NEO1_CELL_H;
         for (int gy = 0; gy < 8; gy++) {
             const uint8_t bits = apple1_vid[cbx + gy];
             for (int gx = 0; gx < 6; gx++) {
@@ -184,9 +155,7 @@ void neo1_platform_init(int width, int height, const char* title) {
     SDL_RaiseWindow(window_handle);
     SDL_StartTextInput();
 
-    memset(term_cells, ' ', sizeof(term_cells));
-    term_cursor_x = 0;
-    term_cursor_y = 0;
+    neo1_terminal_clear(&terminal);
     term_dirty = true;
     frame_count = 0;
     should_reset = false;
@@ -230,32 +199,12 @@ void neo1_platform_update_display(const uint32_t* pixels, int width, int height)
 
 void neo1_platform_put_char(uint8_t ch) {
     ch &= 0x7F;
-
-    switch (ch) {
-        case '\r':
-            neo1_term_newline();
-            term_dirty = true;
-            return;
-        case '\n':
-            term_dirty = true;
-            return;
-        case 0x08:
-            if (term_cursor_x > 0) {
-                term_cursor_x--;
-                term_cells[term_cursor_y][term_cursor_x] = ' ';
-                term_dirty = true;
-            }
-            return;
-        default:
-            break;
+    const bool backspace_changed = (ch == 0x08) && (terminal.cursor_x > 0);
+    neo1_terminal_sdl_putc(&terminal, ch);
+    if ((ch == '\r') || (ch == '\n') || (ch >= 0x20) ||
+        backspace_changed) {
+        term_dirty = true;
     }
-
-    if (ch < 0x20) {
-        return;
-    }
-
-    neo1_term_put_glyph(ch);
-    term_dirty = true;
 }
 
 bool neo1_platform_should_reset(void) {
@@ -307,9 +256,7 @@ bool neo1_platform_poll_key(uint8_t* out_apple1_keycode, bool* out_pressed) {
             const bool ctrl = (mod & (KMOD_LCTRL | KMOD_RCTRL)) != 0;
 
             if (ctrl && key == SDLK_l) {
-                memset(term_cells, ' ', sizeof(term_cells));
-                term_cursor_x = 0;
-                term_cursor_y = 0;
+                neo1_terminal_clear(&terminal);
                 term_dirty = true;
                 continue;
             }

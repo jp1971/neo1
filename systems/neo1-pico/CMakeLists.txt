@@ -2,7 +2,7 @@
 # through checked-in headers; src/hid_app.c and src/msc_app.c are not linked.
 add_executable(neo1
     ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1_terminal.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1_terminal_pico.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1_usb.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1_msc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1_cffa1.c
@@ -86,6 +86,7 @@ target_include_directories(neo1 PRIVATE
 )
 
 target_link_libraries(neo1
+    neo1_terminal_grid
     pico_stdlib
     pico_multicore
     pico_util

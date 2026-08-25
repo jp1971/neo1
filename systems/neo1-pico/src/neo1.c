@@ -8,7 +8,8 @@
 // sequencing, terminal publication, UART/USB input, storage initialization, and
 // fixed-batch bus execution. RP2040 services are split across:
 //
-// - neo1_terminal.*  : text buffer, cursor state, clear-screen behavior
+// - terminal/neo1_terminal.* : shared text grid and primitive mutations
+// - neo1_terminal_pico.*     : Pico control-byte policy and debug helpers
 // - neo1_video.*     : PicoDVI text rendering and scanline generation
 // - neo1_usb.*       : TinyUSB HID keyboard and MSC host lifecycle
 // - neo1.h           : shared memory, ROM, PIA-like, and device dispatch
@@ -46,7 +47,7 @@
 #endif
 
 #include "systems/neo1.h"
-#include "neo1_terminal.h"
+#include "neo1_terminal_pico.h"
 #include "neo1_video.h"
 #include "neo1_msc.h"
 #if NEO1_ENABLE_VCFFA1
@@ -226,7 +227,7 @@ static void neo1_char_out(uint8_t ch, void* user_data) {
 
     // Replica 1 / Apple-1 monitor output often has bit 7 set. Strip it for terminal display.
     ch &= 0x7F;
-    neo1_terminal_putc(&state.term, ch);
+    neo1_terminal_pico_putc(&state.term, ch);
     neo1_video_sync_terminal();
 
     // Make carriage return readable on a modern terminal.
@@ -335,7 +336,7 @@ static void poll_keyboard(void) {
 #if NEO1_TERM_DEBUG
     // Ctrl-D dumps the software terminal buffer for debugging.
     if (ch == 0x04) {
-        neo1_terminal_dump(&state.term);
+        neo1_terminal_pico_dump(&state.term);
         return;
     }
 #endif
