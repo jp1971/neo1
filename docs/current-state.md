@@ -44,7 +44,7 @@ profile with VACI and VCFFA1 enabled.
 | --- | --- | --- |
 | Reset and WozMon | Verified | Reset reached WozMon and monitor commands executed |
 | Neo1-23 ROM entries | Verified | `E000R` entered Integer BASIC and `F000R` entered Krusader |
-| DVI video | Verified | User reported working display output |
+| DVI video | Verified | The synchronized three-buffer terminal publication path passed sustained WozMon output/scrolling and keyboard/VACI-return checks on Neo1-23 |
 | Serial console | Verified | Normal and diagnostic profiles produced their intended transcripts while preserving monitor output |
 | USB HID keyboard | Verified | User explicitly verified keyboard input |
 | USB MSC/FatFs | Verified | Media mounted and directory/file workflows operated |
@@ -70,7 +70,7 @@ block write. Writable operation requires a preferred writable image such as
 `CFFA1RW.PO` or `CFFA1RW.HDV`; fallback images are opened read-only.
 
 VCFFA1 is retained as an optional Replica 1 compatibility feature, but the
-reliability work in defects 1 and 7-10 is deferred until after the next
+reliability work in defects 1 and 6-9 is deferred until after the next
 portable-core checkpoint. VACI remains the preferred Apple-1 storage path.
 Until that work resumes, use VCFFA1 `W` and `D` only with disposable images;
 the verified catalog/load workflow may continue to be used within the stated
@@ -96,27 +96,22 @@ directory, bitmap, file-size, and destination limitations.
    budgeting are also covered. There are still no focused tests for the rest
    of shared memory decoding, PIA behavior, VACI delete, VCFFA1, or broad CPU
    compatibility.
-6. **Synchronized Pico terminal publication awaits physical confirmation.**
-   Core 0 now copies into a producer-owned snapshot before publishing it under
-   a short cross-core critical section; core 1 accepts only completed snapshots
-   at a frame boundary. Both Pico profiles build, but Neo1-23 still needs a DVI
-   stress smoke test before this defect can be closed.
-7. **The VCFFA1 utility's create/delete updates are not transactional.** New
+6. **The VCFFA1 utility's create/delete updates are not transactional.** New
     file creation commits allocation bits before its directory and sapling
     index writes, without rollback. Delete may free an index block after an
     index-read error, ignores a bitmap-write error, and can then remove the
     directory entry. Failures can leak blocks or leave ProDOS metadata
     inconsistent; use a disposable image for write/delete testing.
-8. **VCFFA1 existing-file writes do not update catalog metadata.** The utility
+7. **VCFFA1 existing-file writes do not update catalog metadata.** The utility
     writes the requested bytes into an existing seedling or sapling but leaves
     its EOF, blocks-used, auxtype, and other directory fields unchanged when
     source or length differs from the entry.
-9. **The VCFFA1 utility has hard-coded filesystem limits.** Catalog, lookup,
+8. **The VCFFA1 utility has hard-coded filesystem limits.** Catalog, lookup,
     create, and delete inspect only root directory block 2. Allocation/freeing
     uses only the first bitmap block and assumes at most 4096 volume blocks;
     load/create/write support only seedling and two-data-block sapling files
     through 1024 bytes. Load destinations are not range checked.
-10. **The VCFFA1 block driver can wait forever for DRQ.** Read/write checks the
+9. **The VCFFA1 block driver can wait forever for DRQ.** Read/write checks the
     error register immediately after command issue, then polls DRQ without a
     timeout or further busy/error checks. A device or backend that never raises
     DRQ stalls the 6502 utility indefinitely.
@@ -178,7 +173,12 @@ The follow-up image was then flashed and steps 5 and 6 were repeated. The user
 confirmed that both error messages begin on a new line, closing the
 formatting-only follow-up without another data-path retest.
 
-## Neo6502 terminal-publication validation still required
+## Neo6502 terminal-publication validation
+
+Result: passed on 2026-08-24 using the normal Neo1-23 build. Sustained WozMon
+output and scrolling remained stable without corrupted or partially mixed rows,
+DVI dropouts, or hangs. Keyboard input continued working, and VACI returned to
+WozMon normally.
 
 The synchronized three-buffer publication path changes only how Pico core 0
 hands completed terminal snapshots to the core-1 DVI renderer. It does not
@@ -193,6 +193,3 @@ Using the normal Neo1-23 build:
    partially mixed rows, DVI dropouts, or hangs.
 4. Confirm the keyboard still responds, enter `C100R`, then use `Q` to return to
    WozMon.
-
-Report whether the display remained stable and input continued working. That
-result will either close defect 6 or provide a reproducible hardware symptom.
