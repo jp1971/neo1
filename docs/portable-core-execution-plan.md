@@ -97,7 +97,7 @@ or preserving behavior requires target conditionals in the shared grid.
 
 ## Checkpoint 2: explicit optional-device ports
 
-Status: planned 2026-08-24.
+Status: host/build gates passed 2026-08-24; awaiting the physical gate.
 
 ### Boundary
 
@@ -162,6 +162,26 @@ Using the normal Neo1-23 image and read-only workflows:
 
 No storage write is required. The checkpoint remains incomplete until the user
 supplies this physical result.
+
+### Evidence to date
+
+- Shared MSC and VCFFA1 contract headers now hold the stable addresses,
+  register meanings, status/error values, and interrupt behavior.
+- The shared machine owns conditional decode and calls explicitly attached
+  read/write ports; neither it nor the SDL runner includes a Pico backend
+  header. Snapshot loading preserves the currently attached ports.
+- Enabled/disabled MSC and VCFFA1 decode tests prove exact routing and ordinary
+  RAM fallthrough, including representative addresses immediately outside each
+  device window. The existing MSC protocol, generated VACI payload,
+  software-cycle, and terminal-grid tests also pass: eight tests total.
+- SDL personalities 23 and 50 build and reach WozMon headlessly with disposable
+  raw images. Pico personalities 23 and 50 build with SDK 2.1.0. The working
+  Pico and SDL build directories are restored to personality 23.
+- Diff review found no changes to MSC or VCFFA1 protocol state, backend I/O,
+  payload installation, CPU/PIA behavior, ROM/RAM policy, DVI, USB, or physical
+  bus timing. The duplicated target-side VCFFA1 address filters were removed;
+  decode now has the one shared-machine owner described above.
+- Physical Neo1-23 evidence is still required before this checkpoint closes.
 
 ### Rollback condition
 

@@ -29,16 +29,21 @@ snapshot, not the architecture contract or a roadmap.
 - `NEO1_ENABLE_MSC` now controls `$D014-$D01C` ownership explicitly. Focused
   host tests prove enabled accesses reach the device and disabled accesses use
   backing RAM; VACI-without-MSC configurations are rejected.
-- The SDL host configuration now includes six focused tests. All passed
+- The SDL host configuration now includes eight focused tests. All passed
   locally on 2026-08-24: the production Pico MSC contract against an in-memory
   FatFs fake, the generated VACI BASIC/ordinary transfer paths, enabled and
-  disabled MSC address decode, software-CPU cycle budgeting, and the shared
-  terminal grid plus preserved Pico/SDL control-byte policies.
+  disabled MSC and VCFFA1 address decode, software-CPU cycle budgeting, and the
+  shared terminal grid plus preserved Pico/SDL control-byte policies.
 - Portable-core checkpoint 1 now gives Pico and SDL one shared 40×24 terminal
   grid while leaving control-byte policy and rendering target-owned. Both SDL
-  profiles reach WozMon headlessly, both Pico profiles build, and the six host
+  profiles reach WozMon headlessly, both Pico profiles build, and the eight host
   tests pass. The Neo1-23 DVI/serial, scrolling, form-feed, cursor, UART/USB
   input, and VACI-return smoke also passed on 2026-08-24.
+- Portable-core checkpoint 2 removes Pico storage headers and target-global
+  storage calls from the shared machine. The machine now owns MSC and VCFFA1
+  address decode and invokes explicit runner-attached ports. Both SDL profiles
+  reach WozMon headlessly, both Pico profiles build, and all eight host tests
+  pass; the read-only Neo1-23 physical gate remains outstanding.
 - SDK 2.3.0 has not been configured, built, or hardware-tested.
 
 ## Last Neo6502 hardware validation
@@ -98,10 +103,10 @@ directory, bitmap, file-size, and destination limitations.
    smoke tests.
 5. **Automated coverage remains limited.** Focused host tests cover the Pico MSC
    register protocol and execute VACI BASIC plus ordinary read/write paths on
-   the software 65C02; enabled/disabled MSC decode and soft-instruction cycle
-   budgeting are also covered. There are still no focused tests for the rest
-   of shared memory decoding, PIA behavior, VACI delete, VCFFA1, or broad CPU
-   compatibility.
+   the software 65C02; enabled/disabled MSC and VCFFA1 address decode and
+   soft-instruction cycle budgeting are also covered. There are still no
+   focused tests for the rest of shared memory decoding, PIA behavior, VACI
+   delete, VCFFA1 protocol behavior, or broad CPU compatibility.
 6. **The VCFFA1 utility's create/delete updates are not transactional.** New
     file creation commits allocation bits before its directory and sapling
     index writes, without rollback. Delete may free an index block after an

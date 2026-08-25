@@ -157,3 +157,9 @@ When MSC is disabled, `$D014-$D01C` remains RAM; when VCFFA1 is disabled,
 `$AFDC-$AFDD` and `$AFF0-$AFFF` also remain RAM. This explicit enablement and
 ownership allows a future physical expansion device to replace an internal
 service without changing ordinary memory semantics.
+
+The shared machine owns that conditional address decode and invokes optional
+MSC and VCFFA1 read/write ports attached in its description. Pico and SDL attach
+their target-owned protocol/backend implementations through those ports. A
+port represents a decoded 6502 register access; it does not own memory policy,
+CPU execution, physical bus timing, or platform lifecycle.
