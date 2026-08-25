@@ -267,7 +267,7 @@ VACI remains the preferred storage interface. Until remediation resumes, limit
 normal VCFFA1 use to the verified catalog/load/block-inspection workflow and
 use only disposable images for `W` or `D`.
 
-The deferral is an ordering decision, not closure: defects 1 and 7-10 remain
+The deferral is an ordering decision, not closure: defects 1 and 6-9 remain
 open in `docs/current-state.md`. A newly observed regression in the verified
 read-oriented workflow may be fixed sooner as a narrowly scoped preservation
 change.

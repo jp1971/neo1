@@ -10,8 +10,7 @@ and defects remain in `docs/current-state.md`.
 
 ## Checkpoint 1: shared terminal grid
 
-Status: implementation and host/build gates passed on 2026-08-24; awaiting the
-Neo1-23 physical gate.
+Status: completed 2026-08-24.
 
 ### Boundary
 
@@ -72,8 +71,7 @@ After the host/build gates pass, flash the normal Neo1-23 image and confirm:
 4. UART and USB keyboard input still work;
 5. `C100R`, followed by `Q`, returns cleanly to WozMon.
 
-The checkpoint remains awaiting hardware confirmation until the user supplies
-that result.
+The user confirmed that this complete physical gate passed on 2026-08-24.
 
 ### Evidence to date
 
@@ -86,6 +84,10 @@ that result.
   Neo1-23 and `build-sdl/` is restored to SDL-23.
 - Diff review found no change to memory/PIA decoding, CPU integration, physical
   bus timing, storage, PicoDVI scanout, or terminal snapshot publication.
+- The normal Neo1-23 image passed the physical gate: WozMon appeared on DVI and
+  serial, the range dump wrapped and scrolled stably, `D012:0C` cleared the
+  display with the cursor still active, UART and USB input worked, and VACI
+  returned cleanly to WozMon.
 
 ### Rollback condition
 
