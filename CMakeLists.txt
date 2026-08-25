@@ -84,6 +84,7 @@ elseif (NOT NEO1_PLATFORM STREQUAL "sdl")
     message(FATAL_ERROR "NEO1_PLATFORM must be 'pico' or 'sdl'")
 endif()
 
+add_subdirectory(src/devices)
 add_subdirectory(src/terminal)
 add_subdirectory(systems)
 

@@ -86,6 +86,7 @@ target_include_directories(neo1 PRIVATE
 )
 
 target_link_libraries(neo1
+    neo1_apple1_pia
     neo1_terminal_grid
     pico_stdlib
     pico_multicore

@@ -89,6 +89,7 @@
 #endif
 
 #include "devices/neo1_cffa1.h"
+#include "devices/neo1_apple1_pia.h"
 #include "devices/neo1_msc.h"
 
 #ifdef __cplusplus
@@ -99,19 +100,13 @@ extern "C" {
 // constants
 // -----------------------------------------------------------------------------
 
-#define NEO1_SNAPSHOT_VERSION (1)
+// Version 2 stores keyboard/display registers in neo1_apple1_pia_t.
+#define NEO1_SNAPSHOT_VERSION (2)
 #define NEO1_FREQUENCY        (1021800)
 
 enum {
     NEO1_MEM_SIZE     = 0x10000,
     NEO1_ROM_SIZE     = (0x10000 - NEO1_ROM_BASE),
-
-    NEO1_IO_KBD       = 0xD010,
-    NEO1_IO_KBDCR     = 0xD011,
-    NEO1_IO_DSP       = 0xD012,
-    NEO1_IO_DSPCR     = 0xD013,
-    NEO1_IO_DSP_ALT   = 0xD0F2,
-    NEO1_IO_DSPCR_ALT = 0xD0F3,
 
     NEO1_TRACE_COUNT  = 64,
 };
@@ -164,19 +159,8 @@ typedef struct {
     uint8_t ram[NEO1_MEM_SIZE];
     uint8_t* rom;
 
-    // Apple-1 keyboard latch; bit 7 is set on injected input bytes.
-    uint8_t kbd_latched;
-
-    // Minimal PIA-like state for the control/data-direction behavior WozMon
-    // uses. This is not a complete 6820/6821 implementation.
-    uint8_t kbd_cr;
-    uint8_t dsp_cr;
-    uint8_t kbd_ddr;
-    uint8_t dsp_ddr;
-    uint8_t kbd_data;
-    uint8_t dsp_data;
-    // Bookkeeping only: DSP/DSPCR reads report ready unconditionally.
-    bool dsp_ready;
+    // Apple-1 keyboard/display registers and pending input latch.
+    neo1_apple1_pia_t pia;
 
     // Optional consumer for bytes written through the display data register.
     neo1_char_out_t char_out;
@@ -209,8 +193,8 @@ uint32_t neo1_tick(neo1_t* sys);
 // a software instruction may overshoot the exact cycle target.
 uint32_t neo1_exec(neo1_t* sys, uint32_t micro_seconds);
 
-// Inject one ASCII keyboard byte. LF is normalized to CR and bit 7 is set.
-// Pico preserves a pending byte; the soft backend replaces it.
+// Inject one ASCII keyboard byte. LF is normalized to CR, bit 7 is set, and a
+// pending byte is preserved until the 6502 consumes it.
 void neo1_key_down(neo1_t* sys, uint8_t ascii);
 
 // Return the captured physical startup trace and optionally its backing array.
@@ -260,17 +244,6 @@ static inline void _neo1_capture_trace(neo1_t* sys, uint16_t addr, uint8_t data,
     }
 }
 
-static inline uint16_t _neo1_normalize_io_addr(uint16_t addr) {
-    switch (addr) {
-        case NEO1_IO_DSP_ALT:
-            return NEO1_IO_DSP;
-        case NEO1_IO_DSPCR_ALT:
-            return NEO1_IO_DSPCR;
-        default:
-            return addr;
-    }
-}
-
 static inline bool _neo1_cffa1_handles_addr(uint16_t addr) {
     return (addr == NEO1_CFFA1_ID1_ADDR) ||
            (addr == NEO1_CFFA1_ID2_ADDR) ||
@@ -278,59 +251,22 @@ static inline bool _neo1_cffa1_handles_addr(uint16_t addr) {
 }
 
 // Bus read dispatch order:
-// 1) normalize mirrored addresses
-// 2) route the optional Replica 1 VCFFA1 signature/register addresses
-// 3) handle Apple-1 keyboard/display and readable Neo1 MSC registers
+// 1) route the optional Replica 1 VCFFA1 signature/register addresses
+// 2) route Apple-1 keyboard/display registers, including display mirrors
+// 3) handle readable Neo1 MSC registers
 // 4) fall back to RAM/ROM backing store
 static inline uint8_t _neo1_mem_read(neo1_t* sys, uint16_t addr) {
-    addr = _neo1_normalize_io_addr(addr);
-
 #if NEO1_ENABLE_VCFFA1
     if (_neo1_cffa1_handles_addr(addr)) {
         return sys->vcffa1.read(sys->vcffa1.user_data, addr);
     }
 #endif
 
+    if (neo1_apple1_pia_handles_addr(addr)) {
+        return neo1_apple1_pia_read(&sys->pia, addr);
+    }
+
     switch (addr) {
-        case NEO1_IO_KBD:
-#if (NEO1_CPU_BACKEND == NEO1_CPU_BACKEND_SOFT65C02)
-            // Host robustness: always treat KBD reads as data-port reads so a
-            // pending key cannot get stuck behind control-register mode bits.
-            {
-                uint8_t v = sys->kbd_latched;
-                sys->kbd_latched = 0;
-                sys->kbd_data = 0;
-                return v;
-            }
-#else
-            // If bit 2 is clear, access the DDR. Otherwise access the peripheral register.
-            if ((sys->kbd_cr & 0x04) == 0) {
-                return sys->kbd_ddr;
-            } else {
-                uint8_t v = sys->kbd_latched;
-                sys->kbd_latched = 0;   // consume the key on read
-                sys->kbd_data = 0;
-                return v;
-            }
-#endif
-
-        case NEO1_IO_KBDCR:
-            // Preserve the programmed control bits, but report key-ready in bit 7.
-            return (sys->kbd_cr & 0x7F) | ((sys->kbd_latched != 0) ? 0x80 : 0x00);
-
-        case NEO1_IO_DSP:
-            // If bit 2 is clear, access the DDR. Otherwise access the peripheral register.
-            if ((sys->dsp_cr & 0x04) == 0) {
-                return sys->dsp_ddr;
-            } else {
-                // Keep host display non-blocking: always report ready semantics.
-                return 0x00;
-            }
-
-        case NEO1_IO_DSPCR:
-            // Preserve programmed control bits and report ready in bit 7.
-            return (sys->dsp_cr & 0x7F) | 0x80;
-
 #if NEO1_ENABLE_MSC
         case NEO1_IO_MSC_STATUS:
         case NEO1_IO_MSC_DATA:
@@ -347,13 +283,11 @@ static inline uint8_t _neo1_mem_read(neo1_t* sys, uint16_t addr) {
 }
 
 // Bus write dispatch order mirrors read side:
-// 1) normalize mirrored addresses
-// 2) route the optional Replica 1 VCFFA1 signature/register addresses
-// 3) handle Apple-1 keyboard/display and writable Neo1 MSC registers
+// 1) route the optional Replica 1 VCFFA1 signature/register addresses
+// 2) route Apple-1 keyboard/display registers, including display mirrors
+// 3) handle writable Neo1 MSC registers
 // 4) write to backing RAM unless inside protected ROM region
 static inline void _neo1_mem_write(neo1_t* sys, uint16_t addr, uint8_t data) {
-    addr = _neo1_normalize_io_addr(addr);
-
 #if NEO1_ENABLE_VCFFA1
     if (_neo1_cffa1_handles_addr(addr)) {
         sys->vcffa1.write(sys->vcffa1.user_data, addr, data);
@@ -361,35 +295,17 @@ static inline void _neo1_mem_write(neo1_t* sys, uint16_t addr, uint8_t data) {
     }
 #endif
 
+    if (neo1_apple1_pia_handles_addr(addr)) {
+        uint8_t display_byte = 0;
+        if (neo1_apple1_pia_write(&sys->pia, addr, data, &display_byte) &&
+            sys->char_out)
+        {
+            sys->char_out(display_byte, sys->char_out_user_data);
+        }
+        return;
+    }
+
     switch (addr) {
-        case NEO1_IO_KBD:
-            if ((sys->kbd_cr & 0x04) == 0) {
-                sys->kbd_ddr = data;
-            } else {
-                sys->kbd_data = data;
-            }
-            break;
-
-        case NEO1_IO_KBDCR:
-            sys->kbd_cr = data;
-            break;
-
-        case NEO1_IO_DSP:
-            if ((sys->dsp_cr & 0x04) == 0) {
-                sys->dsp_ddr = data;
-            } else {
-                sys->dsp_data = data;
-                sys->dsp_ready = true;
-                if (sys->char_out) {
-                    sys->char_out(data, sys->char_out_user_data);
-                }
-            }
-            break;
-
-        case NEO1_IO_DSPCR:
-            sys->dsp_cr = data;
-            break;
-
 #if NEO1_ENABLE_MSC
         case NEO1_IO_MSC_CMD:
         case NEO1_IO_MSC_SECTOR_LO:
@@ -496,15 +412,7 @@ void neo1_init(neo1_t* sys, const neo1_desc_t* desc) {
         sys->ram[0xFFFE], sys->ram[0xFFFF]);
 #endif
         
-    // Default no key pending and reset the minimal PIA-like state.
-    sys->kbd_latched = 0;
-    sys->kbd_cr = 0x00;
-    sys->dsp_cr = 0x00;
-    sys->kbd_ddr = 0x00;
-    sys->dsp_ddr = 0x00;
-    sys->kbd_data = 0x00;
-    sys->dsp_data = 0x00;
-    sys->dsp_ready = true;
+    neo1_apple1_pia_reset(&sys->pia);
 
     // Clear startup trace.
     sys->startup_trace_len = 0;
@@ -521,14 +429,7 @@ void neo1_discard(neo1_t* sys) {
 void neo1_reset(neo1_t* sys) {
     CHIPS_ASSERT(sys && sys->valid);
 
-    sys->kbd_latched = 0;
-    sys->kbd_cr = 0x00;
-    sys->dsp_cr = 0x00;
-    sys->kbd_ddr = 0x00;
-    sys->dsp_ddr = 0x00;
-    sys->kbd_data = 0x00;
-    sys->dsp_data = 0x00;
-    sys->dsp_ready = true;
+    neo1_apple1_pia_reset(&sys->pia);
     sys->startup_trace_len = 0;
     sys->startup_trace_complete = false;
     sys->system_ticks = 0;
@@ -586,22 +487,7 @@ uint32_t neo1_exec(neo1_t* sys, uint32_t micro_seconds) {
 void neo1_key_down(neo1_t* sys, uint8_t ascii) {
     CHIPS_ASSERT(sys && sys->valid);
 
-    // Replica 1 / Apple-1 monitor convention: set bit 7 on incoming key.
-    // Translate LF to CR for convenience.
-    if (ascii == '\n') {
-        ascii = '\r';
-    }
-
-    // SDL accommodation: replace a pending byte so host input cannot remain
-    // blocked behind a stale latch value.
-#if (NEO1_CPU_BACKEND == NEO1_CPU_BACKEND_SOFT65C02)
-    sys->kbd_latched = ascii | 0x80;
-#else
-    // Physical-machine behavior: retain the first byte until the 6502 reads it.
-    if (sys->kbd_latched == 0) {
-        sys->kbd_latched = ascii | 0x80;
-    }
-#endif
+    neo1_apple1_pia_key_down(&sys->pia, ascii);
 }
 
 uint32_t neo1_read_startup_trace(const neo1_t* sys, const neo1_trace_event_t** out_events) {

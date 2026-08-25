@@ -61,6 +61,7 @@ foreach(msc_enabled IN ITEMS 0 1)
         -Werror
         -Wno-unused-function
     )
+    target_link_libraries(${msc_decode_target} PRIVATE neo1_apple1_pia)
 endforeach()
 
 add_test(NAME neo1_msc_decode_disabled_uses_ram COMMAND neo1_msc_decode_0_tests)
@@ -88,10 +89,35 @@ foreach(cffa1_enabled IN ITEMS 0 1)
         -Werror
         -Wno-unused-function
     )
+    target_link_libraries(${cffa1_decode_target} PRIVATE neo1_apple1_pia)
 endforeach()
 
 add_test(NAME neo1_cffa1_decode_disabled_uses_ram COMMAND neo1_cffa1_decode_0_tests)
 add_test(NAME neo1_cffa1_decode_enabled_uses_device COMMAND neo1_cffa1_decode_1_tests)
+
+add_executable(neo1_apple1_pia_tests
+    test_neo1_apple1_pia.c
+)
+target_include_directories(neo1_apple1_pia_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_compile_definitions(neo1_apple1_pia_tests PRIVATE
+    NEO1_CPU_BACKEND=3
+    NEO1_ROM_BASE=0xFF00
+    NEO1_ROM_PROTECT_BASE=0xFF00
+    NEO1_ENABLE_MSC=0
+    NEO1_ENABLE_VCFFA1=0
+    NEO1_DIAGNOSTICS=0
+)
+target_compile_options(neo1_apple1_pia_tests PRIVATE
+    -Wall
+    -Wextra
+    -Werror
+    -Wno-unused-function
+)
+target_link_libraries(neo1_apple1_pia_tests PRIVATE neo1_apple1_pia)
+
+add_test(NAME neo1_apple1_pia_contract COMMAND neo1_apple1_pia_tests)
 
 add_executable(neo1_soft_timing_tests
     test_neo1_soft_timing.c
@@ -113,6 +139,7 @@ target_compile_options(neo1_soft_timing_tests PRIVATE
     -Werror
     -Wno-unused-function
 )
+target_link_libraries(neo1_soft_timing_tests PRIVATE neo1_apple1_pia)
 
 add_test(NAME neo1_soft_cycle_budget COMMAND neo1_soft_timing_tests)
 
