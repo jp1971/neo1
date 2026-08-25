@@ -191,3 +191,85 @@ gate passed on 2026-08-24.
 Revert this checkpoint if callback routing changes any enabled/disabled address
 result, either target's existing storage behavior changes, a build/smoke gate
 fails, or the physical read-only storage smoke regresses.
+
+## Checkpoint 3: shared Apple-1 keyboard/display device
+
+Status: planned 2026-08-24.
+
+### Boundary
+
+Extract the minimal Apple-1 PIA-like keyboard/display state from the
+transitional machine header into ordinary shared C under `src/devices/`:
+
+- own `$D010-$D013` and the Replica 1 display mirrors `$D0F2-$D0F3` in one
+  device module;
+- own keyboard/display control, data-direction, and data registers plus the
+  pending keyboard latch;
+- return an explicit display-byte event to the machine, which retains the
+  runner-provided character callback;
+- have `neo1_key_down()` inject input through that device;
+- give Pico and SDL the same register and latch semantics.
+
+The physical behavior is the authority: KBD accesses select DDR or data using
+KBDCR bit 2, and the first pending key remains latched until the 6502 consumes
+it. This removes the SDL-only unconditional KBD data read and pending-key
+replacement accommodations. It corrects the software runner instead of
+changing the Apple-1-visible device for emulator convenience.
+
+### Preserved behavior and non-goals
+
+- KBDCR bit 7 continues to indicate a pending key; reading KBD data consumes it.
+- DSP accesses continue to select DDR or data using DSPCR bit 2; data writes
+  emit exactly one unmodified byte and display reads remain non-blocking.
+- DSPCR reads continue to report ready in bit 7.
+- LF input continues to normalize to CR and input bytes retain bit 7.
+- Reset clears all PIA-like registers and pending input.
+- No CPU adapter API, software-core globals, `$0000-$0002` recovery patch,
+  reset signaling, ROM/RAM policy, storage, terminal policy, platform event
+  loop, DVI, USB, or physical bus timing changes.
+
+### Acceptance criteria recorded before implementation
+
+Focused host tests must prove:
+
+1. reset clears both data, DDR, and control registers and reports no key;
+2. KBDCR bit 2 selects keyboard DDR versus latched input;
+3. input normalizes LF to CR, sets bit 7, and retains the first pending byte;
+4. reading KBD data consumes the latch and clears KBDCR ready;
+5. DSPCR bit 2 selects display DDR versus data, with one callback event only
+   for a data-register write;
+6. DSP and DSPCR mirrors behave exactly like `$D012-$D013`;
+7. addresses outside the six documented PIA addresses remain machine RAM;
+8. existing MSC/VCFFA1 decode, protocol, VACI, cycle-budget, and terminal tests
+   continue to pass.
+
+Build and runtime gates:
+
+- all host tests pass under SDL-23;
+- SDL personalities 23 and 50 build and reach WozMon headlessly;
+- Pico personalities 23 and 50 build with SDK 2.1.0;
+- both working build directories are restored to personality 23;
+- diff review finds no CPU, memory-policy, storage-protocol, terminal-policy,
+  platform-I/O, or physical bus-timing changes.
+
+### Physical gate
+
+Using the normal Neo1-23 image:
+
+1. confirm reset reaches WozMon on DVI and serial;
+2. enter and execute ordinary WozMon memory examine/deposit commands, proving
+   keyboard input and display output remain responsive;
+3. confirm USB keyboard and serial input both work;
+4. enter `C100R`, list the VACI directory, cancel the selection with Return,
+   then use `Q` to return to WozMon;
+5. confirm the display remains stable while the directory scrolls.
+
+No storage write is required. The checkpoint remains incomplete until the user
+supplies this physical result.
+
+### Rollback condition
+
+Revert this checkpoint if any PIA register result differs from the documented
+physical semantics, WozMon keyboard/display behavior regresses on either
+target, a build/smoke gate fails, or target-specific PIA behavior is required
+inside the shared device.
