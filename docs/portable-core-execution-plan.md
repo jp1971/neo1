@@ -533,3 +533,93 @@ Revert this checkpoint if SDL-visible reset, instruction scheduling, memory or
 device behavior changes; if SDL still requires the physical wrapper/backend
 selector; if either target fails its gates; or if the extraction requires CPU
 semantics inside `neo1_machine_t`.
+
+## Checkpoint 6: explicit physical W65C02 runner
+
+Status: planned 2026-08-25.
+
+### Boundary
+
+Replace the remaining transitional Pico-only `neo1_t`/`MOS6502CPU_*` wrapper
+with an ordinary physical runner under `systems/neo1-pico/src/`:
+
+- let the Pico application own a `neo1_machine_t` and a separate
+  `neo1_wdc_runner_t` explicitly;
+- move physical W65C02 GPIO setup, reset and interrupt signalling, address/data
+  latch access, PHI2 stepping, machine bus service, and startup tracing into
+  that runner;
+- have every captured physical bus cycle call the attached machine's explicit
+  read or write interface;
+- remove the now-unused Reload-style physical adapter, common support header,
+  clock helper, and transitional system wrapper.
+
+This checkpoint removes the final active Reload/CHIPS execution surface. It
+does not replace or evaluate the separate fake65c02 dependency used by the SDL
+software runner.
+
+### Preserved behavior and non-goals
+
+- Preserve the exact Pico pin assignments and directions, active-low
+  RESET/IRQ/NMI polarity, initialization levels, one-millisecond reset and NMI
+  pulses, latch enable ordering, and existing two- and six-`nop` settling
+  delays.
+- Preserve the cycle sequence: drive PHI2 low, capture address and R/W, drive
+  PHI2 high, then service exactly one machine read or write. Preserve the
+  first-64-access startup trace at that same service point.
+- Preserve startup ordering, including the initial reset pulse during runner
+  initialization and the later explicit machine/CPU reset before execution.
+- Preserve both machine profiles, ROM/RAM policy and payloads, PIA behavior,
+  terminal behavior, storage protocols/backends, DVI, USB, and the Pico event
+  loop.
+- Do not change the SDL software runner, fake65c02, any 6502-visible address,
+  or optional-device policy. Do not begin profile, storage, or platform-HAL
+  work here.
+- Do not recreate unused transitional execution, snapshot, or generic debug
+  callback surfaces that have no callers. Keep the hardware startup trace.
+- Preserve the existing WDC adapter's attribution and license notice in the
+  extracted runner.
+
+### Acceptance criteria recorded before implementation
+
+1. Pico owns the machine and physical runner as distinct state, and the runner
+   holds an explicit pointer to the machine it services.
+2. Each physical tick retains the exact PHI2/latch/data ordering and services
+   exactly one `neo1_machine_read` or `neo1_machine_write` after bus capture.
+3. GPIO initialization, interrupt polarity, and both startup reset pulses
+   retain their current ordering and duration.
+4. Startup diagnostics retain the first 64 serviced read/write events.
+5. Active code no longer uses `CHIPS_IMPL`, `MOS6502CPU_*`, `chips_common.h`,
+   `clk.h`, `wdc65C02cpu.h`, or the transitional `src/systems/neo1.h`.
+6. All focused host tests and both SDL profiles remain unaffected.
+
+Build and review gates:
+
+- all focused host tests pass under SDL-23;
+- SDL personalities 23 and 50 build and reach WozMon headlessly;
+- Pico personalities 23 and 50 build with SDK 2.1.0;
+- a diagnostic Pico-23 image builds with startup tracing enabled;
+- both working build directories are restored to the normal personality 23;
+- a source diff confirms that GPIO pins, latch ordering, settling delays,
+  signal polarity, and PHI2/bus-service order did not change.
+
+### Physical gate
+
+First flash the diagnostic Neo1-23 image and compare its reset vector and first
+64 bus events with the pre-extraction trace. Any sequence or timing-related
+departure blocks the checkpoint. Then flash the normal Neo1-23 image and:
+
+1. confirm reset reaches WozMon on DVI and serial;
+2. confirm `E000R` enters Integer BASIC and `F000R` enters Krusader, returning
+   to WozMon with reset after each;
+3. deposit and examine a byte at `$0300`;
+4. enter `C100R`, list the VACI directory, cancel with Return, and use `Q` to
+   return to WozMon;
+5. confirm USB keyboard, serial input, DVI output, and scrolling remain stable.
+
+No storage write is required.
+
+### Rollback condition
+
+Revert this checkpoint if the diagnostic trace changes, physical reset or bus
+timing regresses, either target fails its build/runtime gates, or the runner
+requires Pico-specific CPU semantics to leak into `neo1_machine_t`.
