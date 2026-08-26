@@ -66,16 +66,14 @@ snapshot, not the architecture contract or a roadmap.
   SDL-only `$0000-$0002` recovery patch. All ten host tests pass, both SDL
   profiles reach WozMon headlessly, both Pico profiles build with SDK 2.1.0,
   and both build trees are restored to Neo1-23. The normal Neo1-23 physical
-  gate is still required for this checkpoint.
+  gate passed on 2026-08-25.
 - SDK 2.3.0 has not been configured, built, or hardware-tested.
 
 ## Last Neo6502 hardware validation
 
 User-supplied results from 2026-08-22 through 2026-08-25 used the Neo1-23
 profile with VACI and VCFFA1 enabled. The latest result includes the complete
-checkpoint-4 physical gate for the CPU-neutral machine extraction. It predates
-the checkpoint-5 software-runner extraction and is not hardware evidence for
-that checkpoint.
+checkpoint-5 physical gate for the explicit software-runner extraction.
 
 | Capability | Result | Evidence |
 | --- | --- | --- |
@@ -86,6 +84,7 @@ that checkpoint.
 | USB HID keyboard | Verified | User explicitly verified keyboard input |
 | Apple-1 PIA-like interface | Verified | Checkpoint 3 preserved WozMon memory examine/deposit, DVI/serial display output, USB/serial input, VACI directory/return, and stable scrolling |
 | CPU-neutral machine boundary | Verified | Checkpoint 4 preserved WozMon reset, both Neo1-23 ROM entries, `$0300` memory deposit/examine, VACI directory/cancel/return, USB and serial input, DVI output, and stable scrolling |
+| Explicit software-runner boundary | Verified | Checkpoint 5 preserved the same Neo1-23 WozMon, ROM-entry, memory, VACI, input, DVI, and scrolling gate after removing the build-wide CPU selector |
 | USB MSC/FatFs | Verified | Media mounted and directory/file workflows operated |
 | VACI read/load | Verified | `.BIN` files loaded and ran |
 | VACI write | Verified | A write larger than 512 bytes produced a host-reported 2 KB file; rewriting the same name produced an exact 16-byte file, confirming multi-sector operation and truncation |

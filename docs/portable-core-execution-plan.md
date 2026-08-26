@@ -413,7 +413,7 @@ address space requires CPU- or target-specific semantics in `neo1_machine_t`.
 
 ## Checkpoint 5: explicit software-CPU runner
 
-Status: host/build gates passed 2026-08-25; awaiting physical validation.
+Status: complete 2026-08-25.
 
 ### Boundary
 
@@ -506,7 +506,11 @@ Build and runtime gates:
 - Source review found no change to `wdc65C02cpu.h` or its GPIO/latch sequence.
   The only Pico source selection change is replacing the removed backend
   selector include with a direct include of that same physical adapter; the
-  physical gate remains required.
+  physical gate remained required.
+- The user confirmed the complete normal Neo1-23 physical gate on 2026-08-25:
+  WozMon reset on DVI and serial, `E000R` Integer BASIC, `F000R` Krusader,
+  `$0300` deposit/examine, VACI directory/cancel/return, USB and serial input,
+  DVI output, and stable scrolling all passed.
 
 ### Physical gate
 
@@ -520,8 +524,8 @@ Using the normal Neo1-23 image:
    return to WozMon;
 5. confirm USB keyboard, serial input, DVI output, and scrolling remain stable.
 
-No storage write is required. The checkpoint remains incomplete until the user
-supplies this physical result.
+No storage write was required. The user confirmed this complete gate passed on
+2026-08-25.
 
 ### Rollback condition
 
