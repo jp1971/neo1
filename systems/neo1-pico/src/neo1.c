@@ -10,17 +10,16 @@
 //
 // - terminal/neo1_terminal.* : shared text grid and primitive mutations
 // - neo1_terminal_pico.*     : Pico control-byte policy and debug helpers
-// - neo1_video.*     : PicoDVI text rendering and scanline generation
-// - neo1_usb.*       : TinyUSB HID keyboard and MSC host lifecycle
-// - neo1.h           : shared memory, ROM, PIA-like, and device dispatch
+// - neo1_wdc_runner.*         : physical CPU bus timing and machine access
+// - neo1_video.*              : PicoDVI text rendering and scanline generation
+// - neo1_usb.*                : TinyUSB HID keyboard and MSC host lifecycle
+// - systems/neo1_machine.*    : shared memory, ROM, PIA, and device dispatch
 //
 // Notes:
-// - CHIPS_IMPL must appear in exactly one C/C++ translation unit
 // - This runner targets the Olimex Neo6502 and its physical W65C02 exclusively
 // - VACI and VCFFA1 images installed here are ordinary writable 6502 RAM
 
-#define CHIPS_IMPL
-
+#include <assert.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -28,10 +27,7 @@
 #include <ctype.h>
 
 #include "pico/stdlib.h"
-
-#include "chips/chips_common.h"
-#include "chips/wdc65C02cpu.h"
-#include "chips/clk.h"
+#include "systems/neo1_machine.h"
 
 #ifndef NEO1_PERSONALITY
 #define NEO1_PERSONALITY (50)
@@ -43,10 +39,13 @@
 #if NEO1_PERSONALITY == NEO1_PERSONALITY_50
 #define NEO1_ROM_BASE (0xFF00)
 #define NEO1_ROM_PROTECT_BASE (0xFF00)
+#else
+#define NEO1_ROM_BASE (0xE000)
+#define NEO1_ROM_PROTECT_BASE (0xE000)
 #endif
 
-#include "systems/neo1.h"
 #include "neo1_terminal_pico.h"
+#include "neo1_wdc_runner.h"
 #include "neo1_video.h"
 #include "neo1_msc.h"
 #if NEO1_ENABLE_VCFFA1
@@ -78,7 +77,8 @@
 // -----------------------------------------------------------------------------
 
 typedef struct {
-    neo1_t neo1;
+    neo1_machine_t machine;
+    neo1_wdc_runner_t cpu;
     neo1_terminal_t term;
 } state_t;
 
@@ -87,12 +87,12 @@ static state_t __not_in_flash() state;
 static bool msc_listed = false;
 #endif
 
-static void neo1_install_ram_tools(neo1_t* sys) {
+static void neo1_install_ram_tools(neo1_machine_t* machine) {
 #if NEO1_ENABLE_VCFFA1
     const uint32_t m2_size = (uint32_t)sizeof(neo1_cffa1_m2_blockdrv);
     const uint32_t m2_addr = NEO1_CFFA1_M2_BLOCKDRV_ADDR;
-    CHIPS_ASSERT((m2_addr + m2_size) <= NEO1_ROM_BASE);
-    memcpy(&neo1_memory(sys)[m2_addr], neo1_cffa1_m2_blockdrv, m2_size);
+    assert((m2_addr + m2_size) <= NEO1_ROM_BASE);
+    memcpy(&machine->ram[m2_addr], neo1_cffa1_m2_blockdrv, m2_size);
 #if NEO1_DIAGNOSTICS
     printf("[neo1] cffa1 m2 blockdrv installed at $%04X (%lu bytes), run with %04XR\n",
            (unsigned)m2_addr,
@@ -103,16 +103,16 @@ static void neo1_install_ram_tools(neo1_t* sys) {
 #if NEO1_DIAGNOSTICS
     printf("[neo1] vcffa1 disabled; $AFF0-$AFFF and $AFDC-$AFDD remain free\n");
 #endif
-    (void)sys;
+    (void)machine;
 #endif
 
 #if NEO1_ENABLE_VACI
     const uint32_t vaci_size = (uint32_t)sizeof(neo1_vaci_v1);
     const uint32_t vaci_addr = NEO1_VACI_V1_ADDR;
-    CHIPS_ASSERT((vaci_addr + vaci_size) <= NEO1_ROM_BASE);
-    CHIPS_ASSERT(NEO1_VACI_V1_ROM_PROTECT_HI_OFFSET < vaci_size);
-    memcpy(&neo1_memory(sys)[vaci_addr], neo1_vaci_v1, vaci_size);
-    neo1_memory(sys)[vaci_addr + NEO1_VACI_V1_ROM_PROTECT_HI_OFFSET] =
+    assert((vaci_addr + vaci_size) <= NEO1_ROM_BASE);
+    assert(NEO1_VACI_V1_ROM_PROTECT_HI_OFFSET < vaci_size);
+    memcpy(&machine->ram[vaci_addr], neo1_vaci_v1, vaci_size);
+    machine->ram[vaci_addr + NEO1_VACI_V1_ROM_PROTECT_HI_OFFSET] =
         (uint8_t)(NEO1_ROM_PROTECT_BASE >> 8);
 #if NEO1_DIAGNOSTICS
     printf("[neo1] vaci v1 installed at $%04X (%lu bytes), run with %04XR\n",
@@ -136,32 +136,38 @@ static void neo1_video_sync_terminal(void) {
 }
 
 static void neo1_soft_reset(void) {
-    neo1_reset(&state.neo1);
+    neo1_machine_reset(&state.machine);
+    neo1_wdc_runner_reset(&state.cpu);
 }
 
 #if NEO1_PERSONALITY == NEO1_PERSONALITY_50
-static void neo1_install_neo150_entry_stubs(neo1_t* sys) {
+static void neo1_install_neo150_entry_stubs(neo1_machine_t* machine) {
     // In Neo1-50, E000/F000 are writable load targets. Until user code is
     // loaded there, jumping to them would run uninitialized bytes and hang.
     // Install minimal JMP $FF00 stubs so E000R/F000R return to WozMon.
     static const uint8_t jmp_wozmon[] = { 0x4C, 0x00, 0xFF };
-    memcpy(&neo1_memory(sys)[0xE000], jmp_wozmon, sizeof(jmp_wozmon));
-    memcpy(&neo1_memory(sys)[0xF000], jmp_wozmon, sizeof(jmp_wozmon));
+    memcpy(&machine->ram[0xE000], jmp_wozmon, sizeof(jmp_wozmon));
+    memcpy(&machine->ram[0xF000], jmp_wozmon, sizeof(jmp_wozmon));
 #if NEO1_DIAGNOSTICS
     printf("[neo1] neo1-50 entry stubs installed: E000/F000 -> FF00 until overwritten\n");
 #endif
 }
 #endif
 
-static chips_range_t neo1_selected_rom_range(void) {
+typedef struct {
+    const uint8_t* data;
+    size_t size;
+} neo1_rom_t;
+
+static neo1_rom_t neo1_selected_rom(void) {
 #if NEO1_PERSONALITY == NEO1_PERSONALITY_50
-    return (chips_range_t){
-        .ptr = neo1_apple1_rom_bin,
+    return (neo1_rom_t){
+        .data = neo1_apple1_rom_bin,
         .size = (size_t)neo1_apple1_rom_bin_len,
     };
 #else
-    return (chips_range_t){
-        .ptr = neo1_system_rom_bin,
+    return (neo1_rom_t){
+        .data = neo1_system_rom_bin,
         .size = (size_t)neo1_system_rom_bin_len,
     };
 #endif
@@ -172,7 +178,8 @@ static chips_range_t neo1_selected_rom_range(void) {
 //
 // TinyUSB decodes HID reports in neo1_usb.c and forwards ASCII-like characters
 // here. This function normalizes them into the conventions expected by the
-// Apple-1 / Replica 1-style machine interface before injecting them into neo1_key_down().
+// Apple-1 / Replica 1-style machine interface before injecting them into the
+// shared keyboard latch.
 //
 // Current normalization policy:
 // - LF becomes CR
@@ -203,7 +210,7 @@ static void neo1_usb_char_in(uint8_t ch, void* user_data) {
         ch = (uint8_t)toupper(ch);
     }
 
-    neo1_key_down(&state.neo1, ch);
+    neo1_machine_key_down(&state.machine, ch);
 }
 
 // -----------------------------------------------------------------------------
@@ -267,42 +274,34 @@ static void neo1_cffa1_port_write(void* user_data, uint16_t addr, uint8_t data) 
 #endif
 
 //
-// Build the machine description consumed by the Neo1 runtime.
+// Build the description consumed by the CPU-neutral Neo1 machine.
 //
 // This is where the selected machine profile is connected to the shared model:
 // - which ROM image is presented at the top of memory
 // - which output callback receives machine-generated characters
-// - whether optional debug hooks are enabled
 //
-static neo1_desc_t neo1_desc(void) {
-    const chips_range_t rom = neo1_selected_rom_range();
+static neo1_machine_desc_t neo1_machine_desc(void) {
+    const neo1_rom_t rom = neo1_selected_rom();
 
-    return (neo1_desc_t){
-        .debug = {{0}},
-        .roms = {
-            .rom = {
-                .ptr = rom.ptr,
-                .size = rom.size,
-            },
-        },
-        .char_out = {
-            .func = neo1_char_out,
-            .user_data = 0,
-        },
-        .devices = {
+    return (neo1_machine_desc_t){
+        .rom = rom.data,
+        .rom_size = rom.size,
+        .rom_base = NEO1_ROM_BASE,
+        .rom_protect_base = NEO1_ROM_PROTECT_BASE,
+        .char_out = neo1_char_out,
+        .char_out_user_data = 0,
 #if NEO1_ENABLE_MSC
-            .msc = {
-                .read = neo1_msc_port_read,
-                .write = neo1_msc_port_write,
-            },
+        .msc = {
+            .read = neo1_msc_port_read,
+            .write = neo1_msc_port_write,
+        },
 #endif
 #if NEO1_ENABLE_VCFFA1
-            .vcffa1 = {
-                .read = neo1_cffa1_port_read,
-                .write = neo1_cffa1_port_write,
-            },
-#endif
+        .vcffa1 = {
+            .read = neo1_cffa1_port_read,
+            .write = neo1_cffa1_port_write,
         },
+#endif
     };
 }
 
@@ -311,23 +310,41 @@ static neo1_desc_t neo1_desc(void) {
 //
 // Order matters here:
 // 1. clear the terminal state
-// 2. initialize memory/ROM and configure the adapter, including its reset pulse
-// 3. install Neo1-50 safety stubs, issue machine RESET, then install RAM tools
+// 2. initialize memory/ROM, then configure the runner and its first reset pulse
+// 3. install Neo1-50 safety stubs, reset machine and CPU, then install RAM tools
 // 4. reset optional storage protocol state and initialize TinyUSB host
 // 5. DVI initialization snapshots terminal state later in main
 //
 static void app_init(void) {
     neo1_terminal_clear(&state.term);
 
-    neo1_desc_t desc = neo1_desc();
-    neo1_init(&state.neo1, &desc);
+    const neo1_machine_desc_t desc = neo1_machine_desc();
+    const bool machine_initialized = neo1_machine_init(&state.machine, &desc);
+    assert(machine_initialized);
+    (void)machine_initialized;
 
-#if NEO1_PERSONALITY == NEO1_PERSONALITY_50
-    neo1_install_neo150_entry_stubs(&state.neo1);
+    const bool runner_initialized =
+        neo1_wdc_runner_init(&state.cpu, &state.machine);
+    assert(runner_initialized);
+    (void)runner_initialized;
+
+#if NEO1_DIAGNOSTICS
+    const uint8_t* ram = state.machine.ram;
+    printf("[neo1] mem E000=%02X E001=%02X F000=%02X F001=%02X FFFA=%02X FFFB=%02X FFFC=%02X FFFD=%02X FFFE=%02X FFFF=%02X\n",
+        ram[0xE000], ram[0xE001],
+        ram[0xF000], ram[0xF001],
+        ram[0xFFFA], ram[0xFFFB],
+        ram[0xFFFC], ram[0xFFFD],
+        ram[0xFFFE], ram[0xFFFF]);
 #endif
 
-    neo1_reset(&state.neo1);
-    neo1_install_ram_tools(&state.neo1);
+#if NEO1_PERSONALITY == NEO1_PERSONALITY_50
+    neo1_install_neo150_entry_stubs(&state.machine);
+#endif
+
+    neo1_machine_reset(&state.machine);
+    neo1_wdc_runner_reset(&state.cpu);
+    neo1_install_ram_tools(&state.machine);
 
 #if NEO1_ENABLE_VCFFA1
     neo1_cffa1_init();
@@ -351,8 +368,9 @@ static void app_init(void) {
 // - USB keyboard input through neo1_usb_task()
 //
 // Both paths uppercase printable ASCII, normalize LF to CR, recognize Ctrl-R as
-// runner reset, and call neo1_key_down(). The shared machine retains only the
-// first byte while one is pending, regardless of which transport supplied it.
+// runner reset, and inject the byte through the shared keyboard latch. The
+// machine retains only the first byte while one is pending, regardless of
+// which transport supplied it.
 //
 
 #ifndef NEO1_TERM_DEBUG
@@ -386,7 +404,7 @@ static void poll_keyboard(void) {
         ch = toupper(ch);
     }
 
-    neo1_key_down(&state.neo1, (uint8_t)ch);
+    neo1_machine_key_down(&state.machine, (uint8_t)ch);
 }
 
 // -----------------------------------------------------------------------------
@@ -394,15 +412,15 @@ static void poll_keyboard(void) {
 // -----------------------------------------------------------------------------
 
 //
-// Dump the buffered startup bus trace captured by the Neo1 runtime.
+// Dump the buffered startup bus trace captured by the physical runner.
 //
 // This exposes the first physical memory transactions after reset without
 // printing from the timing-sensitive bus-service path.
 //
 #if NEO1_DIAGNOSTICS
 static void print_startup_trace(void) {
-    const neo1_trace_event_t* ev = 0;
-    uint32_t count = neo1_read_startup_trace(&state.neo1, &ev);
+    const neo1_wdc_trace_event_t* ev = 0;
+    uint32_t count = neo1_wdc_runner_read_startup_trace(&state.cpu, &ev);
 
     printf("[neo1] startup trace (%u events)\n", (unsigned)count);
 
@@ -453,7 +471,7 @@ int main(void) {
     sleep_ms(200);
 
 #if NEO1_DIAGNOSTICS
-    const chips_range_t rom = neo1_selected_rom_range();
+    const neo1_rom_t rom = neo1_selected_rom();
     printf("[neo1] personality=%u rom_base=$%04X rom_protect_base=$%04X rom_size=%u bytes\n",
         (unsigned)NEO1_PERSONALITY,
         (unsigned)NEO1_ROM_BASE,
@@ -461,9 +479,9 @@ int main(void) {
         (unsigned)rom.size);
 
     printf("[neo1] vectors: NMI=%02X%02X RESET=%02X%02X IRQ=%02X%02X\n",
-        neo1_memory(&state.neo1)[0xFFFB], neo1_memory(&state.neo1)[0xFFFA],
-        neo1_memory(&state.neo1)[0xFFFD], neo1_memory(&state.neo1)[0xFFFC],
-        neo1_memory(&state.neo1)[0xFFFF], neo1_memory(&state.neo1)[0xFFFE]);
+        state.machine.ram[0xFFFB], state.machine.ram[0xFFFA],
+        state.machine.ram[0xFFFD], state.machine.ram[0xFFFC],
+        state.machine.ram[0xFFFF], state.machine.ram[0xFFFE]);
 
     printf("[neo1] capturing startup trace...\n");
 #endif
@@ -471,8 +489,8 @@ int main(void) {
     // Capture enough early bus activity to understand reset/startup behavior,
     // preserving the verified startup sequence. Printing remains outside the
     // bus loop and is enabled only for a diagnostic build.
-    while (state.neo1.startup_trace_len < NEO1_TRACE_COUNT) {
-        neo1_tick(&state.neo1);
+    while (state.cpu.startup_trace_len < NEO1_WDC_TRACE_COUNT) {
+        neo1_wdc_runner_tick(&state.cpu);
     }
 
 #if NEO1_DIAGNOSTICS
@@ -504,7 +522,7 @@ int main(void) {
         // shared machine contract.
         const uint32_t num_ticks = 5000;
         for (uint32_t i = 0; i < num_ticks; i++) {
-            neo1_tick(&state.neo1);
+            neo1_wdc_runner_tick(&state.cpu);
         }
 
         uint32_t end_time_us = time_us_32();

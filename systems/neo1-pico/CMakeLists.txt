@@ -2,6 +2,7 @@
 # through checked-in headers.
 add_executable(neo1
     ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1_wdc_runner.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1_terminal_pico.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1_usb.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1_msc.c
