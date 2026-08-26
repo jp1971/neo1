@@ -310,6 +310,7 @@ ledger.
 - `systems/neo1-pico/` — RP2040-side platform target
 - `systems/neo1-sdl/` — SDL2 host platform target
 - `src/systems/` — CPU-neutral Neo1 machine/address space and transitional CPU wrapper
+- `src/runners/` — shared software-CPU execution runner for host-style targets
 - `src/devices/` — shared 6502-visible device contracts and Apple-1 PIA model
 - `src/terminal/` — shared host-side character-grid state
 - `src/roms/` — ROM images/assets

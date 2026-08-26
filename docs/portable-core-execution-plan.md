@@ -413,7 +413,7 @@ address space requires CPU- or target-specific semantics in `neo1_machine_t`.
 
 ## Checkpoint 5: explicit software-CPU runner
 
-Status: planned 2026-08-25.
+Status: host/build gates passed 2026-08-25; awaiting physical validation.
 
 ### Boundary
 
@@ -482,6 +482,31 @@ Build and runtime gates:
 - both working build directories are restored to personality 23;
 - source review finds no change to the WDC adapter implementation or Pico
   GPIO/latch/reset/bus-service ordering.
+
+### Evidence to date
+
+- `neo1_soft_runner` is an ordinary C module linked by SDL and host tests. It
+  points explicitly to a separately owned `neo1_machine_t` and owns the existing
+  fake65c02 callbacks, reset/interrupt presentation, instruction stepping,
+  represented-cycle accounting, and microsecond budgeting.
+- SDL now assembles and resets its machine and CPU runner separately. Its
+  `$0000-$0002` BRK-recovery jump moved with software execution and remains
+  absent from the CPU-neutral machine initialization test.
+- The obsolete `neo1_cpu_backend.h` and `soft65C02cpu.h` macro adapter were
+  removed, as was the `NEO1_CPU_BACKEND` CMake/preset setting. SDL and all host
+  tests compile without `neo1.h` or a `CHIPS_IMPL` CPU wrapper. Pico selects
+  `wdc65C02cpu.h` directly.
+- `neo1_soft_cycle_budget` proves reset-vector execution, the two-cycle NOP,
+  preserved 102/104-cycle time budgets, cycle-total reset, RAM preservation,
+  exact BRK-recovery bytes, and explicit rejection of a second active runner.
+  All ten focused tests pass under SDL-23.
+- SDL personalities 23 and 50 build and reach WozMon headlessly with a
+  disposable image. Pico personalities 23 and 50 build with SDK 2.1.0. The
+  working Pico and SDL build directories are restored to personality 23.
+- Source review found no change to `wdc65C02cpu.h` or its GPIO/latch sequence.
+  The only Pico source selection change is replacing the removed backend
+  selector include with a direct include of that same physical adapter; the
+  physical gate remains required.
 
 ### Physical gate
 

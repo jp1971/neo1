@@ -23,9 +23,9 @@ snapshot, not the architecture contract or a roadmap.
   headless WozMon startup smoke and the focused cycle-budget test passed on
   2026-08-24; this does not establish equivalent Pico storage or hardware
   behavior.
-- CPU adapter selector 2 has been retired. Configure now accepts only the
-  physical W65C02 adapter (1) or software 65C02 adapter (3), and each runner
-  rejects the other target's adapter explicitly.
+- The build-wide CPU-backend selector and Reload-style software adapter have
+  been removed. SDL links the explicit `neo1_soft_runner`; Pico directly
+  includes its physical WDC adapter and retains its transitional wrapper.
 - `NEO1_ENABLE_MSC` now controls `$D014-$D01C` ownership explicitly. Focused
   host tests prove enabled accesses reach the device and disabled accesses use
   backing RAM; VACI-without-MSC configurations are rejected.
@@ -60,13 +60,22 @@ snapshot, not the architecture contract or a roadmap.
   device routing. All ten host tests pass, both SDL profiles reach WozMon
   headlessly, and both Pico profiles build with SDK 2.1.0. Both build trees are
   restored to Neo1-23. The normal Neo1-23 physical gate passed on 2026-08-25.
+- Portable-core checkpoint 5 gives SDL an ordinary software-CPU runner attached
+  to a separately owned `neo1_machine_t`. The runner owns fake65c02 callbacks,
+  reset/interrupt presentation, instruction stepping, cycle budgeting, and the
+  SDL-only `$0000-$0002` recovery patch. All ten host tests pass, both SDL
+  profiles reach WozMon headlessly, both Pico profiles build with SDK 2.1.0,
+  and both build trees are restored to Neo1-23. The normal Neo1-23 physical
+  gate is still required for this checkpoint.
 - SDK 2.3.0 has not been configured, built, or hardware-tested.
 
 ## Last Neo6502 hardware validation
 
 User-supplied results from 2026-08-22 through 2026-08-25 used the Neo1-23
 profile with VACI and VCFFA1 enabled. The latest result includes the complete
-checkpoint-4 physical gate for the CPU-neutral machine extraction.
+checkpoint-4 physical gate for the CPU-neutral machine extraction. It predates
+the checkpoint-5 software-runner extraction and is not hardware evidence for
+that checkpoint.
 
 | Capability | Result | Evidence |
 | --- | --- | --- |
@@ -146,6 +155,11 @@ directory, bitmap, file-size, and destination limitations.
     error register immediately after command issue, then polls DRQ without a
     timeout or further busy/error checks. A device or backend that never raises
     DRQ stalls the 6502 utility indefinitely.
+10. **The software CPU dependency remains provisional.** The checked-in
+    fake65c02 core and its callback API keep CPU state process-global, so
+    `neo1_soft_runner` explicitly permits only one active instance. Its source
+    provenance/license chain remains unresolved, it has no snapshot API, and
+    broad W65C02 compatibility has not been established.
 
 ## Storage-test expectations still outstanding
 
