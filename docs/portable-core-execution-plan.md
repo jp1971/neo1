@@ -301,7 +301,7 @@ inside the shared device.
 
 ## Checkpoint 4: CPU-neutral machine address space
 
-Status: planned 2026-08-25.
+Status: host/build gates passed 2026-08-25; awaiting physical validation.
 
 ### Boundary
 
@@ -331,7 +331,9 @@ execution budgeting, reset signaling, startup tracing, and snapshots.
 - The SDL-only `$0000-$0002` BRK-recovery patch remains in the transitional CPU
   wrapper for a later behavior decision; it is not portable machine policy.
 - The software CPU remains process-global and embedded through the existing
-  macro adapter; the physical bus adapter remains embedded and timing-identical.
+  macro adapter; the physical bus adapter remains embedded with its GPIO/latch
+  operation order unchanged. Actual timing remains subject to the physical
+  gate.
 - No payload installation, terminal byte policy, storage protocol/backend,
   platform event loop, DVI, USB, or physical GPIO/latch change.
 
@@ -357,8 +359,31 @@ Build and runtime gates:
 - SDL personalities 23 and 50 build and reach WozMon headlessly;
 - Pico personalities 23 and 50 build with SDK 2.1.0;
 - both working build directories are restored to personality 23;
-- diff review finds the CPU adapters, reset sequence, external-bus service,
-  storage backends, platform I/O, and physical timing unchanged.
+- diff review finds the CPU adapters, reset sequence, storage backends,
+  platform I/O, and physical GPIO/latch operation order unchanged; the physical
+  gate confirms the resulting service timing.
+
+### Evidence to date
+
+- `neo1_machine` is ordinary shared C with no CPU, Pico, SDL, or Chips-memory
+  dependency. It owns the deterministic 64 KB backing store, ROM placement and
+  protection, shared PIA state, optional MSC/VCFFA1 decode, keyboard injection,
+  and explicit read/write bus operations.
+- The transitional `neo1_t` wrapper now forwards both CPU adapters through that
+  bus surface. It still owns CPU selection and execution, reset signaling,
+  startup tracing, snapshots, and the SDL-only `$0000-$0002` accommodation.
+  Snapshot layout version 3 rejects older state rather than misreading it.
+- `neo1_machine_address_space` is CPU-free and proves both profile layouts and
+  reset-vector bytes, ROM protection, RAM access, PIA routing/reset, exact
+  attached-device routing, and unattached-device RAM fallthrough. It and the
+  nine existing focused tests pass under SDL-23.
+- SDL personalities 23 and 50 build and reach WozMon headlessly with disposable
+  images. Pico personalities 23 and 50 build with SDK 2.1.0. The working Pico
+  and SDL build directories are restored to personality 23.
+- Source review found no changes to the physical CPU adapter, GPIO/latch
+  sequence, storage protocol/backends, terminal byte policy, DVI, USB, or
+  platform event loops. Because calls now cross the extracted C-module
+  boundary, only the physical gate can confirm external-bus service timing.
 
 ### Physical gate
 
