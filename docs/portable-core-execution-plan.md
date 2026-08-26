@@ -410,3 +410,97 @@ No storage write was required. The user confirmed this complete gate passed on
 Revert this checkpoint if any RAM, ROM, vector, PIA, or optional-device address
 result changes, either target fails its build/runtime gate, or extracting the
 address space requires CPU- or target-specific semantics in `neo1_machine_t`.
+
+## Checkpoint 5: explicit software-CPU runner
+
+Status: planned 2026-08-25.
+
+### Boundary
+
+Move SDL software-CPU execution out of the transitional CPU-selected `neo1_t`
+wrapper and into an ordinary shared runner under `src/runners/`:
+
+- keep `neo1_machine_t` as separately owned CPU-neutral state and give the
+  software runner an explicit pointer to its read/write surface;
+- move fake65c02 callback bridging, reset, IRQ/NMI presentation, instruction
+  stepping, and represented-cycle budgeting into `neo1_soft_runner`;
+- keep the SDL-only `$0000-$0002` BRK-recovery patch in that software runner,
+  outside `neo1_machine` policy;
+- have SDL assemble and reset the machine and software runner explicitly;
+- remove the Reload-style software adapter and the build-wide CPU-backend
+  selector; have the still-transitional Pico wrapper include its physical WDC
+  adapter directly.
+
+This is one runner extraction, not the final physical-runner cleanup. Pico may
+continue to use `src/systems/neo1.h` and its `MOS6502CPU_*` surface until a
+separate checkpoint can preserve and test physical reset, trace, and bus-cycle
+ownership on its own.
+
+### Preserved behavior and non-goals
+
+- SDL retains both ROM profiles, the current `$0000-$0002` patch, instruction
+  cycle accounting, catch-up limit, input normalization, display output, and
+  raw-image storage stub behavior.
+- The checked-in fake65c02 source is not modified. Its CPU architectural state
+  and required callback bridge remain process-global, so the new runner must
+  explicitly support only one active instance. Provenance and long-term CPU
+  suitability remain unresolved dependency decisions.
+- No decimal-mode, IRQ/NMI, WAI/STP, opcode, or cycle-accuracy claim is added;
+  those require a later software-CPU compatibility checkpoint.
+- The unused/incomplete SDL snapshot surface is not recreated in the new
+  runner. The Pico transitional wrapper retains its existing snapshot helpers.
+- No physical GPIO/latch implementation, machine address, profile ROM, PIA,
+  terminal policy, storage protocol/backend, DVI, USB, or platform event-loop
+  behavior changes.
+
+### Acceptance criteria recorded before implementation
+
+Focused host tests must prove:
+
+1. the software runner reads the reset vector through an attached
+   `neo1_machine_t` and a two-cycle NOP step remains two represented cycles;
+2. 100 and 101 microsecond budgets retain the current 102- and 104-cycle
+   results at 1.0218 MHz;
+3. runner reset clears its represented-cycle total and restarts from the reset
+   vector without reinitializing machine RAM;
+4. the `$0000-$0002` BRK-recovery jump is installed by the runner and targets
+   the selected reset vector, while the CPU-free machine test retains the
+   ordinary even/odd bytes there;
+5. a second simultaneous software-runner instance is rejected explicitly;
+6. machine PIA and optional-device tests compile without a CPU backend or
+   `CHIPS_IMPL` implementation header;
+7. the other MSC, VACI, machine, terminal, and protocol tests remain green.
+
+Build and runtime gates:
+
+- all host tests pass under SDL-23;
+- SDL personalities 23 and 50 build and reach WozMon headlessly;
+- no SDL source or host test includes `neo1.h`, `neo1_cpu_backend.h`, or
+  `soft65C02cpu.h`;
+- Pico personalities 23 and 50 build with SDK 2.1.0 after selecting the WDC
+  adapter directly;
+- both working build directories are restored to personality 23;
+- source review finds no change to the WDC adapter implementation or Pico
+  GPIO/latch/reset/bus-service ordering.
+
+### Physical gate
+
+Using the normal Neo1-23 image:
+
+1. confirm reset reaches WozMon on DVI and serial;
+2. confirm `E000R` enters Integer BASIC and `F000R` enters Krusader, returning
+   to WozMon with reset after each;
+3. deposit and examine a byte at `$0300`;
+4. enter `C100R`, list the VACI directory, cancel with Return, and use `Q` to
+   return to WozMon;
+5. confirm USB keyboard, serial input, DVI output, and scrolling remain stable.
+
+No storage write is required. The checkpoint remains incomplete until the user
+supplies this physical result.
+
+### Rollback condition
+
+Revert this checkpoint if SDL-visible reset, instruction scheduling, memory or
+device behavior changes; if SDL still requires the physical wrapper/backend
+selector; if either target fails its gates; or if the extraction requires CPU
+semantics inside `neo1_machine_t`.
