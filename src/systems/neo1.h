@@ -1,9 +1,9 @@
 // neo1.h
 //
-// Transitional shared Neo1 machine implementation consumed by both the Pico
-// and SDL targets. It owns the 64 KB backing store, selected top-ROM placement
-// and write protection, Apple-1 keyboard/display register behavior, storage
-// address decoding, and the display-byte callback.
+// Transitional CPU wrapper consumed by both the Pico and SDL targets. The
+// CPU-neutral 6502-visible state is owned by neo1_machine_t; this wrapper still
+// embeds the selected CPU adapter, execution/reset policy, startup trace, and
+// snapshot support.
 //
 // The CPU is still embedded through the MOS6502CPU_* macro adapter. Pico feeds
 // captured cycles from a physical W65C02; SDL's software adapter calls the same
@@ -21,7 +21,6 @@
 //
 // - chips/chips_common.h
 // - chips/neo1_cpu_backend.h   (selects CPU backend; default is wdc65C02cpu.h)
-// - chips/mem.h
 // - chips/clk.h
 //
 // The including target defines the machine profile before including this file.
@@ -88,9 +87,7 @@
 #define NEO1_DIAGNOSTICS (0)
 #endif
 
-#include "devices/neo1_cffa1.h"
-#include "devices/neo1_apple1_pia.h"
-#include "devices/neo1_msc.h"
+#include "systems/neo1_machine.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -100,12 +97,12 @@ extern "C" {
 // constants
 // -----------------------------------------------------------------------------
 
-// Version 2 stores keyboard/display registers in neo1_apple1_pia_t.
-#define NEO1_SNAPSHOT_VERSION (2)
+// Version 3 stores CPU-neutral state in neo1_machine_t.
+#define NEO1_SNAPSHOT_VERSION (3)
 #define NEO1_FREQUENCY        (1021800)
 
 enum {
-    NEO1_MEM_SIZE     = 0x10000,
+    NEO1_MEM_SIZE     = NEO1_MACHINE_MEM_SIZE,
     NEO1_ROM_SIZE     = (0x10000 - NEO1_ROM_BASE),
 
     NEO1_TRACE_COUNT  = 64,
@@ -114,16 +111,6 @@ enum {
 // -----------------------------------------------------------------------------
 // types
 // -----------------------------------------------------------------------------
-
-typedef void (*neo1_char_out_t)(uint8_t ch, void* user_data);
-typedef uint8_t (*neo1_device_read_t)(void* user_data, uint16_t addr);
-typedef void (*neo1_device_write_t)(void* user_data, uint16_t addr, uint8_t data);
-
-typedef struct {
-    neo1_device_read_t read;
-    neo1_device_write_t write;
-    void* user_data;
-} neo1_device_port_t;
 
 typedef struct {
     uint16_t addr;
@@ -151,24 +138,9 @@ typedef struct {
 
 typedef struct {
     MOS6502CPU_T cpu;
-    mem_t mem;
+    neo1_machine_t machine;
     bool valid;
     chips_debug_t debug;
-
-    // Full 64 KB backing store. The selected ROM is copied to NEO1_ROM_BASE.
-    uint8_t ram[NEO1_MEM_SIZE];
-    uint8_t* rom;
-
-    // Apple-1 keyboard/display registers and pending input latch.
-    neo1_apple1_pia_t pia;
-
-    // Optional consumer for bytes written through the display data register.
-    neo1_char_out_t char_out;
-    void* char_out_user_data;
-
-    // Target-provided implementations behind machine-owned optional decode.
-    neo1_device_port_t msc;
-    neo1_device_port_t vcffa1;
 
     // First physical external-bus accesses captured by _neo1_mem_rw(). The
     // soft adapter bypasses that helper, so SDL does not populate this trace.
@@ -192,6 +164,13 @@ uint32_t neo1_tick(neo1_t* sys);
 // Execute until at least the requested host-time budget has been represented;
 // a software instruction may overshoot the exact cycle target.
 uint32_t neo1_exec(neo1_t* sys, uint32_t micro_seconds);
+
+// Explicit CPU-facing bus surface forwarded to the CPU-neutral machine.
+uint8_t neo1_bus_read(neo1_t* sys, uint16_t addr);
+void neo1_bus_write(neo1_t* sys, uint16_t addr, uint8_t data);
+
+// Mutable backing memory for runner-installed RAM payloads and diagnostics.
+uint8_t* neo1_memory(neo1_t* sys);
 
 // Inject one ASCII keyboard byte. LF is normalized to CR, bit 7 is set, and a
 // pending byte is preserved until the 6502 consumes it.
@@ -220,13 +199,6 @@ bool neo1_load_snapshot(neo1_t* sys, uint32_t version, neo1_t* src);
 // internal helpers
 // -----------------------------------------------------------------------------
 
-static void _neo1_init_memorymap(neo1_t* sys) {
-    mem_init(&sys->mem);
-
-    // Map the whole 64K backing store as RAM. We protect ROM writes manually.
-    mem_map_ram(&sys->mem, 0, 0x0000, NEO1_MEM_SIZE, sys->ram);
-}
-
 static inline void _neo1_capture_trace(neo1_t* sys, uint16_t addr, uint8_t data, bool rw) {
     if (sys->startup_trace_complete) {
         return;
@@ -244,98 +216,15 @@ static inline void _neo1_capture_trace(neo1_t* sys, uint16_t addr, uint8_t data,
     }
 }
 
-static inline bool _neo1_cffa1_handles_addr(uint16_t addr) {
-    return (addr == NEO1_CFFA1_ID1_ADDR) ||
-           (addr == NEO1_CFFA1_ID2_ADDR) ||
-           ((addr >= NEO1_CFFA1_IO_BASE) && (addr <= NEO1_CFFA1_IO_END));
-}
-
-// Bus read dispatch order:
-// 1) route the optional Replica 1 VCFFA1 signature/register addresses
-// 2) route Apple-1 keyboard/display registers, including display mirrors
-// 3) handle readable Neo1 MSC registers
-// 4) fall back to RAM/ROM backing store
-static inline uint8_t _neo1_mem_read(neo1_t* sys, uint16_t addr) {
-#if NEO1_ENABLE_VCFFA1
-    if (_neo1_cffa1_handles_addr(addr)) {
-        return sys->vcffa1.read(sys->vcffa1.user_data, addr);
-    }
-#endif
-
-    if (neo1_apple1_pia_handles_addr(addr)) {
-        return neo1_apple1_pia_read(&sys->pia, addr);
-    }
-
-    switch (addr) {
-#if NEO1_ENABLE_MSC
-        case NEO1_IO_MSC_STATUS:
-        case NEO1_IO_MSC_DATA:
-        case NEO1_IO_MSC_INDEX:
-        case NEO1_IO_MSC_INFO:
-        case NEO1_IO_MSC_SIZE_LO:
-        case NEO1_IO_MSC_SIZE_HI:
-            return sys->msc.read(sys->msc.user_data, addr);
-#endif
-
-        default:
-            return mem_rd(&sys->mem, addr);
-    }
-}
-
-// Bus write dispatch order mirrors read side:
-// 1) route the optional Replica 1 VCFFA1 signature/register addresses
-// 2) route Apple-1 keyboard/display registers, including display mirrors
-// 3) handle writable Neo1 MSC registers
-// 4) write to backing RAM unless inside protected ROM region
-static inline void _neo1_mem_write(neo1_t* sys, uint16_t addr, uint8_t data) {
-#if NEO1_ENABLE_VCFFA1
-    if (_neo1_cffa1_handles_addr(addr)) {
-        sys->vcffa1.write(sys->vcffa1.user_data, addr, data);
-        return;
-    }
-#endif
-
-    if (neo1_apple1_pia_handles_addr(addr)) {
-        uint8_t display_byte = 0;
-        if (neo1_apple1_pia_write(&sys->pia, addr, data, &display_byte) &&
-            sys->char_out)
-        {
-            sys->char_out(display_byte, sys->char_out_user_data);
-        }
-        return;
-    }
-
-    switch (addr) {
-#if NEO1_ENABLE_MSC
-        case NEO1_IO_MSC_CMD:
-        case NEO1_IO_MSC_SECTOR_LO:
-        case NEO1_IO_MSC_SECTOR_HI:
-        case NEO1_IO_MSC_DATA:
-        case NEO1_IO_MSC_INDEX:
-        case NEO1_IO_MSC_SIZE_LO:
-        case NEO1_IO_MSC_SIZE_HI:
-            sys->msc.write(sys->msc.user_data, addr, data);
-            break;
-#endif
-
-        default:
-            // Protect the ROM region starting at NEO1_ROM_PROTECT_BASE.
-            if (addr < NEO1_ROM_PROTECT_BASE) {
-                mem_wr(&sys->mem, addr, data);
-            }
-            break;
-    }
-}
-
 // Service one captured bus access from current CPU cycle and trace it.
 static inline void _neo1_mem_rw(neo1_t* sys, uint16_t addr, bool rw) {
     if (rw) {
-        uint8_t data = _neo1_mem_read(sys, addr);
+        uint8_t data = neo1_bus_read(sys, addr);
         MOS6502CPU_SET_DATA(&sys->cpu, data);
         _neo1_capture_trace(sys, addr, data, true);
     } else {
         uint8_t data = MOS6502CPU_GET_DATA(&sys->cpu);
-        _neo1_mem_write(sys, addr, data);
+        neo1_bus_write(sys, addr, data);
         _neo1_capture_trace(sys, addr, data, false);
     }
 }
@@ -358,31 +247,30 @@ void neo1_init(neo1_t* sys, const neo1_desc_t* desc) {
     CHIPS_ASSERT(desc->roms.rom.size > 0);
     CHIPS_ASSERT(((uint32_t)NEO1_ROM_BASE + (uint32_t)desc->roms.rom.size) <= NEO1_MEM_SIZE);
 
-    sys->rom = desc->roms.rom.ptr;
-    sys->char_out = desc->char_out.func;
-    sys->char_out_user_data = desc->char_out.user_data;
 #if NEO1_ENABLE_MSC
     CHIPS_ASSERT(desc->devices.msc.read && desc->devices.msc.write);
-    sys->msc = desc->devices.msc;
 #endif
 #if NEO1_ENABLE_VCFFA1
     CHIPS_ASSERT(desc->devices.vcffa1.read && desc->devices.vcffa1.write);
-    sys->vcffa1 = desc->devices.vcffa1;
 #endif
 
-    // Build flat memory map and preload memory.
-    _neo1_init_memorymap(sys);
-
-    // Seed uninitialized backing memory deterministically: even addresses are
-    // $00 and odd addresses are $FF.
-    for (uint32_t addr = 0; addr < NEO1_MEM_SIZE; addr += 2) {
-        sys->ram[addr] = 0x00;
-        sys->ram[addr + 1] = 0xFF;
-    }
-
-    // Copy the selected top ROM payload to NEO1_ROM_BASE. The selected image
-    // should provide NMI/RESET/IRQ vectors at $FFFA-$FFFF.
-    memcpy(&sys->ram[NEO1_ROM_BASE], sys->rom, desc->roms.rom.size);
+    const neo1_machine_desc_t machine_desc = {
+        .rom = desc->roms.rom.ptr,
+        .rom_size = desc->roms.rom.size,
+        .rom_base = NEO1_ROM_BASE,
+        .rom_protect_base = NEO1_ROM_PROTECT_BASE,
+        .char_out = desc->char_out.func,
+        .char_out_user_data = desc->char_out.user_data,
+#if NEO1_ENABLE_MSC
+        .msc = desc->devices.msc,
+#endif
+#if NEO1_ENABLE_VCFFA1
+        .vcffa1 = desc->devices.vcffa1,
+#endif
+    };
+    const bool machine_initialized = neo1_machine_init(&sys->machine, &machine_desc);
+    CHIPS_ASSERT(machine_initialized);
+    (void)machine_initialized;
 
 #if (NEO1_CPU_BACKEND == NEO1_CPU_BACKEND_SOFT65C02)
     // WozMon's IRQ/BRK vector ($FFFE-$FFFF) points to $0000, which is
@@ -391,11 +279,12 @@ void neo1_init(neo1_t* sys, const neo1_desc_t* desc) {
     // infinite BRK loop. For the host-only soft backend, install a
     // JMP to the RESET vector at $0000 so BRK recovers to the monitor.
     {
+        uint8_t* ram = sys->machine.ram;
         const uint16_t reset_vec =
-            (uint16_t)sys->ram[0xFFFC] | ((uint16_t)sys->ram[0xFFFD] << 8);
-        sys->ram[0x0000] = 0x4C;                       // JMP abs
-        sys->ram[0x0001] = (uint8_t)(reset_vec & 0xFF);
-        sys->ram[0x0002] = (uint8_t)(reset_vec >> 8);
+            (uint16_t)ram[0xFFFC] | ((uint16_t)ram[0xFFFD] << 8);
+        ram[0x0000] = 0x4C;                       // JMP abs
+        ram[0x0001] = (uint8_t)(reset_vec & 0xFF);
+        ram[0x0002] = (uint8_t)(reset_vec >> 8);
     }
 #endif
 
@@ -404,15 +293,14 @@ void neo1_init(neo1_t* sys, const neo1_desc_t* desc) {
     MOS6502CPU_INIT(&sys->cpu, sys);
 
 #if NEO1_DIAGNOSTICS
+    const uint8_t* ram = sys->machine.ram;
     printf("[neo1] mem E000=%02X E001=%02X F000=%02X F001=%02X FFFA=%02X FFFB=%02X FFFC=%02X FFFD=%02X FFFE=%02X FFFF=%02X\n",
-        sys->ram[0xE000], sys->ram[0xE001],
-        sys->ram[0xF000], sys->ram[0xF001],
-        sys->ram[0xFFFA], sys->ram[0xFFFB],
-        sys->ram[0xFFFC], sys->ram[0xFFFD],
-        sys->ram[0xFFFE], sys->ram[0xFFFF]);
+        ram[0xE000], ram[0xE001],
+        ram[0xF000], ram[0xF001],
+        ram[0xFFFA], ram[0xFFFB],
+        ram[0xFFFC], ram[0xFFFD],
+        ram[0xFFFE], ram[0xFFFF]);
 #endif
-        
-    neo1_apple1_pia_reset(&sys->pia);
 
     // Clear startup trace.
     sys->startup_trace_len = 0;
@@ -429,7 +317,7 @@ void neo1_discard(neo1_t* sys) {
 void neo1_reset(neo1_t* sys) {
     CHIPS_ASSERT(sys && sys->valid);
 
-    neo1_apple1_pia_reset(&sys->pia);
+    neo1_machine_reset(&sys->machine);
     sys->startup_trace_len = 0;
     sys->startup_trace_complete = false;
     sys->system_ticks = 0;
@@ -442,6 +330,21 @@ void neo1_reset(neo1_t* sys) {
     MOS6502CPU_SET_RESET(&sys->cpu, true);
     NEO1_SLEEP_US(1000);
     MOS6502CPU_SET_RESET(&sys->cpu, false);
+}
+
+uint8_t neo1_bus_read(neo1_t* sys, uint16_t addr) {
+    CHIPS_ASSERT(sys && sys->valid);
+    return neo1_machine_read(&sys->machine, addr);
+}
+
+void neo1_bus_write(neo1_t* sys, uint16_t addr, uint8_t data) {
+    CHIPS_ASSERT(sys && sys->valid);
+    neo1_machine_write(&sys->machine, addr, data);
+}
+
+uint8_t* neo1_memory(neo1_t* sys) {
+    CHIPS_ASSERT(sys && sys->valid);
+    return sys->machine.ram;
 }
 
 uint32_t neo1_tick(neo1_t* sys) {
@@ -487,7 +390,7 @@ uint32_t neo1_exec(neo1_t* sys, uint32_t micro_seconds) {
 void neo1_key_down(neo1_t* sys, uint8_t ascii) {
     CHIPS_ASSERT(sys && sys->valid);
 
-    neo1_apple1_pia_key_down(&sys->pia, ascii);
+    neo1_machine_key_down(&sys->machine, ascii);
 }
 
 uint32_t neo1_read_startup_trace(const neo1_t* sys, const neo1_trace_event_t** out_events) {
@@ -502,25 +405,27 @@ uint32_t neo1_save_snapshot(neo1_t* sys, neo1_t* dst) {
     CHIPS_ASSERT(sys && dst);
     *dst = *sys;
     chips_debug_snapshot_onsave(&dst->debug);
-    mem_snapshot_onsave(&dst->mem, sys);
     return NEO1_SNAPSHOT_VERSION;
 }
 
-// Restore snapshot with version check and debug/memory fixups.
+// Restore snapshot with version check and current callback/port reconnection.
 bool neo1_load_snapshot(neo1_t* sys, uint32_t version, neo1_t* src) {
     CHIPS_ASSERT(sys && src);
     if (version != NEO1_SNAPSHOT_VERSION) {
         return false;
     }
 
-    const neo1_device_port_t current_msc = sys->msc;
-    const neo1_device_port_t current_vcffa1 = sys->vcffa1;
+    const neo1_char_out_t current_char_out = sys->machine.char_out;
+    void* const current_char_out_user_data = sys->machine.char_out_user_data;
+    const neo1_device_port_t current_msc = sys->machine.msc;
+    const neo1_device_port_t current_vcffa1 = sys->machine.vcffa1;
     static neo1_t im;
     im = *src;
     chips_debug_snapshot_onload(&im.debug, &sys->debug);
-    mem_snapshot_onload(&im.mem, sys);
-    im.msc = current_msc;
-    im.vcffa1 = current_vcffa1;
+    im.machine.char_out = current_char_out;
+    im.machine.char_out_user_data = current_char_out_user_data;
+    im.machine.msc = current_msc;
+    im.machine.vcffa1 = current_vcffa1;
     *sys = im;
     return true;
 }
@@ -528,12 +433,12 @@ bool neo1_load_snapshot(neo1_t* sys, uint32_t version, neo1_t* src) {
 #if (NEO1_CPU_BACKEND == NEO1_CPU_BACKEND_SOFT65C02)
 uint8_t neo1_soft65c02_mem_read(void* user, uint16_t addr) {
     neo1_t* sys = (neo1_t*)user;
-    return _neo1_mem_read(sys, addr);
+    return neo1_bus_read(sys, addr);
 }
 
 void neo1_soft65c02_mem_write(void* user, uint16_t addr, uint8_t data) {
     neo1_t* sys = (neo1_t*)user;
-    _neo1_mem_write(sys, addr, data);
+    neo1_bus_write(sys, addr, data);
 }
 #endif
 

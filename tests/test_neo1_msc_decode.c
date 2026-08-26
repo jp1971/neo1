@@ -6,7 +6,6 @@
 
 #include "chips/chips_common.h"
 #include "chips/neo1_cpu_backend.h"
-#include "chips/mem.h"
 #include "chips/clk.h"
 #include "devices/neo1_msc.h"
 #include "systems/neo1.h"
@@ -60,11 +59,11 @@ int main(void) {
     neo1_t machine;
     neo1_init(&machine, &desc);
 
-    machine.ram[NEO1_IO_MSC_STATUS] = 0x3C;
-    machine.ram[0xD01D] = 0x6C;
-    const uint8_t status = neo1_soft65c02_mem_read(&machine, NEO1_IO_MSC_STATUS);
-    neo1_soft65c02_mem_write(&machine, NEO1_IO_MSC_CMD, 0x5A);
-    const uint8_t outside = neo1_soft65c02_mem_read(&machine, 0xD01D);
+    neo1_memory(&machine)[NEO1_IO_MSC_STATUS] = 0x3C;
+    neo1_memory(&machine)[0xD01D] = 0x6C;
+    const uint8_t status = neo1_bus_read(&machine, NEO1_IO_MSC_STATUS);
+    neo1_bus_write(&machine, NEO1_IO_MSC_CMD, 0x5A);
+    const uint8_t outside = neo1_bus_read(&machine, 0xD01D);
 
 #if NEO1_ENABLE_MSC
     CHECK(status == (uint8_t)(0xA5u ^ (uint8_t)NEO1_IO_MSC_STATUS));
@@ -72,12 +71,12 @@ int main(void) {
     CHECK(g_msc_writes == 1);
     CHECK(g_last_write_addr == NEO1_IO_MSC_CMD);
     CHECK(g_last_write_data == 0x5A);
-    CHECK(machine.ram[NEO1_IO_MSC_CMD] == 0x00);
+    CHECK(neo1_memory(&machine)[NEO1_IO_MSC_CMD] == 0x00);
 #else
     CHECK(status == 0x3C);
     CHECK(g_msc_reads == 0);
     CHECK(g_msc_writes == 0);
-    CHECK(machine.ram[NEO1_IO_MSC_CMD] == 0x5A);
+    CHECK(neo1_memory(&machine)[NEO1_IO_MSC_CMD] == 0x5A);
 #endif
     CHECK(outside == 0x6C);
 

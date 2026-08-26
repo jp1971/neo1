@@ -85,6 +85,7 @@ elseif (NOT NEO1_PLATFORM STREQUAL "sdl")
 endif()
 
 add_subdirectory(src/devices)
+add_subdirectory(src/systems)
 add_subdirectory(src/terminal)
 add_subdirectory(systems)
 

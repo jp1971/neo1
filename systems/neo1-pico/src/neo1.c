@@ -31,7 +31,6 @@
 
 #include "chips/chips_common.h"
 #include "chips/neo1_cpu_backend.h"
-#include "chips/mem.h"
 #include "chips/clk.h"
 
 #ifndef NEO1_PERSONALITY
@@ -93,7 +92,7 @@ static void neo1_install_ram_tools(neo1_t* sys) {
     const uint32_t m2_size = (uint32_t)sizeof(neo1_cffa1_m2_blockdrv);
     const uint32_t m2_addr = NEO1_CFFA1_M2_BLOCKDRV_ADDR;
     CHIPS_ASSERT((m2_addr + m2_size) <= NEO1_ROM_BASE);
-    memcpy(&sys->ram[m2_addr], neo1_cffa1_m2_blockdrv, m2_size);
+    memcpy(&neo1_memory(sys)[m2_addr], neo1_cffa1_m2_blockdrv, m2_size);
 #if NEO1_DIAGNOSTICS
     printf("[neo1] cffa1 m2 blockdrv installed at $%04X (%lu bytes), run with %04XR\n",
            (unsigned)m2_addr,
@@ -112,8 +111,8 @@ static void neo1_install_ram_tools(neo1_t* sys) {
     const uint32_t vaci_addr = NEO1_VACI_V1_ADDR;
     CHIPS_ASSERT((vaci_addr + vaci_size) <= NEO1_ROM_BASE);
     CHIPS_ASSERT(NEO1_VACI_V1_ROM_PROTECT_HI_OFFSET < vaci_size);
-    memcpy(&sys->ram[vaci_addr], neo1_vaci_v1, vaci_size);
-    sys->ram[vaci_addr + NEO1_VACI_V1_ROM_PROTECT_HI_OFFSET] =
+    memcpy(&neo1_memory(sys)[vaci_addr], neo1_vaci_v1, vaci_size);
+    neo1_memory(sys)[vaci_addr + NEO1_VACI_V1_ROM_PROTECT_HI_OFFSET] =
         (uint8_t)(NEO1_ROM_PROTECT_BASE >> 8);
 #if NEO1_DIAGNOSTICS
     printf("[neo1] vaci v1 installed at $%04X (%lu bytes), run with %04XR\n",
@@ -146,8 +145,8 @@ static void neo1_install_neo150_entry_stubs(neo1_t* sys) {
     // loaded there, jumping to them would run uninitialized bytes and hang.
     // Install minimal JMP $FF00 stubs so E000R/F000R return to WozMon.
     static const uint8_t jmp_wozmon[] = { 0x4C, 0x00, 0xFF };
-    memcpy(&sys->ram[0xE000], jmp_wozmon, sizeof(jmp_wozmon));
-    memcpy(&sys->ram[0xF000], jmp_wozmon, sizeof(jmp_wozmon));
+    memcpy(&neo1_memory(sys)[0xE000], jmp_wozmon, sizeof(jmp_wozmon));
+    memcpy(&neo1_memory(sys)[0xF000], jmp_wozmon, sizeof(jmp_wozmon));
 #if NEO1_DIAGNOSTICS
     printf("[neo1] neo1-50 entry stubs installed: E000/F000 -> FF00 until overwritten\n");
 #endif
@@ -462,9 +461,9 @@ int main(void) {
         (unsigned)rom.size);
 
     printf("[neo1] vectors: NMI=%02X%02X RESET=%02X%02X IRQ=%02X%02X\n",
-        state.neo1.ram[0xFFFB], state.neo1.ram[0xFFFA],
-        state.neo1.ram[0xFFFD], state.neo1.ram[0xFFFC],
-        state.neo1.ram[0xFFFF], state.neo1.ram[0xFFFE]);
+        neo1_memory(&state.neo1)[0xFFFB], neo1_memory(&state.neo1)[0xFFFA],
+        neo1_memory(&state.neo1)[0xFFFD], neo1_memory(&state.neo1)[0xFFFC],
+        neo1_memory(&state.neo1)[0xFFFF], neo1_memory(&state.neo1)[0xFFFE]);
 
     printf("[neo1] capturing startup trace...\n");
 #endif

@@ -35,7 +35,7 @@ target_include_directories(neo1 PRIVATE
     ${CMAKE_SOURCE_DIR}
 )
 
-target_link_libraries(neo1 PRIVATE neo1_apple1_pia neo1_terminal_grid SDL2::SDL2)
+target_link_libraries(neo1 PRIVATE neo1_machine neo1_terminal_grid SDL2::SDL2)
 
 if (APPLE)
     target_link_libraries(neo1 PRIVATE SDL2::SDL2main)

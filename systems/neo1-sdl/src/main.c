@@ -18,7 +18,6 @@
 
 #include "chips/chips_common.h"
 #include "chips/neo1_cpu_backend.h"
-#include "chips/mem.h"
 #include "chips/clk.h"
 
 #if NEO1_PERSONALITY == 50
