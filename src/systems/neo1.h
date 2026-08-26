@@ -1,14 +1,14 @@
 // neo1.h
 //
-// Transitional CPU wrapper consumed by both the Pico and SDL targets. The
+// Transitional physical-CPU wrapper consumed by the Pico target. The
 // CPU-neutral 6502-visible state is owned by neo1_machine_t; this wrapper still
-// embeds the selected CPU adapter, execution/reset policy, startup trace, and
-// snapshot support.
+// embeds the WDC bus adapter, execution/reset policy, startup trace, and
+// snapshot support. Host-style targets use neo1_soft_runner directly.
 //
-// The CPU is still embedded through the MOS6502CPU_* macro adapter. Pico feeds
-// captured cycles from a physical W65C02; SDL's software adapter calls the same
-// read/write dispatch directly. Optional target devices attach through explicit
-// read/write ports; the machine retains ownership of their address decode.
+// The physical CPU is still embedded through the MOS6502CPU_* macro surface.
+// Pico feeds captured W65C02 cycles to the CPU-neutral machine. Optional target
+// devices attach through explicit read/write ports; the machine retains
+// ownership of their address decode.
 //
 // Use this header the same way as the other Chips-style headers:
 //
@@ -20,7 +20,7 @@
 // Required includes before neo1.h:
 //
 // - chips/chips_common.h
-// - chips/neo1_cpu_backend.h   (selects CPU backend; default is wdc65C02cpu.h)
+// - chips/wdc65C02cpu.h
 // - chips/clk.h
 //
 // The including target defines the machine profile before including this file.
@@ -54,10 +54,6 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
-
-#ifndef MOS6502CPU_NEEDS_EXTERNAL_BUS
-#define MOS6502CPU_NEEDS_EXTERNAL_BUS (1)
-#endif
 
 #ifndef NEO1_SLEEP_US
 #if defined(PICO_ON_DEVICE) || defined(PICO_RP2040)
@@ -142,8 +138,7 @@ typedef struct {
     bool valid;
     chips_debug_t debug;
 
-    // First physical external-bus accesses captured by _neo1_mem_rw(). The
-    // soft adapter bypasses that helper, so SDL does not populate this trace.
+    // First physical external-bus accesses captured by _neo1_mem_rw().
     neo1_trace_event_t startup_trace[NEO1_TRACE_COUNT];
     uint32_t startup_trace_len;
     bool startup_trace_complete;
@@ -158,11 +153,9 @@ typedef struct {
 void neo1_init(neo1_t* sys, const neo1_desc_t* desc);
 void neo1_discard(neo1_t* sys);
 void neo1_reset(neo1_t* sys);
-// Advance one adapter step and return the number of represented CPU cycles:
-// one physical bus cycle on Pico or one complete instruction on SDL.
+// Advance one physical W65C02 bus cycle.
 uint32_t neo1_tick(neo1_t* sys);
-// Execute until at least the requested host-time budget has been represented;
-// a software instruction may overshoot the exact cycle target.
+// Execute the requested physical-cycle budget derived from host time.
 uint32_t neo1_exec(neo1_t* sys, uint32_t micro_seconds);
 
 // Explicit CPU-facing bus surface forwarded to the CPU-neutral machine.
@@ -272,24 +265,7 @@ void neo1_init(neo1_t* sys, const neo1_desc_t* desc) {
     CHIPS_ASSERT(machine_initialized);
     (void)machine_initialized;
 
-#if (NEO1_CPU_BACKEND == NEO1_CPU_BACKEND_SOFT65C02)
-    // WozMon's IRQ/BRK vector ($FFFE-$FFFF) points to $0000, which is
-    // normally provided by BASIC on a real Apple 1. Without it, any BRK
-    // instruction (including $00 from uninitialized memory) causes an
-    // infinite BRK loop. For the host-only soft backend, install a
-    // JMP to the RESET vector at $0000 so BRK recovers to the monitor.
-    {
-        uint8_t* ram = sys->machine.ram;
-        const uint16_t reset_vec =
-            (uint16_t)ram[0xFFFC] | ((uint16_t)ram[0xFFFD] << 8);
-        ram[0x0000] = 0x4C;                       // JMP abs
-        ram[0x0001] = (uint8_t)(reset_vec & 0xFF);
-        ram[0x0002] = (uint8_t)(reset_vec >> 8);
-    }
-#endif
-
-    // Initialize the selected CPU adapter only after memory and vectors exist.
-    // The soft adapter fetches the reset vector during its initialization.
+    // Initialize the physical adapter only after memory and vectors exist.
     MOS6502CPU_INIT(&sys->cpu, sys);
 
 #if NEO1_DIAGNOSTICS
@@ -326,7 +302,6 @@ void neo1_reset(neo1_t* sys) {
 
     // The hardware adapter drives active-low RESET on GPIO 26; the signal
     // reaches the physical CPU only when the board's reset connection is made.
-    // The soft adapter resets on assertion and treats release as a no-op.
     MOS6502CPU_SET_RESET(&sys->cpu, true);
     NEO1_SLEEP_US(1000);
     MOS6502CPU_SET_RESET(&sys->cpu, false);
@@ -351,21 +326,16 @@ uint32_t neo1_tick(neo1_t* sys) {
     CHIPS_ASSERT(sys && sys->valid);
 
     // The physical adapter advances PHI2 and captures address/R/W first; the
-    // machine then services that observed access. The software adapter performs
-    // memory callbacks inside its complete-instruction step and therefore skips
-    // the external-bus service below.
+    // machine then services that observed access.
     const uint32_t cpu_cycles = MOS6502CPU_TICK(&sys->cpu);
     CHIPS_ASSERT(cpu_cycles > 0);
-#if MOS6502CPU_NEEDS_EXTERNAL_BUS
     _neo1_mem_rw(sys, sys->cpu.addr, sys->cpu.rw);
-#endif
 
     sys->system_ticks += cpu_cycles;
     return cpu_cycles;
 }
 
-// Execute for a host-time budget measured in represented CPU cycles. A physical
-// tick is exactly one cycle; a soft tick is one instruction and may overshoot.
+// Execute for a host-time budget measured in physical CPU cycles.
 uint32_t neo1_exec(neo1_t* sys, uint32_t micro_seconds) {
     CHIPS_ASSERT(sys && sys->valid);
 
@@ -429,17 +399,5 @@ bool neo1_load_snapshot(neo1_t* sys, uint32_t version, neo1_t* src) {
     *sys = im;
     return true;
 }
-
-#if (NEO1_CPU_BACKEND == NEO1_CPU_BACKEND_SOFT65C02)
-uint8_t neo1_soft65c02_mem_read(void* user, uint16_t addr) {
-    neo1_t* sys = (neo1_t*)user;
-    return neo1_bus_read(sys, addr);
-}
-
-void neo1_soft65c02_mem_write(void* user, uint16_t addr, uint8_t data) {
-    neo1_t* sys = (neo1_t*)user;
-    neo1_bus_write(sys, addr, data);
-}
-#endif
 
 #endif // CHIPS_IMPL

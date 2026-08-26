@@ -30,7 +30,7 @@
 #include "pico/stdlib.h"
 
 #include "chips/chips_common.h"
-#include "chips/neo1_cpu_backend.h"
+#include "chips/wdc65C02cpu.h"
 #include "chips/clk.h"
 
 #ifndef NEO1_PERSONALITY

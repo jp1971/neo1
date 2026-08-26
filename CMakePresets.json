@@ -14,7 +14,6 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "NEO1_PLATFORM": "pico",
-        "NEO1_CPU_BACKEND": "1",
         "NEO1_PERSONALITY": "50",
         "NEO1_ENABLE_VACI": "1",
         "NEO1_ENABLE_MSC": "1",
@@ -82,7 +81,6 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "NEO1_PLATFORM": "sdl",
-        "NEO1_CPU_BACKEND": "3",
         "NEO1_PERSONALITY": "50",
         "NEO1_ENABLE_VACI": "1",
         "NEO1_ENABLE_VCFFA1": "0"

@@ -35,15 +35,6 @@ if (NEO1_PLATFORM STREQUAL "pico")
     include(pico_sdk_import.cmake)
 endif()
 
-# Transitional CPU-adapter selector consumed by chips/neo1_cpu_backend.h.
-# 1 = physical W65C02 bus adapter used by Pico
-# 3 = fake65c02 adapter used by SDL
-set(NEO1_CPU_BACKEND "1" CACHE STRING "Neo1 CPU backend: 1=wdc65C02, 3=soft65C02")
-set_property(CACHE NEO1_CPU_BACKEND PROPERTY STRINGS 1 3)
-if (NOT NEO1_CPU_BACKEND MATCHES "^(1|3)$")
-    message(FATAL_ERROR "NEO1_CPU_BACKEND must be 1 (wdc65C02) or 3 (soft65C02)")
-endif()
-
 project(neo1                           C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
@@ -86,6 +77,9 @@ endif()
 
 add_subdirectory(src/devices)
 add_subdirectory(src/systems)
+if (NEO1_PLATFORM STREQUAL "sdl")
+    add_subdirectory(src/runners)
+endif()
 add_subdirectory(src/terminal)
 add_subdirectory(systems)
 

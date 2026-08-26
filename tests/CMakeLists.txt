@@ -48,12 +48,7 @@ foreach(msc_enabled IN ITEMS 0 1)
         ${CMAKE_SOURCE_DIR}/systems/neo1-pico/src
     )
     target_compile_definitions(${msc_decode_target} PRIVATE
-        NEO1_CPU_BACKEND=3
-        NEO1_ROM_BASE=0xFF00
-        NEO1_ROM_PROTECT_BASE=0xFF00
         NEO1_ENABLE_MSC=${msc_enabled}
-        NEO1_ENABLE_VCFFA1=0
-        NEO1_DIAGNOSTICS=0
     )
     target_compile_options(${msc_decode_target} PRIVATE
         -Wall
@@ -76,12 +71,7 @@ foreach(cffa1_enabled IN ITEMS 0 1)
         ${CMAKE_SOURCE_DIR}/src
     )
     target_compile_definitions(${cffa1_decode_target} PRIVATE
-        NEO1_CPU_BACKEND=3
-        NEO1_ROM_BASE=0xFF00
-        NEO1_ROM_PROTECT_BASE=0xFF00
-        NEO1_ENABLE_MSC=0
         NEO1_ENABLE_VCFFA1=${cffa1_enabled}
-        NEO1_DIAGNOSTICS=0
     )
     target_compile_options(${cffa1_decode_target} PRIVATE
         -Wall
@@ -100,14 +90,6 @@ add_executable(neo1_apple1_pia_tests
 )
 target_include_directories(neo1_apple1_pia_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src
-)
-target_compile_definitions(neo1_apple1_pia_tests PRIVATE
-    NEO1_CPU_BACKEND=3
-    NEO1_ROM_BASE=0xFF00
-    NEO1_ROM_PROTECT_BASE=0xFF00
-    NEO1_ENABLE_MSC=0
-    NEO1_ENABLE_VCFFA1=0
-    NEO1_DIAGNOSTICS=0
 )
 target_compile_options(neo1_apple1_pia_tests PRIVATE
     -Wall
@@ -136,21 +118,13 @@ add_executable(neo1_soft_timing_tests
 target_include_directories(neo1_soft_timing_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src
 )
-target_compile_definitions(neo1_soft_timing_tests PRIVATE
-    NEO1_CPU_BACKEND=3
-    NEO1_ROM_BASE=0xFF00
-    NEO1_ROM_PROTECT_BASE=0xFF00
-    NEO1_ENABLE_MSC=0
-    NEO1_ENABLE_VCFFA1=0
-    NEO1_DIAGNOSTICS=0
-)
 target_compile_options(neo1_soft_timing_tests PRIVATE
     -Wall
     -Wextra
     -Werror
     -Wno-unused-function
 )
-target_link_libraries(neo1_soft_timing_tests PRIVATE neo1_machine)
+target_link_libraries(neo1_soft_timing_tests PRIVATE neo1_soft_runner)
 
 add_test(NAME neo1_soft_cycle_budget COMMAND neo1_soft_timing_tests)
 

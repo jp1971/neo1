@@ -2,13 +2,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#define CHIPS_IMPL
-
-#include "chips/chips_common.h"
-#include "chips/neo1_cpu_backend.h"
-#include "chips/clk.h"
 #include "devices/neo1_apple1_pia.h"
-#include "systems/neo1.h"
+#include "systems/neo1_machine.h"
 
 static unsigned g_display_count;
 static uint8_t g_display_byte;
@@ -86,47 +81,43 @@ static void test_machine_routing(void) {
     rom[0xFC] = 0x00;
     rom[0xFD] = 0xFF;
 
-    const neo1_desc_t desc = {
-        .roms.rom = {
-            .ptr = rom,
-            .size = sizeof(rom),
-        },
-        .char_out = {
-            .func = capture_display,
-            .user_data = &g_display_count,
-        },
+    const neo1_machine_desc_t desc = {
+        .rom = rom,
+        .rom_size = sizeof(rom),
+        .rom_base = 0xFF00,
+        .rom_protect_base = 0xFF00,
+        .char_out = capture_display,
+        .char_out_user_data = &g_display_count,
     };
-    neo1_t machine;
-    neo1_init(&machine, &desc);
+    neo1_machine_t machine;
+    CHECK(neo1_machine_init(&machine, &desc));
 
-    neo1_memory(&machine)[0xD00F] = 0x21;
-    neo1_memory(&machine)[0xD014] = 0x22;
-    neo1_memory(&machine)[0xD0F1] = 0x23;
-    neo1_memory(&machine)[0xD0F4] = 0x24;
-    CHECK(neo1_bus_read(&machine, 0xD00F) == 0x21);
-    CHECK(neo1_bus_read(&machine, 0xD014) == 0x22);
-    CHECK(neo1_bus_read(&machine, 0xD0F1) == 0x23);
-    CHECK(neo1_bus_read(&machine, 0xD0F4) == 0x24);
+    machine.ram[0xD00F] = 0x21;
+    machine.ram[0xD014] = 0x22;
+    machine.ram[0xD0F1] = 0x23;
+    machine.ram[0xD0F4] = 0x24;
+    CHECK(neo1_machine_read(&machine, 0xD00F) == 0x21);
+    CHECK(neo1_machine_read(&machine, 0xD014) == 0x22);
+    CHECK(neo1_machine_read(&machine, 0xD0F1) == 0x23);
+    CHECK(neo1_machine_read(&machine, 0xD0F4) == 0x24);
 
-    neo1_bus_write(&machine, NEO1_IO_DSPCR, 0x04);
-    neo1_bus_write(&machine, NEO1_IO_DSP_ALT, 0xD1);
+    neo1_machine_write(&machine, NEO1_IO_DSPCR, 0x04);
+    neo1_machine_write(&machine, NEO1_IO_DSP_ALT, 0xD1);
     CHECK(g_display_count == 1);
     CHECK(g_display_byte == 0xD1);
 
-    neo1_key_down(&machine, 'C');
-    neo1_key_down(&machine, 'D');
-    neo1_bus_write(&machine, NEO1_IO_KBDCR, 0x04);
-    CHECK(neo1_bus_read(&machine, NEO1_IO_KBD) == (uint8_t)('C' | 0x80));
-    CHECK(neo1_bus_read(&machine, NEO1_IO_KBDCR) == 0x04);
+    neo1_machine_key_down(&machine, 'C');
+    neo1_machine_key_down(&machine, 'D');
+    neo1_machine_write(&machine, NEO1_IO_KBDCR, 0x04);
+    CHECK(neo1_machine_read(&machine, NEO1_IO_KBD) == (uint8_t)('C' | 0x80));
+    CHECK(neo1_machine_read(&machine, NEO1_IO_KBDCR) == 0x04);
 
-    neo1_bus_write(&machine, NEO1_IO_DSPCR, 0x7F);
-    neo1_key_down(&machine, 'E');
-    neo1_reset(&machine);
-    CHECK(machine.machine.pia.keyboard_latch == 0);
-    CHECK(machine.machine.pia.keyboard_control == 0);
-    CHECK(machine.machine.pia.display_control == 0);
-
-    neo1_discard(&machine);
+    neo1_machine_write(&machine, NEO1_IO_DSPCR, 0x7F);
+    neo1_machine_key_down(&machine, 'E');
+    neo1_machine_reset(&machine);
+    CHECK(machine.pia.keyboard_latch == 0);
+    CHECK(machine.pia.keyboard_control == 0);
+    CHECK(machine.pia.display_control == 0);
 }
 
 int main(void) {

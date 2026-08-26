@@ -23,11 +23,6 @@ set(NEO1_ENABLE_MSC "1" CACHE STRING "Enable Neo1 MSC register decode (1 or 0)")
 set(NEO1_ENABLE_VCFFA1 "1" CACHE STRING "Enable VCFFA1 runtime support (1 or 0)")
 set(NEO1_DIAGNOSTICS "0" CACHE STRING "Enable verbose Neo1 serial diagnostics (1 or 0)")
 
-# The Pico runner services a physical W65C02 bus and accepts only adapter 1.
-if (NOT NEO1_CPU_BACKEND STREQUAL "1")
-    message(FATAL_ERROR "neo1-pico requires NEO1_CPU_BACKEND=1 (wdc65C02 hardware backend)")
-endif()
-
 if (NOT NEO1_ENABLE_VACI MATCHES "^[01]$")
     message(FATAL_ERROR "NEO1_ENABLE_VACI must be 0 or 1")
 endif()
@@ -76,7 +71,6 @@ target_compile_definitions(neo1 PRIVATE
     NEO1_ENABLE_MSC=${NEO1_ENABLE_MSC}
     NEO1_ENABLE_VCFFA1=${NEO1_ENABLE_VCFFA1}
     NEO1_DIAGNOSTICS=${NEO1_DIAGNOSTICS}
-    NEO1_CPU_BACKEND=${NEO1_CPU_BACKEND}
 )
 
 target_include_directories(neo1 PRIVATE

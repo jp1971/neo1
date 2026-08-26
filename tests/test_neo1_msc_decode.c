@@ -2,13 +2,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#define CHIPS_IMPL
-
-#include "chips/chips_common.h"
-#include "chips/neo1_cpu_backend.h"
-#include "chips/clk.h"
 #include "devices/neo1_msc.h"
-#include "systems/neo1.h"
+#include "systems/neo1_machine.h"
 
 static unsigned g_msc_reads;
 static unsigned g_msc_writes;
@@ -43,27 +38,27 @@ int main(void) {
     rom[0xFC] = 0x00;
     rom[0xFD] = 0xFF;
 
-    const neo1_desc_t desc = {
-        .roms.rom = {
-            .ptr = rom,
-            .size = sizeof(rom),
-        },
+    const neo1_machine_desc_t desc = {
+        .rom = rom,
+        .rom_size = sizeof(rom),
+        .rom_base = 0xFF00,
+        .rom_protect_base = 0xFF00,
 #if NEO1_ENABLE_MSC
-        .devices.msc = {
+        .msc = {
             .read = test_msc_read,
             .write = test_msc_write,
             .user_data = &g_msc_reads,
         },
 #endif
     };
-    neo1_t machine;
-    neo1_init(&machine, &desc);
+    neo1_machine_t machine;
+    CHECK(neo1_machine_init(&machine, &desc));
 
-    neo1_memory(&machine)[NEO1_IO_MSC_STATUS] = 0x3C;
-    neo1_memory(&machine)[0xD01D] = 0x6C;
-    const uint8_t status = neo1_bus_read(&machine, NEO1_IO_MSC_STATUS);
-    neo1_bus_write(&machine, NEO1_IO_MSC_CMD, 0x5A);
-    const uint8_t outside = neo1_bus_read(&machine, 0xD01D);
+    machine.ram[NEO1_IO_MSC_STATUS] = 0x3C;
+    machine.ram[0xD01D] = 0x6C;
+    const uint8_t status = neo1_machine_read(&machine, NEO1_IO_MSC_STATUS);
+    neo1_machine_write(&machine, NEO1_IO_MSC_CMD, 0x5A);
+    const uint8_t outside = neo1_machine_read(&machine, 0xD01D);
 
 #if NEO1_ENABLE_MSC
     CHECK(status == (uint8_t)(0xA5u ^ (uint8_t)NEO1_IO_MSC_STATUS));
@@ -71,16 +66,15 @@ int main(void) {
     CHECK(g_msc_writes == 1);
     CHECK(g_last_write_addr == NEO1_IO_MSC_CMD);
     CHECK(g_last_write_data == 0x5A);
-    CHECK(neo1_memory(&machine)[NEO1_IO_MSC_CMD] == 0x00);
+    CHECK(machine.ram[NEO1_IO_MSC_CMD] == 0x00);
 #else
     CHECK(status == 0x3C);
     CHECK(g_msc_reads == 0);
     CHECK(g_msc_writes == 0);
-    CHECK(neo1_memory(&machine)[NEO1_IO_MSC_CMD] == 0x5A);
+    CHECK(machine.ram[NEO1_IO_MSC_CMD] == 0x5A);
 #endif
     CHECK(outside == 0x6C);
 
-    neo1_discard(&machine);
     if (g_failures != 0) {
         fprintf(stderr, "neo1_msc_decode_tests: %d failure(s)\n", g_failures);
         return 1;

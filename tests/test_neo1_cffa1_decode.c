@@ -2,13 +2,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#define CHIPS_IMPL
-
-#include "chips/chips_common.h"
-#include "chips/neo1_cpu_backend.h"
-#include "chips/clk.h"
 #include "devices/neo1_cffa1.h"
-#include "systems/neo1.h"
+#include "systems/neo1_machine.h"
 
 static unsigned g_reads;
 static unsigned g_writes;
@@ -43,30 +38,30 @@ int main(void) {
     rom[0xFC] = 0x00;
     rom[0xFD] = 0xFF;
 
-    const neo1_desc_t desc = {
-        .roms.rom = {
-            .ptr = rom,
-            .size = sizeof(rom),
-        },
+    const neo1_machine_desc_t desc = {
+        .rom = rom,
+        .rom_size = sizeof(rom),
+        .rom_base = 0xFF00,
+        .rom_protect_base = 0xFF00,
 #if NEO1_ENABLE_VCFFA1
-        .devices.vcffa1 = {
+        .vcffa1 = {
             .read = test_cffa1_read,
             .write = test_cffa1_write,
             .user_data = &g_reads,
         },
 #endif
     };
-    neo1_t machine;
-    neo1_init(&machine, &desc);
+    neo1_machine_t machine;
+    CHECK(neo1_machine_init(&machine, &desc));
 
-    neo1_memory(&machine)[NEO1_CFFA1_ID1_ADDR] = 0x31;
-    neo1_memory(&machine)[NEO1_CFFA1_IO_BASE] = 0x32;
-    neo1_memory(&machine)[0xAFDE] = 0x33;
+    machine.ram[NEO1_CFFA1_ID1_ADDR] = 0x31;
+    machine.ram[NEO1_CFFA1_IO_BASE] = 0x32;
+    machine.ram[0xAFDE] = 0x33;
 
-    const uint8_t signature = neo1_bus_read(&machine, NEO1_CFFA1_ID1_ADDR);
-    const uint8_t reg = neo1_bus_read(&machine, NEO1_CFFA1_IO_BASE);
-    neo1_bus_write(&machine, NEO1_CFFA1_IO_END, 0xA6);
-    const uint8_t outside = neo1_bus_read(&machine, 0xAFDE);
+    const uint8_t signature = neo1_machine_read(&machine, NEO1_CFFA1_ID1_ADDR);
+    const uint8_t reg = neo1_machine_read(&machine, NEO1_CFFA1_IO_BASE);
+    neo1_machine_write(&machine, NEO1_CFFA1_IO_END, 0xA6);
+    const uint8_t outside = neo1_machine_read(&machine, 0xAFDE);
 
 #if NEO1_ENABLE_VCFFA1
     CHECK(signature == (uint8_t)(0x5Au ^ (uint8_t)NEO1_CFFA1_ID1_ADDR));
@@ -75,17 +70,16 @@ int main(void) {
     CHECK(g_writes == 1);
     CHECK(g_last_write_addr == NEO1_CFFA1_IO_END);
     CHECK(g_last_write_data == 0xA6);
-    CHECK(neo1_memory(&machine)[NEO1_CFFA1_IO_END] != 0xA6);
+    CHECK(machine.ram[NEO1_CFFA1_IO_END] != 0xA6);
 #else
     CHECK(signature == 0x31);
     CHECK(reg == 0x32);
     CHECK(g_reads == 0);
     CHECK(g_writes == 0);
-    CHECK(neo1_memory(&machine)[NEO1_CFFA1_IO_END] == 0xA6);
+    CHECK(machine.ram[NEO1_CFFA1_IO_END] == 0xA6);
 #endif
     CHECK(outside == 0x33);
 
-    neo1_discard(&machine);
     if (g_failures != 0) {
         fprintf(stderr, "neo1_cffa1_decode_tests: %d failure(s)\n", g_failures);
         return 1;

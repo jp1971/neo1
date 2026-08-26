@@ -2,12 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define CHIPS_IMPL
-
-#include "chips/chips_common.h"
-#include "chips/neo1_cpu_backend.h"
-#include "chips/clk.h"
-#include "systems/neo1.h"
+#include "runners/neo1_soft_runner.h"
 
 static int g_failures;
 
@@ -25,30 +20,42 @@ int main(void) {
     rom[0xFC] = 0x00;
     rom[0xFD] = 0xFF;
 
-    const neo1_desc_t desc = {
-        .roms.rom = {
-            .ptr = rom,
-            .size = sizeof(rom),
-        },
+    const neo1_machine_desc_t desc = {
+        .rom = rom,
+        .rom_size = sizeof(rom),
+        .rom_base = 0xFF00,
+        .rom_protect_base = 0xFF00,
     };
-    neo1_t machine;
-    neo1_init(&machine, &desc);
-    neo1_reset(&machine);
+    neo1_machine_t machine;
+    neo1_soft_runner_t runner;
+    neo1_soft_runner_t second_runner;
+    CHECK(neo1_machine_init(&machine, &desc));
+    CHECK(machine.ram[0x0000] == 0x00);
+    CHECK(machine.ram[0x0001] == 0xFF);
+    CHECK(machine.ram[0x0002] == 0x00);
+    CHECK(neo1_soft_runner_init(&runner, &machine));
+    CHECK(!neo1_soft_runner_init(&second_runner, &machine));
+    CHECK(machine.ram[0x0000] == 0x4C);
+    CHECK(machine.ram[0x0001] == 0x00);
+    CHECK(machine.ram[0x0002] == 0xFF);
 
-    CHECK(neo1_tick(&machine) == 2);
-    CHECK(machine.system_ticks == 2);
+    CHECK(neo1_soft_runner_step(&runner) == 2);
+    CHECK(runner.system_cycles == 2);
 
-    neo1_reset(&machine);
-    const uint32_t exact_cycles = neo1_exec(&machine, 100);
+    machine.ram[0x0300] = 0xA5;
+    neo1_soft_runner_reset(&runner);
+    CHECK(runner.system_cycles == 0);
+    CHECK(machine.ram[0x0300] == 0xA5);
+    const uint32_t exact_cycles = neo1_soft_runner_exec_us(&runner, 100);
     CHECK(exact_cycles == 102);
-    CHECK(machine.system_ticks == exact_cycles);
+    CHECK(runner.system_cycles == exact_cycles);
 
-    neo1_reset(&machine);
-    const uint32_t overshoot_cycles = neo1_exec(&machine, 101);
+    neo1_soft_runner_reset(&runner);
+    const uint32_t overshoot_cycles = neo1_soft_runner_exec_us(&runner, 101);
     CHECK(overshoot_cycles == 104);
-    CHECK(machine.system_ticks == overshoot_cycles);
+    CHECK(runner.system_cycles == overshoot_cycles);
 
-    neo1_discard(&machine);
+    neo1_soft_runner_discard(&runner);
     if (g_failures != 0) {
         fprintf(stderr, "neo1_soft_timing_tests: %d failure(s)\n", g_failures);
         return 1;
