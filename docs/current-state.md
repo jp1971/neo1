@@ -74,16 +74,16 @@ snapshot, not the architecture contract or a roadmap.
   polarity, latch order, all 20 settling `nop`s, and PHI2-before-service order.
   All ten host tests pass, both SDL profiles reach WozMon headlessly, both Pico
   profiles and the Pico-23 diagnostic profile build with SDK 2.1.0, and both
-  build trees are restored to normal Neo1-23. Physical trace and smoke-test
-  confirmation remain required before this checkpoint is complete.
+  build trees are restored to normal Neo1-23. The post-extraction diagnostic
+  trace preserved the defined reset-vector, WozMon, PIA, and relative stack
+  sequence, and the complete normal Neo1-23 physical gate passed on 2026-08-25.
 - SDK 2.3.0 has not been configured, built, or hardware-tested.
 
 ## Last Neo6502 hardware validation
 
 User-supplied results from 2026-08-22 through 2026-08-25 used the Neo1-23
-profile with VACI and VCFFA1 enabled. The latest result includes the complete
-checkpoint-5 physical gate for the explicit software-runner extraction.
-Checkpoint 6 has not yet received its post-extraction hardware result.
+profile with VACI and VCFFA1 enabled. The latest result includes checkpoint 6's
+post-extraction diagnostic trace and complete normal-profile functional gate.
 
 | Capability | Result | Evidence |
 | --- | --- | --- |
@@ -95,6 +95,7 @@ Checkpoint 6 has not yet received its post-extraction hardware result.
 | Apple-1 PIA-like interface | Verified | Checkpoint 3 preserved WozMon memory examine/deposit, DVI/serial display output, USB/serial input, VACI directory/return, and stable scrolling |
 | CPU-neutral machine boundary | Verified | Checkpoint 4 preserved WozMon reset, both Neo1-23 ROM entries, `$0300` memory deposit/examine, VACI directory/cancel/return, USB and serial input, DVI output, and stable scrolling |
 | Explicit software-runner boundary | Verified | Checkpoint 5 preserved the same Neo1-23 WozMon, ROM-entry, memory, VACI, input, DVI, and scrolling gate after removing the build-wide CPU selector |
+| Explicit physical-runner boundary | Verified | Checkpoint 6 preserved the defined reset-vector, WozMon opcode/device, and relative stack-access trace plus the complete normal Neo1-23 functional gate |
 | USB MSC/FatFs | Verified | Media mounted and directory/file workflows operated |
 | VACI read/load | Verified | `.BIN` files loaded and ran |
 | VACI write | Verified | A write larger than 512 bytes produced a host-reported 2 KB file; rewriting the same name produced an exact 16-byte file, confirming multi-sector operation and truncation |
@@ -169,6 +170,12 @@ directory, bitmap, file-size, and destination limitations.
     `neo1_soft_runner` explicitly permits only one active instance. Its source
     provenance/license chain remains unresolved, it has no snapshot API, and
     broad W65C02 compatibility has not been established.
+11. **The physical reset pulse is not clock-qualified in software.** The Pico
+    runner holds active-low RESET for one millisecond while PHI2 remains high.
+    The W65C02S datasheet requires RESET low for at least two clock cycles.
+    Hardware reset currently reaches the vector, but the implementation does
+    not itself demonstrate that timing requirement and should be corrected in
+    a dedicated physical-bus checkpoint with trace and hardware validation.
 
 ## Storage-test expectations still outstanding
 

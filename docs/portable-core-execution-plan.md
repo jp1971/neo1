@@ -536,7 +536,7 @@ semantics inside `neo1_machine_t`.
 
 ## Checkpoint 6: explicit physical W65C02 runner
 
-Status: implemented; awaiting physical gate 2026-08-25.
+Status: complete 2026-08-25.
 
 ### Boundary
 
@@ -605,8 +605,13 @@ Build and review gates:
 ### Physical gate
 
 First flash the diagnostic Neo1-23 image and compare its reset vector and first
-64 bus events with the pre-extraction trace. Any sequence or timing-related
-departure blocks the checkpoint. Then flash the normal Neo1-23 image and:
+64 bus events with the pre-extraction trace. Compare the defined sequence from
+the `$FFFC/$FFFD` vector fetch onward, including opcode/device accesses and the
+relative stack push/pop pattern. Do not require identical pre-vector dummy
+addresses or absolute `$01xx` stack offsets: the W65C02S does not initialize
+the PC or stack pointer to a specified value during hardware reset. A departure
+in the defined sequence or relative stack behavior blocks the checkpoint. Then
+flash the normal Neo1-23 image and:
 
 1. confirm reset reaches WozMon on DVI and serial;
 2. confirm `E000R` enters Integer BASIC and `F000R` enters Krusader, returning
@@ -637,9 +642,16 @@ No storage write is required.
   build and reach the WozMon prompt headlessly. Pico personalities 23 and 50,
   plus the diagnostic Pico-23 profile, build with SDK 2.1.0. Both working build
   directories are restored to normal personality 23.
-- The physical diagnostic trace comparison and normal Neo1-23 smoke test remain
-  outstanding; this checkpoint is not complete until the user supplies that
-  hardware evidence.
+- The user supplied the diagnostic Neo1-23 trace on 2026-08-25. It fetched
+  `RESET=$FF00` from `$FFFC/$FFFD`, then matched the pre-extraction WozMon
+  instruction, PIA-write, display-poll, and relative stack-access sequence.
+  Pre-vector addresses and the absolute stack offset differed, as permitted for
+  registers not initialized by hardware reset. The diagnostic trace gate
+  therefore passed.
+- The user confirmed the complete normal Neo1-23 physical gate on 2026-08-25:
+  WozMon reset on DVI and serial, `E000R` Integer BASIC, `F000R` Krusader,
+  `$0300` deposit/examine, VACI directory/cancel/return, USB and serial input,
+  DVI output, and stable scrolling all passed.
 
 ### Rollback condition
 
