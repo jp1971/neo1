@@ -1,5 +1,5 @@
 # Pico runner and RP2040 service sources. RAM payloads are compiled into neo1.c
-# through checked-in headers; src/hid_app.c and src/msc_app.c are not linked.
+# through checked-in headers.
 add_executable(neo1
     ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/neo1_terminal_pico.c
