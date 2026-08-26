@@ -658,3 +658,73 @@ No storage write is required.
 Revert this checkpoint if the diagnostic trace changes, physical reset or bus
 timing regresses, either target fails its build/runtime gates, or the runner
 requires Pico-specific CPU semantics to leak into `neo1_machine_t`.
+
+## Checkpoint 7: clock-qualified physical reset
+
+Status: planned 2026-08-25.
+
+### Boundary
+
+Correct the Pico physical runner's RESET pulse to satisfy the W65C02S clocked
+reset contract:
+
+- retain the existing active-low RESET polarity and one-millisecond assertion;
+- while RESET remains asserted, drive two explicit complete PHI2 cycles before
+  releasing it;
+- use the same qualified pulse during physical-runner initialization and every
+  later runner reset, including Ctrl-R;
+- keep reset-qualification cycles outside machine bus service, startup tracing,
+  and represented-cycle accounting.
+
+The W65C02S datasheet requires RESET low for at least two clock cycles. Elapsed
+time with PHI2 stationary does not establish that requirement. This checkpoint
+corrects only that physical signal sequence.
+
+### Preserved behavior and non-goals
+
+- Preserve all GPIO assignments and directions, latch enable ordering, inline
+  settling delays, IRQ/NMI behavior, and normal PHI2 bus-service ordering.
+- Preserve machine reset ordering: the caller resets 6502-visible device state
+  before resetting the physical CPU.
+- Preserve both startup reset pulses, ROM/RAM contents and protection, machine
+  profiles, PIA behavior, terminal behavior, storage, DVI, USB, and the Pico
+  event loop.
+- Do not service or trace bus values observed while RESET is asserted; they are
+  reset qualification rather than program-visible accesses.
+- Do not initialize or normalize the W65C02 stack pointer or other registers in
+  software. Their pre-vector values remain outside the trace comparison.
+- Do not alter the SDL software runner or shared machine.
+
+### Acceptance criteria recorded before implementation
+
+1. One reset helper owns both initialization and later physical reset pulses.
+2. RESET is driven low, held for the existing one millisecond, remains low for
+   two complete low/high PHI2 cycles with explicit half-cycle settling time,
+   and is released only after the second cycle.
+3. The two qualification cycles do not read address/data latches, access
+   `neo1_machine`, enter the startup trace, or increment `system_cycles`.
+4. Normal `neo1_wdc_runner_tick()` ordering and its timing-sensitive latch
+   delays remain unchanged.
+5. All focused host tests pass, both SDL profiles reach WozMon headlessly, and
+   Pico-23, Pico-50, and diagnostic Pico-23 build with SDK 2.1.0.
+
+### Physical gate
+
+Using diagnostic Neo1-23:
+
+1. confirm the reset vector remains `$FF00` and the defined trace from
+   `$FFFC/$FFFD` through WozMon/PIA startup matches checkpoint 6;
+2. press Ctrl-R repeatedly and confirm every reset returns cleanly to WozMon
+   without display corruption or a stalled bus.
+
+Then use normal Neo1-23 for the checkpoint-6 functional smoke: WozMon on DVI
+and serial, `E000R`, `F000R`, `$0300` deposit/examine, VACI
+directory/cancel/return, USB and serial input, DVI output, and scrolling. No
+storage write is required.
+
+### Rollback condition
+
+Revert this checkpoint if reset no longer reaches `$FF00`, repeated Ctrl-R is
+unreliable, the defined startup trace or normal bus timing changes, qualification
+cycles leak into machine-visible service/trace/accounting, or either target
+fails its build/runtime gates.
