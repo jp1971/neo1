@@ -661,7 +661,7 @@ requires Pico-specific CPU semantics to leak into `neo1_machine_t`.
 
 ## Checkpoint 7: clock-qualified physical reset
 
-Status: planned 2026-08-25.
+Status: implemented; awaiting physical gate 2026-08-26.
 
 ### Boundary
 
@@ -721,6 +721,24 @@ Then use normal Neo1-23 for the checkpoint-6 functional smoke: WozMon on DVI
 and serial, `E000R`, `F000R`, `$0300` deposit/examine, VACI
 directory/cancel/return, USB and serial input, DVI output, and scrolling. No
 storage write is required.
+
+### Evidence to date
+
+- One `neo1_wdc_pulse_reset()` helper now owns the initialization and runtime
+  reset sequences. It retains the one-millisecond active-low assertion, drives
+  two complete PHI2 cycles with one-microsecond half-cycle delays while RESET
+  remains low, and releases RESET only after the second high phase.
+- The qualification loop calls only the RESET, PHI2, and delay primitives. It
+  does not sample address/data latches, service `neo1_machine`, capture trace
+  events, or increment `system_cycles`.
+- Source review confirms that normal bus-cycle/latch code, pin assignments,
+  inline settling delays, IRQ/NMI behavior, and caller-owned machine-reset
+  ordering are unchanged.
+- All ten focused host tests pass under SDL-23. SDL personalities 23 and 50
+  build and reach WozMon headlessly. Pico personalities 23 and 50 plus the
+  diagnostic Pico-23 profile build with SDK 2.1.0.
+- The diagnostic trace, repeated Ctrl-R, and normal Neo1-23 hardware gates
+  remain outstanding.
 
 ### Rollback condition
 

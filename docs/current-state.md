@@ -77,6 +77,12 @@ snapshot, not the architecture contract or a roadmap.
   build trees are restored to normal Neo1-23. The post-extraction diagnostic
   trace preserved the defined reset-vector, WozMon, PIA, and relative stack
   sequence, and the complete normal Neo1-23 physical gate passed on 2026-08-25.
+- Portable-core checkpoint 7 clock-qualifies the physical RESET assertion with
+  two complete PHI2 cycles while retaining the existing one-millisecond pulse.
+  Qualification cycles bypass machine service, tracing, and cycle accounting.
+  All ten host tests pass, both SDL profiles reach WozMon headlessly, and
+  Pico-23, Pico-50, and diagnostic Pico-23 build with SDK 2.1.0. Physical trace,
+  repeated Ctrl-R, and normal-profile smoke confirmation remain required.
 - SDK 2.3.0 has not been configured, built, or hardware-tested.
 
 ## Last Neo6502 hardware validation
@@ -170,12 +176,11 @@ directory, bitmap, file-size, and destination limitations.
     `neo1_soft_runner` explicitly permits only one active instance. Its source
     provenance/license chain remains unresolved, it has no snapshot API, and
     broad W65C02 compatibility has not been established.
-11. **The physical reset pulse is not clock-qualified in software.** The Pico
-    runner holds active-low RESET for one millisecond while PHI2 remains high.
-    The W65C02S datasheet requires RESET low for at least two clock cycles.
-    Hardware reset currently reaches the vector, but the implementation does
-    not itself demonstrate that timing requirement and should be corrected in
-    a dedicated physical-bus checkpoint with trace and hardware validation.
+11. **The clock-qualified physical reset awaits hardware validation.** The Pico
+    runner now holds active-low RESET for the existing one millisecond and two
+    complete PHI2 cycles, satisfying the W65C02S software signal sequence on
+    source review. Diagnostic trace, repeated Ctrl-R, and normal-profile
+    hardware tests remain required before this item is closed.
 
 ## Storage-test expectations still outstanding
 
