@@ -23,9 +23,9 @@ snapshot, not the architecture contract or a roadmap.
   headless WozMon startup smoke and the focused cycle-budget test passed on
   2026-08-24; this does not establish equivalent Pico storage or hardware
   behavior.
-- The build-wide CPU-backend selector and Reload-style software adapter have
-  been removed. SDL links the explicit `neo1_soft_runner`; Pico directly
-  includes its physical WDC adapter and retains its transitional wrapper.
+- The build-wide CPU-backend selector and all active Reload/CHIPS execution
+  surfaces have been removed. SDL links the explicit `neo1_soft_runner`; Pico
+  owns an explicit `neo1_wdc_runner` beside the shared machine.
 - `NEO1_ENABLE_MSC` now controls `$D014-$D01C` ownership explicitly. Focused
   host tests prove enabled accesses reach the device and disabled accesses use
   backing RAM; VACI-without-MSC configurations are rejected.
@@ -67,6 +67,15 @@ snapshot, not the architecture contract or a roadmap.
   profiles reach WozMon headlessly, both Pico profiles build with SDK 2.1.0,
   and both build trees are restored to Neo1-23. The normal Neo1-23 physical
   gate passed on 2026-08-25.
+- Portable-core checkpoint 6 gives Pico an ordinary physical-W65C02 runner
+  attached to a separately owned `neo1_machine_t`. The runner owns GPIO/latch
+  timing, reset/interrupt pins, machine bus service, cycle counting, and the
+  first-64-access startup trace. Source review preserved the pin map, signal
+  polarity, latch order, all 20 settling `nop`s, and PHI2-before-service order.
+  All ten host tests pass, both SDL profiles reach WozMon headlessly, both Pico
+  profiles and the Pico-23 diagnostic profile build with SDK 2.1.0, and both
+  build trees are restored to normal Neo1-23. Physical trace and smoke-test
+  confirmation remain required before this checkpoint is complete.
 - SDK 2.3.0 has not been configured, built, or hardware-tested.
 
 ## Last Neo6502 hardware validation
@@ -74,6 +83,7 @@ snapshot, not the architecture contract or a roadmap.
 User-supplied results from 2026-08-22 through 2026-08-25 used the Neo1-23
 profile with VACI and VCFFA1 enabled. The latest result includes the complete
 checkpoint-5 physical gate for the explicit software-runner extraction.
+Checkpoint 6 has not yet received its post-extraction hardware result.
 
 | Capability | Result | Evidence |
 | --- | --- | --- |

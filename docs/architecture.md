@@ -14,12 +14,12 @@ CPU.
 The ordinary shared `neo1_machine` C module implements that CPU-neutral state
 and explicit bus surface. `neo1_soft_runner` attaches a software CPU to that
 surface and owns instruction stepping, reset/interrupt presentation, and cycle
-budgeting for SDL and future host-style targets. The current `neo1_t` layer is
-now a transitional physical-runner wrapper used only by Pico: it retains WDC
-bus integration, reset policy, physical startup tracing, and snapshots, but
-delegates every 6502 memory access to `neo1_machine_read()` or
-`neo1_machine_write()`. Platform runners may install RAM-resident tools through
-the backing-memory accessor; those tools do not become machine-model policy.
+budgeting for SDL and future host-style targets. Pico owns a separate
+`neo1_wdc_runner` that drives the physical W65C02 clock, reset and interrupt
+pins, reads the Neo6502 address/data latches, and forwards each captured bus
+access to `neo1_machine_read()` or `neo1_machine_write()`. Platform runners may
+install RAM-resident tools directly in the machine's backing store; those tools
+do not become machine-model policy.
 
 The backing store is initialized with `$00` at even addresses and `$FF` at odd
 addresses. A selected ROM image is then copied into top memory. Reads and

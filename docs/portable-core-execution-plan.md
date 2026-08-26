@@ -536,7 +536,7 @@ semantics inside `neo1_machine_t`.
 
 ## Checkpoint 6: explicit physical W65C02 runner
 
-Status: planned 2026-08-25.
+Status: implemented; awaiting physical gate 2026-08-25.
 
 ### Boundary
 
@@ -617,6 +617,29 @@ departure blocks the checkpoint. Then flash the normal Neo1-23 image and:
 5. confirm USB keyboard, serial input, DVI output, and scrolling remain stable.
 
 No storage write is required.
+
+### Evidence to date
+
+- Pico now owns a separate `neo1_machine_t` and `neo1_wdc_runner_t`. The runner
+  points explicitly to its machine and owns GPIO/latch timing, physical reset
+  and interrupt pins, one-cycle bus service, cycle counting, and the buffered
+  first-64-access startup trace.
+- The physical implementation is ordinary `.c`/`.h` code under the Pico target.
+  The transitional `neo1_t`, `MOS6502CPU_*`, `CHIPS_IMPL`, common/snapshot
+  support, and unused clock helper were removed from active code. The separate
+  SDL fake65c02 dependency is unchanged.
+- Source comparison found the same GPIO pin map and initialization order, the
+  same active-low RESET/IRQ/NMI behavior and one-millisecond pulses, the same
+  OE1/OE2/OE3 latch order, and exactly the same 20 inline settling `nop`s.
+  PHI2 remains low for address/R/W capture and returns high before data service
+  and trace capture.
+- All ten focused host tests pass under SDL-23. SDL personalities 23 and 50
+  build and reach the WozMon prompt headlessly. Pico personalities 23 and 50,
+  plus the diagnostic Pico-23 profile, build with SDK 2.1.0. Both working build
+  directories are restored to normal personality 23.
+- The physical diagnostic trace comparison and normal Neo1-23 smoke test remain
+  outstanding; this checkpoint is not complete until the user supplies that
+  hardware evidence.
 
 ### Rollback condition
 
