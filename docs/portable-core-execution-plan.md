@@ -301,7 +301,7 @@ inside the shared device.
 
 ## Checkpoint 4: CPU-neutral machine address space
 
-Status: host/build gates passed 2026-08-25; awaiting physical validation.
+Status: complete 2026-08-25.
 
 ### Boundary
 
@@ -332,8 +332,8 @@ execution budgeting, reset signaling, startup tracing, and snapshots.
   wrapper for a later behavior decision; it is not portable machine policy.
 - The software CPU remains process-global and embedded through the existing
   macro adapter; the physical bus adapter remains embedded with its GPIO/latch
-  operation order unchanged. Actual timing remains subject to the physical
-  gate.
+  operation order unchanged. The completed physical gate confirms the resulting
+  service timing remains viable.
 - No payload installation, terminal byte policy, storage protocol/backend,
   platform event loop, DVI, USB, or physical GPIO/latch change.
 
@@ -383,7 +383,12 @@ Build and runtime gates:
 - Source review found no changes to the physical CPU adapter, GPIO/latch
   sequence, storage protocol/backends, terminal byte policy, DVI, USB, or
   platform event loops. Because calls now cross the extracted C-module
-  boundary, only the physical gate can confirm external-bus service timing.
+  boundary, external-bus service timing required the physical confirmation
+  recorded below.
+- The user confirmed the complete normal Neo1-23 physical gate on 2026-08-25:
+  WozMon reset on DVI and serial, `E000R` Integer BASIC, `F000R` Krusader,
+  `$0300` deposit/examine, VACI directory/cancel/return, USB and serial input,
+  DVI output, and stable scrolling all passed.
 
 ### Physical gate
 
@@ -397,8 +402,8 @@ Using the normal Neo1-23 image:
    return to WozMon;
 6. confirm USB keyboard, serial input, DVI output, and scrolling remain stable.
 
-No storage write is required. The checkpoint remains incomplete until the user
-supplies this physical result.
+No storage write was required. The user confirmed this complete gate passed on
+2026-08-25.
 
 ### Rollback condition
 

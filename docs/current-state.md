@@ -59,16 +59,14 @@ snapshot, not the architecture contract or a roadmap.
   vectors, RAM fallthrough, write protection, PIA reset, and attached/unattached
   device routing. All ten host tests pass, both SDL profiles reach WozMon
   headlessly, and both Pico profiles build with SDK 2.1.0. Both build trees are
-  restored to Neo1-23. The normal Neo1-23 physical gate is still required for
-  this checkpoint.
+  restored to Neo1-23. The normal Neo1-23 physical gate passed on 2026-08-25.
 - SDK 2.3.0 has not been configured, built, or hardware-tested.
 
 ## Last Neo6502 hardware validation
 
 User-supplied results from 2026-08-22 through 2026-08-25 used the Neo1-23
-profile with VACI and VCFFA1 enabled. These results close checkpoint 3 and
-predate the checkpoint-4 machine extraction; the table must not be read as
-hardware validation of the current checkpoint-4 image.
+profile with VACI and VCFFA1 enabled. The latest result includes the complete
+checkpoint-4 physical gate for the CPU-neutral machine extraction.
 
 | Capability | Result | Evidence |
 | --- | --- | --- |
@@ -78,6 +76,7 @@ hardware validation of the current checkpoint-4 image.
 | Serial console | Verified | Normal and diagnostic profiles produced their intended transcripts while preserving monitor output |
 | USB HID keyboard | Verified | User explicitly verified keyboard input |
 | Apple-1 PIA-like interface | Verified | Checkpoint 3 preserved WozMon memory examine/deposit, DVI/serial display output, USB/serial input, VACI directory/return, and stable scrolling |
+| CPU-neutral machine boundary | Verified | Checkpoint 4 preserved WozMon reset, both Neo1-23 ROM entries, `$0300` memory deposit/examine, VACI directory/cancel/return, USB and serial input, DVI output, and stable scrolling |
 | USB MSC/FatFs | Verified | Media mounted and directory/file workflows operated |
 | VACI read/load | Verified | `.BIN` files loaded and ran |
 | VACI write | Verified | A write larger than 512 bytes produced a host-reported 2 KB file; rewriting the same name produced an exact 16-byte file, confirming multi-sector operation and truncation |
