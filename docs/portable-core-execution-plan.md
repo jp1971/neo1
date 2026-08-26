@@ -661,7 +661,7 @@ requires Pico-specific CPU semantics to leak into `neo1_machine_t`.
 
 ## Checkpoint 7: clock-qualified physical reset
 
-Status: implemented; awaiting physical gate 2026-08-26.
+Status: complete 2026-08-26.
 
 ### Boundary
 
@@ -737,8 +737,13 @@ storage write is required.
 - All ten focused host tests pass under SDL-23. SDL personalities 23 and 50
   build and reach WozMon headlessly. Pico personalities 23 and 50 plus the
   diagnostic Pico-23 profile build with SDK 2.1.0.
-- The diagnostic trace, repeated Ctrl-R, and normal Neo1-23 hardware gates
-  remain outstanding.
+- The user supplied the diagnostic Neo1-23 trace on 2026-08-26. It retained
+  `RESET=$FF00` and matched checkpoint 6's defined vector, WozMon/PIA, display
+  polling, and relative stack-access sequence.
+- The user confirmed repeated Ctrl-R and the complete normal Neo1-23 physical
+  gate passed on 2026-08-26: every reset returned cleanly to WozMon, and ROM
+  entry, memory deposit/examine, VACI, input, DVI, serial, and scrolling
+  behavior remained correct.
 
 ### Rollback condition
 

@@ -37,8 +37,10 @@ both personalities. The vectors occupy `$FFFA-$FFFF`.
 | Neo1-23 | 8 KB system ROM at `$E000-$FFFF`, containing Integer BASIC, Krusader, WozMon, and vectors | `$E000-$FFFF` |
 | Neo1-50 | 256-byte WozMon image at `$FF00-$FFFF`; Pico places temporary `JMP $FF00` stubs at `$E000` and `$F000` | `$FF00-$FFFF` |
 
-Neo1 Pico asserts the external reset control through GPIO 26. The Neo6502 must
-route that signal to the W65C02 RESET pin using DIP switch 3 or the documented
+Neo1 Pico asserts the external reset control through GPIO 26. It retains RESET
+low for one millisecond and drives two complete PHI2 cycles before releasing
+the signal; those qualification cycles are not serviced as machine accesses.
+The Neo6502 must route RESET to the W65C02 using DIP switch 3 or the documented
 UEXT-to-bus connection. The software runner obtains the same reset entry from
 the vector without modeling that physical wire.
 
