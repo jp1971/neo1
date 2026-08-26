@@ -51,6 +51,12 @@ if (NEO1_PERSONALITY STREQUAL "23")
     endif()
 endif()
 
+message(STATUS
+    "Neo1 Pico profile: personality=${NEO1_PERSONALITY}, "
+    "vaci=${NEO1_ENABLE_VACI}, msc=${NEO1_ENABLE_MSC}, "
+    "vcffa1=${NEO1_ENABLE_VCFFA1}, diagnostics=${NEO1_DIAGNOSTICS}"
+)
+
 # Normal firmware builds consume checked-in RAM image headers and never run
 # assemblers or generators. Regeneration is an explicit maintenance operation,
 # documented in src/ram/README.md, and requires Python plus cc65 tools.

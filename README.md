@@ -68,7 +68,7 @@ storage.
 ## Building Neo1 Pico in VS Code
 
 The supported hardware-build path uses the Raspberry Pi Pico VS Code extension
-with its CMake Tools integration. The currently verified toolchain is:
+and the Microsoft CMake Tools extension. The currently verified toolchain is:
 
 - Raspberry Pi Pico SDK 2.1.0, managed by the extension
 - Arm GNU Toolchain 13.3.Rel1, managed by the extension
@@ -94,26 +94,53 @@ is still required because it supplies Neo1's project-specific
 `olimex_neo6502.h` board definition. PicoDVI and TinyUSB are linked from the
 checked-in submodules.
 
-### Select and configure a profile
+### Understand the two CMake controls
+
+The similarly named setting and commands belong to two different extensions:
+
+- **Raspberry Pi Pico: Use CMake Tools** unchecked means the Raspberry Pi Pico
+  extension performs configuration. Its **Clean CMake** and **Configure CMake**
+  controls work, but they invoke plain `cmake -B build` and do not select a
+  Neo1 CMake preset.
+- **Raspberry Pi Pico: Use CMake Tools** checked means the separate Microsoft
+  CMake Tools extension performs configuration. Neo1 presets work directly,
+  but the Pico extension deliberately disables its own **Clean CMake** and
+  **Configure CMake** controls.
+
+Selecting a preset in CMake Tools does not make the Pico extension's configure
+command preset-aware. A Pico **Clean CMake** also deletes `build/` and
+immediately configures it with the CMake defaults: Neo1-50 with diagnostics
+off.
+
+### Keep the Pico Compile and Flash controls
+
+To retain the Pico extension's controls while selecting a Neo1 profile, leave
+**Raspberry Pi Pico: Use CMake Tools** unchecked and use this sequence:
 
 1. Open the repository root in VS Code.
-2. Enable **Raspberry Pi Pico: Use CMake Tools** in the workspace settings.
-   The setting `raspberry-pi-pico.useCmakeTools` must be `true`.
-3. Run **CMake: Select Configure Preset** from the Command Palette.
-4. Select one of the normal or diagnostic `neo1-pico-*` profiles listed above.
-5. Confirm that the selected build preset begins with **Build Neo1 Pico** and
-   contains the same `23` or `50` personality as the configure preset.
-6. Use the extension's **Configure CMake** button, or run **CMake: Configure**.
+2. If a clean build is needed, use Pico **Clean CMake** first. Its temporary
+   default Neo1-50 configuration will be replaced in the next steps.
+3. Run **CMake: Select Configure Preset** from the Command Palette and choose
+   the required normal or diagnostic `neo1-pico-*` preset.
+4. Run **CMake: Configure** from the Command Palette. This is the Microsoft
+   CMake Tools command, not Pico **Configure CMake**.
+5. Confirm the configure output reports the intended values, for example:
 
-Both Pico personalities use the `build/` directory, so selecting a different
-personality must be followed by Configure before the next build.
+   ```text
+   Neo1 Pico profile: personality=23, vaci=1, msc=1, vcffa1=1, diagnostics=1
+   ```
 
-### Clean and compile
+6. Use Pico **Compile Project**, then Pico **Flash**.
 
-- Use **Clean CMake** when changing SDK versions, recovering from a stale
-  configuration, or when a full rebuild is required.
-- Use **Compile Project** for normal builds. With CMake Tools enabled, it builds
-  the active preset rather than silently returning to a fixed personality.
+Both Pico personalities use the `build/` directory. Repeat the preset selection
+and **CMake: Configure** after every Pico **Clean CMake** and whenever changing
+profiles. Pico **Configure CMake** may reconfigure an existing cache, but it
+cannot choose or recover a preset after the cache has been deleted.
+
+Alternatively, check **Raspberry Pi Pico: Use CMake Tools** and use CMake Tools
+for configure, build, and clean operations. The Pico extension may still be
+used for flash, run, and debug, but its own Clean/Configure controls will be
+unavailable in this mode.
 
 The resulting hardware artifacts are written under
 `build/systems/neo1-pico/`. The UF2 to flash is:
@@ -122,9 +149,8 @@ The resulting hardware artifacts are written under
 build/systems/neo1-pico/neo1.uf2
 ```
 
-Before flashing after a profile switch, check the configure output for the
-expected `NEO1_PERSONALITY`, `NEO1_ENABLE_VACI`, `NEO1_ENABLE_MSC`, and
-`NEO1_ENABLE_VCFFA1` values.
+Before flashing after a profile switch, check the `Neo1 Pico profile` configure
+line for the expected personality, device flags, and diagnostics value.
 
 ### Serial diagnostics
 
