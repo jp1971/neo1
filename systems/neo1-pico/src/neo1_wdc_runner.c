@@ -47,9 +47,28 @@
 #define NEO1_WDC_RESET_PIN       (26u)
 #define NEO1_WDC_IRQ_PIN         (25u)
 #define NEO1_WDC_NMI_PIN         (27u)
+#define NEO1_WDC_RESET_CYCLES    (2u)
+#define NEO1_WDC_RESET_HALF_US   (1u)
 
 static void neo1_wdc_set_reset(bool asserted) {
     gpio_put(NEO1_WDC_RESET_PIN, asserted ? 0 : 1);
+}
+
+static void neo1_wdc_pulse_reset(void) {
+    neo1_wdc_set_reset(true);
+    sleep_us(1000);
+
+    // W65C02S RESET must remain low for at least two complete clock cycles.
+    // These cycles qualify the physical signal only: do not sample latches,
+    // service the machine, trace accesses, or count represented CPU cycles.
+    for (uint32_t i = 0; i < NEO1_WDC_RESET_CYCLES; i++) {
+        gpio_put(NEO1_WDC_CLOCK_PIN, 0);
+        sleep_us(NEO1_WDC_RESET_HALF_US);
+        gpio_put(NEO1_WDC_CLOCK_PIN, 1);
+        sleep_us(NEO1_WDC_RESET_HALF_US);
+    }
+
+    neo1_wdc_set_reset(false);
 }
 
 static uint16_t neo1_wdc_get_addr(void) {
@@ -177,9 +196,7 @@ bool neo1_wdc_runner_init(
     gpio_set_dir(NEO1_WDC_NMI_PIN, GPIO_OUT);
     gpio_put(NEO1_WDC_NMI_PIN, 1);
 
-    neo1_wdc_set_reset(true);
-    sleep_us(1000);
-    neo1_wdc_set_reset(false);
+    neo1_wdc_pulse_reset();
     return true;
 }
 
@@ -191,9 +208,7 @@ void neo1_wdc_runner_reset(neo1_wdc_runner_t* runner) {
     runner->system_cycles = 0;
 
     neo1_wdc_runner_set_irq(runner, false);
-    neo1_wdc_set_reset(true);
-    sleep_us(1000);
-    neo1_wdc_set_reset(false);
+    neo1_wdc_pulse_reset();
 }
 
 uint32_t neo1_wdc_runner_tick(neo1_wdc_runner_t* runner) {

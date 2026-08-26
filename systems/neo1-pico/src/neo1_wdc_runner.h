@@ -28,10 +28,10 @@ typedef struct {
     uint32_t system_cycles;
 } neo1_wdc_runner_t;
 
-// Configure the physical bus and issue its initial 1 ms RESET pulse.
+// Configure the physical bus and issue its initial clock-qualified RESET pulse.
 bool neo1_wdc_runner_init(neo1_wdc_runner_t* runner, neo1_machine_t* machine);
 
-// Clear runner counters/trace, release IRQ, and issue a 1 ms RESET pulse.
+// Clear runner counters/trace, release IRQ, and issue a clock-qualified RESET.
 // Machine-visible device reset remains an explicit caller responsibility.
 void neo1_wdc_runner_reset(neo1_wdc_runner_t* runner);
 
