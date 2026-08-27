@@ -38,9 +38,9 @@ The plan is based on the following verified upstream facts:
   Jam-specific host transport and dependency decision.
 - The onboard microSD slot supports SPI and SDIO. Start with SPI; SDIO is an
   optimization, not a bring-up prerequisite.
-- Pico SDK 2.1.0, Neo1's current verified baseline, does not include the
+- Pico SDK 2.1.0, Neo1's prior verified baseline, does not include the
   `adafruit_fruit_jam` board. Official board support was added in SDK 2.2.0;
-  SDK 2.3.0 also defines board PSRAM constants.
+  Neo1's current SDK 2.3.0 baseline also defines board PSRAM constants.
 - Published Fruit Jam boards using A2 RP2350B silicon are affected by the E9
   GPIO erratum. Bring-up must record the tested board revision and avoid
   assumptions about weak pulls or high-impedance inputs.
@@ -69,8 +69,8 @@ copy pin numbers from an example without that comparison.
 
 1. The build recognizes only `pico` and `sdl`; its on-device branch also
    hard-codes RP2040 TinyUSB and PicoDVI assumptions.
-2. The managed SDK version is fixed at 2.1.0, before official Fruit Jam board
-   support.
+2. The managed SDK baseline is now 2.3.0, but the official Fruit Jam board
+   selection and minimal diagnostic probe have not been exercised.
 3. `neo1_soft_runner` still installs an SDL BRK-recovery jump into
    `$0000-$0002`. A CPU runner must not silently alter shared machine memory.
 4. The checked-in `fake65c02` dependency is process-global, has unresolved
@@ -128,6 +128,9 @@ testing when existing builds and host contracts remain unchanged.
 
 ## Checkpoint 0: SDK 2.3.0 and board-support gate
 
+Status: existing-target SDK gate complete on 2026-08-27; Fruit Jam probe
+outstanding
+
 ### Boundary
 
 Upgrade the supported Pico SDK baseline from 2.1.0 to 2.3.0 as an independent
@@ -152,6 +155,17 @@ Verify:
   and the verified VCFFA1 read workflow.
 - A minimal upstream-style Fruit Jam probe builds, flashes, identifies the
   board over diagnostics, and does not yet contain Neo1 machine code.
+
+### Evidence to date
+
+- The Pico extension selected SDK 2.3.0 and picotool 2.3.0 while retaining Arm
+  GNU Toolchain 13.3.Rel1.
+- Normal and diagnostic Neo1-23 and Neo1-50 configured and built against SDK
+  2.3.0 using Neo1's project-carried `olimex_neo6502.h`.
+- Both SDL profiles built, all twelve host tests passed, Neo1-50 reached WozMon
+  headlessly, and the generated VACI payload check passed.
+- The user supplied a passing normal Neo1-23 hardware result on 2026-08-27.
+- The minimal Fruit Jam board probe remains the only open checkpoint-0 gate.
 
 ### Rollback
 

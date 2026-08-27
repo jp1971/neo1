@@ -1,6 +1,6 @@
 # Neo1 Current State
 
-Last updated: 2026-08-26
+Last updated: 2026-08-27
 
 This document records evidence-backed capabilities and known defects. It is a
 snapshot, not the architecture contract or a roadmap.
@@ -9,8 +9,16 @@ snapshot, not the architecture contract or a roadmap.
 
 - The supported Neo1 Pico workflow uses the Raspberry Pi Pico VS Code extension
   with CMake Tools and the named CMake configure/build presets.
-- Raspberry Pi Pico SDK 2.1.0 and Arm GNU Toolchain 13.3.Rel1 are the verified
-  hardware-build baseline.
+- Raspberry Pi Pico SDK 2.3.0, Arm GNU Toolchain 13.3.Rel1, and picotool 2.3.0
+  are the verified hardware-build baseline.
+- The SDK 2.3.0 upgrade gate passed on 2026-08-27. Normal and diagnostic
+  Neo1-23 and Neo1-50 Pico presets configured and built against the
+  extension-managed SDK, while retaining Neo1's checked-in
+  `olimex_neo6502.h` board definition. Both SDL profiles built, all twelve host
+  tests passed, Neo1-50 reached WozMon headlessly, and the generated VACI image
+  matched its checked-in header. Both build directories were restored to the
+  normal Neo1-23 profile. The user then supplied a passing normal Neo1-23
+  hardware result.
 - Normal Neo1-23 and Neo1-50 Pico builds passed on 2026-08-24 with the VACI
   error-line follow-up. Normal and diagnostic builds for both profiles passed
   on 2026-08-23; ELF inspection confirmed normal builds omit verbose trace
@@ -110,16 +118,14 @@ snapshot, not the architecture contract or a roadmap.
   WozMon headlessly, and both Pico profiles build with SDK 2.1.0. Both working
   build directories are restored to normal Neo1-23. No shared-machine, Pico,
   or 6502-visible behavior changed, so no additional physical gate is required.
-- SDK 2.3.0 has not been configured, built, or hardware-tested.
-
 ## Last Neo6502 hardware validation
 
-User-supplied results from 2026-08-22 through 2026-08-26 used the Neo1-23
-profile with VACI and VCFFA1 enabled. The latest result is checkpoint 9's
-normal-profile functional and disposable-media gate after extracting the
-shared MSC register protocol. Ordinary storage operation passed; live USB
-reinsertion was not established, and recovery was verified by power cycling
-with the medium inserted.
+User-supplied results from 2026-08-22 through 2026-08-27 used the Neo1-23
+profile with VACI and VCFFA1 enabled. The latest result is the passing normal
+Neo1-23 regression gate after moving the build baseline to SDK 2.3.0.
+Checkpoint 9 remains the latest detailed disposable-media result: ordinary
+storage operation passed; live USB reinsertion was not established, and
+recovery was verified by power cycling with the medium inserted.
 
 | Capability | Result | Evidence |
 | --- | --- | --- |
@@ -176,9 +182,9 @@ directory, bitmap, file-size, and destination limitations.
    Pico VACI file behavior.
 3. **Neo1-50 hardware behavior is build-verified only in this pass.** The dated
    physical smoke result above is for Neo1-23.
-4. **SDK 2.3.0 is unverified.** Upgrade validation requires both Pico profile
-   builds followed by the reset, DVI, keyboard, MSC, VACI, and VCFFA1 hardware
-   smoke tests.
+4. **Fruit Jam board support has not been exercised.** SDK 2.3.0 is verified
+   for the existing Neo6502 and SDL targets, but the planned minimal
+   `adafruit_fruit_jam` configure/build/flash diagnostic probe has not started.
 5. **Automated coverage remains limited.** Focused host tests cover the shared
    MSC protocol with the Pico FatFs backend, the SDL raw MSC backend and basic
    VCFFA1 separation, and execute VACI BASIC plus ordinary read/write paths on

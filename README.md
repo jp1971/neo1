@@ -75,14 +75,16 @@ storage.
 The supported hardware-build path uses the Raspberry Pi Pico VS Code extension
 and the Microsoft CMake Tools extension. The currently verified toolchain is:
 
-- Raspberry Pi Pico SDK 2.1.0, managed by the extension
+- Raspberry Pi Pico SDK 2.3.0, managed by the extension
 - Arm GNU Toolchain 13.3.Rel1, managed by the extension
+- picotool 2.3.0, managed by the extension
 - Ninja and CMake supplied by the extension
 
-SDK 2.3.0 has not yet been validated. Treat changing SDK versions as a separate
-build change: update the extension-managed project SDK, perform a clean
-configure and build of both Pico personalities, and repeat the Neo6502 smoke
-test before making it the documented baseline.
+SDK 2.3.0 was validated on 2026-08-27 with clean normal and diagnostic builds
+of both Pico personalities, the SDL/host regression suite, and a user-supplied
+normal Neo1-23 hardware smoke test. Treat future SDK changes as separate build
+changes and repeat the same build and hardware gates before updating this
+baseline.
 
 ### Prepare the checkout
 
