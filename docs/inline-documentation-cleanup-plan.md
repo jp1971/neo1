@@ -2,7 +2,8 @@
 
 Date: 2026-08-23
 
-Status: In progress; phases 1-6 and Phase 7 checkpoints 1-3 complete
+Status: Complete 2026-08-26; deferred VCFFA1 reliability work remains tracked
+in `docs/current-state.md`
 
 Purpose: make the current code legible and truthful before portable-core
 extraction without changing behavior, blessing temporary architecture, or
@@ -356,6 +357,15 @@ Closeout evidence:
   any executable token changes, move that change out of this plan and apply the
   normal behavior-change validation, including hardware evidence where
   required.
+
+Result: completed 2026-08-26. The final sweep found no active Reload/CHIPS
+support files or generated/intermediate debris to remove. It corrected stale
+plan status and one misleading SDL terminal-ownership comment. A separate
+behavior-preserving SDL cleanup removed ignored presentation arguments and dead
+bookkeeping; all twelve host tests passed, both SDL profiles built and reached
+WozMon headlessly, both Pico profiles built with SDK 2.1.0, and the VACI
+source/header check passed. Neither Pico code nor any 6502-visible contract
+changed, so the existing checkpoint-9 hardware result remains applicable.
 
 ## Recommended stopping point before portable-core work
 

@@ -5,7 +5,8 @@
 > `docs/current-state.md` or current code.
 
 Date: 2026-04-01
-Status: Planning
+Status: Superseded on 2026-08-26 by the implemented architecture and
+`docs/portable-core-execution-plan.md`
 Scope owner: Neo1 solo mainline
 
 ## 0) Motivation

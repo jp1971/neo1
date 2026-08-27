@@ -4,6 +4,8 @@ Started: 2026-08-24
 
 Baseline tag: `neo1-portable-core-baseline-2026-08-24`
 
+Status: completed 2026-08-26 through checkpoint 9.
+
 This plan records reversible extraction checkpoints and their evidence. Stable
 6502-visible contracts remain in `docs/architecture.md`; verified runtime state
 and defects remain in `docs/current-state.md`.
@@ -976,3 +978,18 @@ Revert this checkpoint if Pico MSC/VACI behavior changes, SDL can no longer use
 its raw disk for sector access, VCFFA1 behavior changes, protocol state becomes
 process-global, filesystem details leak into the shared module, either target
 fails its gates, or the disposable-media physical smoke regresses.
+
+## Phase closeout
+
+Checkpoints 1-9 establish the shared machine and remove the active Reload/CHIPS
+execution architecture. Pico and SDL now use explicit physical and software CPU
+runners around one CPU-neutral address space, shared profiles, Apple-1 PIA
+state, terminal grid, and MSC register protocol. The phase closes without
+claiming that the SDL raw-image backend equals Pico's file service.
+
+Remaining work is follow-on dependency and compatibility work rather than a
+prerequisite for closing this phase: qualify or replace the process-global
+`fake65c02` dependency, resolve its provenance, decide how to share or retire
+the duplicate SDL VCFFA1 implementation, and introduce additional software
+platform seams only when a second consumer requires them. Current limitations
+and hardware evidence remain in `docs/current-state.md`.

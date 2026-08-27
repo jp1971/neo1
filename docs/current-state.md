@@ -103,6 +103,13 @@ snapshot, not the architecture contract or a roadmap.
   2.1.0. Both build trees are restored to normal Neo1-23. The normal Neo1-23
   disposable-media gate passed on 2026-08-26 with the cold-boot USB-storage
   limitations recorded below.
+- The post-checkpoint cleanup on 2026-08-26 tracked the historical baseline and
+  engineering guide, closed superseded planning state, and simplified SDL's
+  presentation call by removing ignored framebuffer arguments and dead
+  bookkeeping. All twelve host tests pass, both SDL profiles build and reach
+  WozMon headlessly, and both Pico profiles build with SDK 2.1.0. Both working
+  build directories are restored to normal Neo1-23. No shared-machine, Pico,
+  or 6502-visible behavior changed, so no additional physical gate is required.
 - SDK 2.3.0 has not been configured, built, or hardware-tested.
 
 ## Last Neo6502 hardware validation
