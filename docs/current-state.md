@@ -29,13 +29,14 @@ snapshot, not the architecture contract or a roadmap.
 - `NEO1_ENABLE_MSC` now controls `$D014-$D01C` ownership explicitly. Focused
   host tests prove enabled accesses reach the device and disabled accesses use
   backing RAM; VACI-without-MSC configurations are rejected.
-- The SDL host configuration now includes eleven focused tests. All passed
+- The SDL host configuration now includes twelve focused tests. All passed
   locally through 2026-08-26: the production Pico MSC contract against an
-  in-memory FatFs fake, the generated VACI BASIC/ordinary transfer paths,
-  enabled and disabled MSC and VCFFA1 address decode, the shared Apple-1 PIA
-  contract, the CPU-neutral RAM/ROM/address-space contract, software-CPU cycle
-  budgeting, the real Neo1-23/Neo1-50 profile layouts, and the shared terminal
-  grid plus preserved Pico/SDL control-byte policies.
+  in-memory FatFs fake, the SDL raw MSC backend and separate VCFFA1 state, the
+  generated VACI BASIC/ordinary transfer paths, enabled and disabled MSC and
+  VCFFA1 address decode, the shared Apple-1 PIA contract, the CPU-neutral
+  RAM/ROM/address-space contract, software-CPU cycle budgeting, the real
+  Neo1-23/Neo1-50 profile layouts, and the shared terminal grid plus preserved
+  Pico/SDL control-byte policies.
 - Portable-core checkpoint 1 now gives Pico and SDL one shared 40×24 terminal
   grid while leaving control-byte policy and rendering target-owned. Both SDL
   profiles reach WozMon headlessly, both Pico profiles build, and the eight host
@@ -92,14 +93,26 @@ snapshot, not the architecture contract or a roadmap.
   diagnostic Pico-23 build with SDK 2.1.0. Both build trees are restored to
   normal Neo1-23. The complete normal Neo1-23 physical gate passed on
   2026-08-26.
+- Portable-core checkpoint 9 now gives both runners one instance-owned MSC
+  register protocol for `$D014-$D01C`. Pico supplies only FatFs operations;
+  SDL supplies only its raw-image sector operations, with an empty directory
+  and no raw-image truncation. The SDL duplicate command/register state machine
+  and its false-success/post-command-WRITE accommodations are gone; VCFFA1 is
+  unchanged. All twelve host tests pass, both SDL profiles reach WozMon
+  headlessly, and Pico-23, Pico-50, and diagnostic Pico-23 build with SDK
+  2.1.0. Both build trees are restored to normal Neo1-23. The normal Neo1-23
+  disposable-media gate passed on 2026-08-26 with the cold-boot USB-storage
+  limitations recorded below.
 - SDK 2.3.0 has not been configured, built, or hardware-tested.
 
 ## Last Neo6502 hardware validation
 
 User-supplied results from 2026-08-22 through 2026-08-26 used the Neo1-23
-profile with VACI and VCFFA1 enabled. The latest result is checkpoint 8's
-complete normal-profile functional gate after moving both ROM layouts into the
-shared machine-profile module.
+profile with VACI and VCFFA1 enabled. The latest result is checkpoint 9's
+normal-profile functional and disposable-media gate after extracting the
+shared MSC register protocol. Ordinary storage operation passed; live USB
+reinsertion was not established, and recovery was verified by power cycling
+with the medium inserted.
 
 | Capability | Result | Evidence |
 | --- | --- | --- |
@@ -114,6 +127,7 @@ shared machine-profile module.
 | Explicit physical-runner boundary | Verified | Checkpoint 6 preserved the defined reset-vector, WozMon opcode/device, and relative stack-access trace plus the complete normal Neo1-23 functional gate |
 | Clock-qualified physical reset | Verified | Checkpoint 7 preserved the defined diagnostic trace, repeated Ctrl-R reliably returned to WozMon, and the complete normal Neo1-23 functional gate passed |
 | Shared machine profiles | Verified | Checkpoint 8 preserved WozMon reset, both Neo1-23 ROM entries, `$0300` memory deposit/examine, VACI directory/cancel/return, USB and serial input, DVI output, and stable scrolling |
+| Shared MSC register protocol | Verified with limitations | Checkpoint 9 preserved the normal Neo1-23 gate, ordinary VACI list/load/run, an exact 16-byte disposable write and readback, and VCFFA1 signature/status/read/catalog behavior. With media unavailable, BASIC `L` returned silently to the VACI menu; live reinsertion was not established, while a power cycle with the medium inserted restored storage |
 | USB MSC/FatFs | Verified | Media mounted and directory/file workflows operated |
 | VACI read/load | Verified | `.BIN` files loaded and ran |
 | VACI write | Verified | A write larger than 512 bytes produced a host-reported 2 KB file; rewriting the same name produced an exact 16-byte file, confirming multi-sector operation and truncation |
@@ -148,22 +162,24 @@ directory, bitmap, file-size, and destination limitations.
 1. **Generic VCFFA1 `.po` discovery is faulty.** The extension matcher handles
    `.hdv` and `.2mg`, but its `.po` comparison uses the wrong character
    positions. Preferred names such as `CFFA1RW.PO` and `CFFA1.PO` still work.
-2. **SDL does not install VACI or the VCFFA1 RAM utility.** Its MSC file and
-   directory commands are accepted as no-ops and its storage path maps raw
-   sectors to one host image. SDL preset labels therefore do not imply Pico
-   VACI file behavior.
+2. **SDL does not install VACI or the VCFFA1 RAM utility.** It uses the shared
+   MSC command/register protocol, but its backend maps sector reads/writes to
+   one raw host image, reports an empty directory, and cannot truncate that
+   image after a short logical write. SDL preset labels therefore do not imply
+   Pico VACI file behavior.
 3. **Neo1-50 hardware behavior is build-verified only in this pass.** The dated
    physical smoke result above is for Neo1-23.
 4. **SDK 2.3.0 is unverified.** Upgrade validation requires both Pico profile
    builds followed by the reset, DVI, keyboard, MSC, VACI, and VCFFA1 hardware
    smoke tests.
-5. **Automated coverage remains limited.** Focused host tests cover the Pico MSC
-   register protocol and execute VACI BASIC plus ordinary read/write paths on
+5. **Automated coverage remains limited.** Focused host tests cover the shared
+   MSC protocol with the Pico FatFs backend, the SDL raw MSC backend and basic
+   VCFFA1 separation, and execute VACI BASIC plus ordinary read/write paths on
    the software 65C02; enabled/disabled MSC and VCFFA1 address decode, the
    Apple-1 PIA-like register/latch contract, both profile RAM/ROM layouts and
    vectors, reset preservation, and soft-instruction cycle budgeting are also
-   covered. There are still no focused tests for VACI delete, VCFFA1 protocol
-   behavior, snapshots, or broad CPU compatibility.
+   covered. There are still no focused tests for VACI delete, the complete
+   VCFFA1 protocol/error behavior, snapshots, or broad CPU compatibility.
 6. **The VCFFA1 utility's create/delete updates are not transactional.** New
     file creation commits allocation bits before its directory and sapling
     index writes, without rollback. Delete may free an index block after an
@@ -188,6 +204,12 @@ directory, bitmap, file-size, and destination limitations.
     `neo1_soft_runner` explicitly permits only one active instance. Its source
     provenance/license chain remains unresolved, it has no snapshot API, and
     broad W65C02 compatibility has not been established.
+11. **USB-storage recovery is cold-boot verified only.** During checkpoint 9,
+    the specialized VACI BASIC `L` command returned silently to its menu when
+    storage was unavailable instead of printing an error. Live reinsertion did
+    not establish recovery; power cycling with the USB medium already inserted
+    restored normal listing, loading, and writing. The shared register-level
+    missing-media error paths remain covered by host tests.
 
 ## Storage-test expectations still outstanding
 

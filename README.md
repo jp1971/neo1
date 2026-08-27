@@ -195,15 +195,18 @@ cmake --build --preset build-neo1-sdl-23-full
 ctest --test-dir build-sdl --output-on-failure
 ```
 
-`neo1_msc_register_contract` compiles the production Pico MSC implementation
-against a test-only in-memory FatFs backend. It covers directory filtering and
-indexed open, short-read padding, missing and read-only media, invalid commands
-and seeks, short writes, delete, multi-sector write, and exact truncating
-overwrite. `neo1_vaci_payload_contract` executes the generated VACI payload on
-the software 65C02. It verifies all 2,230 BASIC snapshot bytes plus ordinary
+`neo1_msc_register_contract` runs the shared MSC register protocol with the
+production Pico FatFs backend against a test-only in-memory filesystem. It
+covers directory filtering and indexed open, short-read padding, missing and
+read-only media, invalid commands and seeks, short writes, delete, multi-sector
+write, exact truncating overwrite, DATA bounds, and independent protocol
+instances. `neo1_sdl_storage_backends` verifies SDL raw-sector MSC behavior,
+shared command/error sequencing, and separation from its VCFFA1 compatibility
+state. `neo1_vaci_payload_contract` executes the generated VACI payload on the
+software 65C02. It verifies all 2,230 BASIC snapshot bytes plus ordinary
 multi-sector read/write, close behavior, transfer-range rejection, profile ROM
 boundaries, reserved status rejection, and bounded busy polling. These tests
-do not establish SDL storage equivalence or physical USB behavior.
+do not establish SDL file-service equivalence or physical USB behavior.
 
 ## 6502-visible memory map
 
@@ -286,6 +289,12 @@ loads at `$E000` and `$F000` while rejecting them on Neo1-23. Invalid ordinary
 ranges print `READ ERR` or `WRITE ERR` on a new line without transferring data.
 The specialized `L` and `S` commands retain their documented BASIC snapshot
 ranges.
+
+If USB storage is unavailable, the current Pico VACI image may return silently
+to the menu after the specialized BASIC `L` command instead of printing a load
+error. Live USB-storage reinsertion has not been verified; power-cycle the
+Neo6502 with the medium already inserted to restore the known-working storage
+path.
 
 `D` is an intentionally hidden destructive command that lists files and
 deletes one by index. The corrected `L`/`S` format is compatible with existing

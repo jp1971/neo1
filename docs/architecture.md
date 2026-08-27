@@ -140,6 +140,20 @@ mean error. On Pico, the low seven bits carry the FatFs result where available;
 internal generic failures use code 1. Commands complete synchronously in the
 current backend, but 6502 software polls STATUS as part of the contract.
 
+One instance-owned shared `neo1_msc` module implements these registers,
+transactions, directory filtering, indexed-file sequencing, and the DATA
+buffer for both runners. Its backend contract contains named-file operations,
+sector transfer, root-directory iteration, and delete callbacks; backends do
+not receive register addresses or machine memory.
+
+Pico attaches a FatFs backend and provides the complete file behavior above.
+SDL attaches its existing raw host-image backend: sector READ/WRITE may occur
+without OPEN, directory enumeration is empty, and short logical writes cannot
+truncate the raw image. SDL still does not install the VACI RAM payload, so
+this raw backend is not equivalent to Pico's file service. Unknown commands
+and nonexistent indexed files nevertheless follow the shared error/status
+protocol rather than reporting false success.
+
 The MSC interface does not assert IRQ or NMI. It is a Neo1 extension rather
 than part of the Apple-1 core.
 
@@ -180,7 +194,8 @@ ownership allows a future physical expansion device to replace an internal
 service without changing ordinary memory semantics.
 
 The shared machine owns that conditional address decode and invokes optional
-MSC and VCFFA1 read/write ports attached in its description. Pico and SDL attach
-their target-owned protocol/backend implementations through those ports. A
-port represents a decoded 6502 register access; it does not own memory policy,
-CPU execution, physical bus timing, or platform lifecycle.
+MSC and VCFFA1 read/write ports attached in its description. Pico and SDL
+attach the shared MSC protocol, but still attach separate target-owned VCFFA1
+protocol/backends. A port represents a decoded 6502 register access; it does
+not own memory policy, CPU execution, physical bus timing, or platform
+lifecycle.
