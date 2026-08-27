@@ -751,3 +751,102 @@ Revert this checkpoint if reset no longer reaches `$FF00`, repeated Ctrl-R is
 unreliable, the defined startup trace or normal bus timing changes, qualification
 cycles leak into machine-visible service/trace/accounting, or either target
 fails its build/runtime gates.
+
+## Checkpoint 8: shared machine profiles
+
+Status: complete 2026-08-26.
+
+### Boundary
+
+Move the Neo1-23 and Neo1-50 ROM-layout policy into one ordinary shared machine
+profile module:
+
+- each profile identifies its personality, ROM image, ROM placement, and ROM
+  write-protection boundary;
+- both the Pico and SDL runners select one of those shared profiles and pass it
+  to `neo1_machine_init()`;
+- the shared machine uses the selected profile when initializing memory and
+  retains its identity for runner diagnostics and profile-specific startup
+  decisions.
+
+This checkpoint removes duplicated profile semantics. It does not move
+runner-installed software into the shared machine.
+
+### Preserved behavior and non-goals
+
+- Preserve the exact Neo1-23 8 KB system ROM at `$E000-$FFFF`, protection from
+  `$E000`, and reset vector `$FF00`.
+- Preserve the exact Neo1-50 256-byte WozMon ROM at `$FF00-$FFFF`, protection
+  from `$FF00`, and reset vector `$FF00`.
+- Keep the Neo1-50 `$E000/$F000` safety stubs and the VACI/VCFFA1 RAM payloads
+  Pico-runner policy. SDL must not begin installing those payloads here.
+- Preserve all device enablement, address decode, PIA behavior, terminal
+  behavior, storage behavior, CPU-runner behavior, physical bus timing, DVI,
+  USB, and event loops.
+- Do not begin the shared MSC or VCFFA1 protocol extraction, introduce a
+  platform HAL, or change the build-time profile choices.
+
+### Acceptance criteria recorded before implementation
+
+1. One shared profile lookup owns both profiles' ROM pointer, ROM size, ROM
+   base, and protection base; neither runner defines those values separately.
+2. `neo1_machine_init()` accepts a selected profile and rejects missing or
+   invalid profile data before modifying machine state.
+3. The machine retains the selected profile, and Pico diagnostics and
+   profile-specific startup use that identity instead of duplicated layout
+   constants.
+4. A focused host test verifies both real ROM images, sizes, placements,
+   protection boundaries, vectors, lookup failure, and machine write policy.
+5. Existing focused tests pass, both SDL profiles reach WozMon headlessly, and
+   Pico-23, Pico-50, and diagnostic Pico-23 build with SDK 2.1.0.
+6. Both working build directories are restored to normal personality 23.
+
+### Physical gate
+
+Flash normal Neo1-23 and:
+
+1. confirm reset reaches WozMon on DVI and serial;
+2. confirm `E000R` enters Integer BASIC and `F000R` enters Krusader, returning
+   to WozMon with reset after each;
+3. deposit and examine a byte at `$0300`;
+4. enter `C100R`, list the VACI directory, cancel with Return, and use `Q` to
+   return to WozMon;
+5. confirm USB keyboard, serial input, DVI output, and scrolling remain stable.
+
+No storage write or diagnostic bus trace is required because this checkpoint
+does not alter physical bus or reset sequencing.
+
+### Evidence to date
+
+- Acceptance criteria recorded before implementation.
+- The ordinary shared `neo1_profile` module now owns the immutable Neo1-23 and
+  Neo1-50 identities, ROM images, image sizes, placements, and protection
+  boundaries. Both runners select through `neo1_profile_find()` and pass the
+  result to `neo1_machine_init()`; the machine retains that profile.
+- Pico profile diagnostics, VACI's ROM-boundary patch, RAM-payload bounds
+  checks, and the Neo1-50 entry-stub decision now consume the selected machine
+  profile. The stubs and both RAM payloads remain Pico-runner policy; SDL does
+  not install them.
+- The focused profile test covers both real ROM images, exact sizes and bases,
+  reset vectors, protection behavior, unsupported lookup values, and invalid
+  machine descriptions. All eleven focused host tests pass.
+- SDL personalities 23 and 50 build and reach the WozMon `\` prompt with
+  headless stdout enabled. The offscreen SDL video driver still reports its
+  pre-existing OpenGL window warning, but execution and terminal output
+  continue.
+- Pico personalities 23 and 50 plus diagnostic Pico-23 build with SDK 2.1.0.
+  Source review confirms no changes to storage protocols/backends, PIA and
+  terminal behavior, CPU execution, physical GPIO/bus/reset timing, DVI, USB,
+  or event loops. Both working build directories are restored to normal
+  personality 23.
+- The user confirmed the complete normal Neo1-23 physical gate passed on
+  2026-08-26: WozMon reset on DVI and serial, both Neo1-23 ROM entries, `$0300`
+  deposit/examine, VACI directory/cancel/return, USB and serial input, DVI
+  output, and stable scrolling all remained correct.
+
+### Rollback condition
+
+Revert this checkpoint if either profile's ROM contents, placement, vectors, or
+write protection changes; Pico-only startup policy leaks into the shared
+machine; either target fails its build/runtime gates; or the normal Neo1-23
+physical smoke regresses.

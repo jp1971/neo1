@@ -29,13 +29,13 @@ snapshot, not the architecture contract or a roadmap.
 - `NEO1_ENABLE_MSC` now controls `$D014-$D01C` ownership explicitly. Focused
   host tests prove enabled accesses reach the device and disabled accesses use
   backing RAM; VACI-without-MSC configurations are rejected.
-- The SDL host configuration now includes ten focused tests. All passed
-  locally through 2026-08-25: the production Pico MSC contract against an
+- The SDL host configuration now includes eleven focused tests. All passed
+  locally through 2026-08-26: the production Pico MSC contract against an
   in-memory FatFs fake, the generated VACI BASIC/ordinary transfer paths,
   enabled and disabled MSC and VCFFA1 address decode, the shared Apple-1 PIA
   contract, the CPU-neutral RAM/ROM/address-space contract, software-CPU cycle
-  budgeting, and the shared terminal grid plus preserved Pico/SDL control-byte
-  policies.
+  budgeting, the real Neo1-23/Neo1-50 profile layouts, and the shared terminal
+  grid plus preserved Pico/SDL control-byte policies.
 - Portable-core checkpoint 1 now gives Pico and SDL one shared 40×24 terminal
   grid while leaving control-byte policy and rendering target-owned. Both SDL
   profiles reach WozMon headlessly, both Pico profiles build, and the eight host
@@ -84,14 +84,22 @@ snapshot, not the architecture contract or a roadmap.
   Pico-23, Pico-50, and diagnostic Pico-23 build with SDK 2.1.0. The diagnostic
   trace, repeated Ctrl-R, and complete normal Neo1-23 physical gate passed on
   2026-08-26.
+- Portable-core checkpoint 8 now gives both runners one shared definition of
+  the Neo1-23 and Neo1-50 ROM images, sizes, placements, and protection
+  boundaries. The machine retains the selected profile; Pico-only RAM tools
+  and Neo1-50 entry stubs remain runner policy. All eleven host tests pass,
+  both SDL profiles reach WozMon headlessly, and Pico-23, Pico-50, and
+  diagnostic Pico-23 build with SDK 2.1.0. Both build trees are restored to
+  normal Neo1-23. The complete normal Neo1-23 physical gate passed on
+  2026-08-26.
 - SDK 2.3.0 has not been configured, built, or hardware-tested.
 
 ## Last Neo6502 hardware validation
 
 User-supplied results from 2026-08-22 through 2026-08-26 used the Neo1-23
-profile with VACI and VCFFA1 enabled. The latest result includes checkpoint 7's
-clock-qualified diagnostic trace, repeated Ctrl-R, and complete normal-profile
-functional gate.
+profile with VACI and VCFFA1 enabled. The latest result is checkpoint 8's
+complete normal-profile functional gate after moving both ROM layouts into the
+shared machine-profile module.
 
 | Capability | Result | Evidence |
 | --- | --- | --- |
@@ -105,6 +113,7 @@ functional gate.
 | Explicit software-runner boundary | Verified | Checkpoint 5 preserved the same Neo1-23 WozMon, ROM-entry, memory, VACI, input, DVI, and scrolling gate after removing the build-wide CPU selector |
 | Explicit physical-runner boundary | Verified | Checkpoint 6 preserved the defined reset-vector, WozMon opcode/device, and relative stack-access trace plus the complete normal Neo1-23 functional gate |
 | Clock-qualified physical reset | Verified | Checkpoint 7 preserved the defined diagnostic trace, repeated Ctrl-R reliably returned to WozMon, and the complete normal Neo1-23 functional gate passed |
+| Shared machine profiles | Verified | Checkpoint 8 preserved WozMon reset, both Neo1-23 ROM entries, `$0300` memory deposit/examine, VACI directory/cancel/return, USB and serial input, DVI output, and stable scrolling |
 | USB MSC/FatFs | Verified | Media mounted and directory/file workflows operated |
 | VACI read/load | Verified | `.BIN` files loaded and ran |
 | VACI write | Verified | A write larger than 512 bytes produced a host-reported 2 KB file; rewriting the same name produced an exact 16-byte file, confirming multi-sector operation and truncation |
