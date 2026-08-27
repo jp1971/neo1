@@ -38,11 +38,15 @@ int main(void) {
     rom[0xFC] = 0x00;
     rom[0xFD] = 0xFF;
 
-    const neo1_machine_desc_t desc = {
+    const neo1_profile_t profile = {
+        .personality = NEO1_PERSONALITY_50,
         .rom = rom,
         .rom_size = sizeof(rom),
         .rom_base = 0xFF00,
         .rom_protect_base = 0xFF00,
+    };
+    const neo1_machine_desc_t desc = {
+        .profile = &profile,
 #if NEO1_ENABLE_MSC
         .msc = {
             .read = test_msc_read,

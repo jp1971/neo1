@@ -112,6 +112,17 @@ target_link_libraries(neo1_machine_tests PRIVATE neo1_machine)
 
 add_test(NAME neo1_machine_address_space COMMAND neo1_machine_tests)
 
+add_executable(neo1_profile_tests
+    test_neo1_profile.c
+)
+target_include_directories(neo1_profile_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_compile_options(neo1_profile_tests PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(neo1_profile_tests PRIVATE neo1_machine)
+
+add_test(NAME neo1_machine_profiles COMMAND neo1_profile_tests)
+
 add_executable(neo1_soft_timing_tests
     test_neo1_soft_timing.c
 )

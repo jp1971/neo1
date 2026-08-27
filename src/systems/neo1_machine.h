@@ -14,6 +14,7 @@
 #include "devices/neo1_apple1_pia.h"
 #include "devices/neo1_cffa1.h"
 #include "devices/neo1_msc.h"
+#include "systems/neo1_profile.h"
 
 #define NEO1_MACHINE_MEM_SIZE (0x10000u)
 
@@ -28,10 +29,7 @@ typedef struct {
 } neo1_device_port_t;
 
 typedef struct {
-    const uint8_t* rom;
-    size_t rom_size;
-    uint16_t rom_base;
-    uint16_t rom_protect_base;
+    const neo1_profile_t* profile;
     neo1_char_out_t char_out;
     void* char_out_user_data;
     neo1_device_port_t msc;
@@ -40,6 +38,7 @@ typedef struct {
 
 typedef struct {
     uint8_t ram[NEO1_MACHINE_MEM_SIZE];
+    const neo1_profile_t* profile;
     uint16_t rom_base;
     uint16_t rom_protect_base;
     neo1_apple1_pia_t pia;
@@ -49,8 +48,8 @@ typedef struct {
     neo1_device_port_t vcffa1;
 } neo1_machine_t;
 
-// Initialize the deterministic backing store and copy the selected top ROM.
-// Returns false for a missing/empty ROM or an image that crosses $FFFF.
+// Initialize the deterministic backing store and copy the selected profile ROM.
+// Returns false for missing/invalid profile data or an image that crosses $FFFF.
 bool neo1_machine_init(neo1_machine_t* machine, const neo1_machine_desc_t* desc);
 
 // Reset 6502-visible device state without changing RAM or ROM contents.

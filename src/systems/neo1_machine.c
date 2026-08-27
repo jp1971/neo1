@@ -13,15 +13,19 @@ static bool neo1_machine_cffa1_handles_addr(uint16_t addr) {
 }
 
 bool neo1_machine_init(neo1_machine_t* machine, const neo1_machine_desc_t* desc) {
-    if (!machine || !desc || !desc->rom || (desc->rom_size == 0) ||
-        (((uint32_t)desc->rom_base + (uint32_t)desc->rom_size) > NEO1_MACHINE_MEM_SIZE))
+    if (!machine || !desc || !desc->profile || !desc->profile->rom ||
+        (desc->profile->rom_size == 0) ||
+        (desc->profile->rom_protect_base > desc->profile->rom_base) ||
+        (((uint32_t)desc->profile->rom_base +
+          (uint32_t)desc->profile->rom_size) > NEO1_MACHINE_MEM_SIZE))
     {
         return false;
     }
 
     memset(machine, 0, sizeof(*machine));
-    machine->rom_base = desc->rom_base;
-    machine->rom_protect_base = desc->rom_protect_base;
+    machine->profile = desc->profile;
+    machine->rom_base = desc->profile->rom_base;
+    machine->rom_protect_base = desc->profile->rom_protect_base;
     machine->char_out = desc->char_out;
     machine->char_out_user_data = desc->char_out_user_data;
     machine->msc = desc->msc;
@@ -31,7 +35,9 @@ bool neo1_machine_init(neo1_machine_t* machine, const neo1_machine_desc_t* desc)
         machine->ram[addr] = 0x00;
         machine->ram[addr + 1] = 0xFF;
     }
-    memcpy(&machine->ram[desc->rom_base], desc->rom, desc->rom_size);
+    memcpy(&machine->ram[desc->profile->rom_base],
+           desc->profile->rom,
+           desc->profile->rom_size);
     neo1_machine_reset(machine);
     return true;
 }

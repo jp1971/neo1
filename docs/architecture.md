@@ -5,11 +5,11 @@ implementation status and known deviations belong in `docs/current-state.md`.
 
 ## Machine boundary
 
-Neo1 presents one 64 KB address space to a 65C02. The machine model owns RAM,
-ROM protection, Apple-1 keyboard/display behavior, and optional storage-device
-address decoding. A runner supplies CPU bus cycles: Neo1 Pico observes a
-physical W65C02, while SDL drives the same read/write surface from a software
-CPU.
+Neo1 presents one 64 KB address space to a 65C02. The machine model owns machine
+profiles, RAM, ROM protection, Apple-1 keyboard/display behavior, and optional
+storage-device address decoding. A runner supplies CPU bus cycles: Neo1 Pico
+observes a physical W65C02, while SDL drives the same read/write surface from a
+software CPU.
 
 The ordinary shared `neo1_machine` C module implements that CPU-neutral state
 and explicit bus surface. `neo1_soft_runner` attaches a software CPU to that
@@ -26,6 +26,12 @@ addresses. A selected ROM image is then copied into top memory. Reads and
 writes use the backing store unless one of the explicitly decoded devices below
 owns the address. Writes at or above the profile's ROM-protection boundary are
 ignored.
+
+The ordinary shared `neo1_profile` module is the sole definition of each
+profile's identity, ROM image, ROM size, placement, and protection boundary.
+Both runners select a profile by personality and pass it to the shared machine;
+the machine retains that immutable profile. Build presets choose the
+personality, while runner-installed RAM software remains runner policy.
 
 ## Reset and top memory
 

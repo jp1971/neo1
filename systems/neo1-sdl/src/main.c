@@ -14,16 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#if NEO1_PERSONALITY == 50
-#define NEO1_ROM_BASE (0xFF00)
-#define NEO1_ROM_PROTECT_BASE (0xFF00)
-#else
-#define NEO1_ROM_BASE (0xE000)
-#define NEO1_ROM_PROTECT_BASE (0xE000)
-#endif
-
 #include "runners/neo1_soft_runner.h"
-#include "roms/neo1_roms.h"
 #include "neo1_storage_stub.h"
 
 static bool g_stdout_echo = false;
@@ -77,24 +68,15 @@ int main(void) {
 
     g_stdout_echo = (getenv("NEO1_SDL_STDOUT") != NULL);
 
-    const uint8_t* rom =
-#if NEO1_PERSONALITY == 50
-        neo1_apple1_rom_bin;
-#else
-        neo1_system_rom_bin;
-#endif
-    const size_t rom_size =
-#if NEO1_PERSONALITY == 50
-        (size_t)neo1_apple1_rom_bin_len;
-#else
-        (size_t)neo1_system_rom_bin_len;
-#endif
+    const neo1_profile_t* profile = neo1_profile_find(NEO1_PERSONALITY);
+    if (!profile) {
+        fprintf(stderr, "[neo1-sdl] unsupported personality: %u\n",
+                (unsigned)NEO1_PERSONALITY);
+        return 1;
+    }
 
     const neo1_machine_desc_t desc = {
-        .rom = rom,
-        .rom_size = rom_size,
-        .rom_base = NEO1_ROM_BASE,
-        .rom_protect_base = NEO1_ROM_PROTECT_BASE,
+        .profile = profile,
         .char_out = neo1_host_char_out,
         .char_out_user_data = NULL,
 #if NEO1_ENABLE_MSC

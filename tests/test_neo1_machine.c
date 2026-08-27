@@ -51,11 +51,15 @@ static void test_neo1_23_space(void) {
 
     port_fixture_t msc = {0};
     port_fixture_t vcffa1 = {0};
-    const neo1_machine_desc_t desc = {
+    const neo1_profile_t profile = {
+        .personality = NEO1_PERSONALITY_23,
         .rom = rom,
         .rom_size = sizeof(rom),
         .rom_base = 0xE000,
         .rom_protect_base = 0xE000,
+    };
+    const neo1_machine_desc_t desc = {
+        .profile = &profile,
         .char_out = display_out,
         .char_out_user_data = &g_display_count,
         .msc = {
@@ -132,11 +136,15 @@ static void test_neo1_50_space_and_disabled_devices(void) {
         rom[i] = (uint8_t)(0xC0u ^ (uint8_t)i);
     }
 
-    const neo1_machine_desc_t desc = {
+    const neo1_profile_t profile = {
+        .personality = NEO1_PERSONALITY_50,
         .rom = rom,
         .rom_size = sizeof(rom),
         .rom_base = 0xFF00,
         .rom_protect_base = 0xFF00,
+    };
+    const neo1_machine_desc_t desc = {
+        .profile = &profile,
     };
     neo1_machine_t machine;
     CHECK(neo1_machine_init(&machine, &desc));

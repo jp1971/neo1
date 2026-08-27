@@ -1,7 +1,8 @@
 # CPU-neutral 6502-visible Neo1 machine state. CPU runners supply bus accesses;
-# this library owns RAM, ROM policy, PIA state, and optional-device decode.
+# this library owns profiles, RAM/ROM policy, PIA state, and optional decode.
 add_library(neo1_machine STATIC
     neo1_machine.c
+    neo1_profile.c
 )
 
 target_include_directories(neo1_machine PUBLIC

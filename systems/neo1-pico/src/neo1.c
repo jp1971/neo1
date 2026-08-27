@@ -3,7 +3,7 @@
 // Olimex Neo6502 runner for the Neo1-23 and Neo1-50 machine profiles.
 //
 // This file owns target assembly and lifecycle rather than the 6502-visible
-// machine model. Its current responsibilities include profile ROM selection,
+// machine model. Its current responsibilities include shared-profile selection,
 // Pico-only RAM-tool and Neo1-50 entry-stub installation, physical reset/startup
 // sequencing, terminal publication, UART/USB input, storage initialization, and
 // fixed-batch bus execution. RP2040 services are split across:
@@ -33,17 +33,6 @@
 #define NEO1_PERSONALITY (50)
 #endif
 
-#define NEO1_PERSONALITY_23 (23)
-#define NEO1_PERSONALITY_50 (50)
-
-#if NEO1_PERSONALITY == NEO1_PERSONALITY_50
-#define NEO1_ROM_BASE (0xFF00)
-#define NEO1_ROM_PROTECT_BASE (0xFF00)
-#else
-#define NEO1_ROM_BASE (0xE000)
-#define NEO1_ROM_PROTECT_BASE (0xE000)
-#endif
-
 #include "neo1_terminal_pico.h"
 #include "neo1_wdc_runner.h"
 #include "neo1_video.h"
@@ -53,7 +42,6 @@
 #include "ram/neo1_cffa1_m2_blockdrv.h"
 #endif
 #include "neo1_usb.h"
-#include "roms/neo1_roms.h"
 
 #ifndef NEO1_ENABLE_VACI
 #define NEO1_ENABLE_VACI (1)
@@ -91,7 +79,7 @@ static void neo1_install_ram_tools(neo1_machine_t* machine) {
 #if NEO1_ENABLE_VCFFA1
     const uint32_t m2_size = (uint32_t)sizeof(neo1_cffa1_m2_blockdrv);
     const uint32_t m2_addr = NEO1_CFFA1_M2_BLOCKDRV_ADDR;
-    assert((m2_addr + m2_size) <= NEO1_ROM_BASE);
+    assert((m2_addr + m2_size) <= machine->rom_protect_base);
     memcpy(&machine->ram[m2_addr], neo1_cffa1_m2_blockdrv, m2_size);
 #if NEO1_DIAGNOSTICS
     printf("[neo1] cffa1 m2 blockdrv installed at $%04X (%lu bytes), run with %04XR\n",
@@ -109,11 +97,11 @@ static void neo1_install_ram_tools(neo1_machine_t* machine) {
 #if NEO1_ENABLE_VACI
     const uint32_t vaci_size = (uint32_t)sizeof(neo1_vaci_v1);
     const uint32_t vaci_addr = NEO1_VACI_V1_ADDR;
-    assert((vaci_addr + vaci_size) <= NEO1_ROM_BASE);
+    assert((vaci_addr + vaci_size) <= machine->rom_protect_base);
     assert(NEO1_VACI_V1_ROM_PROTECT_HI_OFFSET < vaci_size);
     memcpy(&machine->ram[vaci_addr], neo1_vaci_v1, vaci_size);
     machine->ram[vaci_addr + NEO1_VACI_V1_ROM_PROTECT_HI_OFFSET] =
-        (uint8_t)(NEO1_ROM_PROTECT_BASE >> 8);
+        (uint8_t)(machine->rom_protect_base >> 8);
 #if NEO1_DIAGNOSTICS
     printf("[neo1] vaci v1 installed at $%04X (%lu bytes), run with %04XR\n",
            (unsigned)vaci_addr,
@@ -140,7 +128,6 @@ static void neo1_soft_reset(void) {
     neo1_wdc_runner_reset(&state.cpu);
 }
 
-#if NEO1_PERSONALITY == NEO1_PERSONALITY_50
 static void neo1_install_neo150_entry_stubs(neo1_machine_t* machine) {
     // In Neo1-50, E000/F000 are writable load targets. Until user code is
     // loaded there, jumping to them would run uninitialized bytes and hang.
@@ -150,26 +137,6 @@ static void neo1_install_neo150_entry_stubs(neo1_machine_t* machine) {
     memcpy(&machine->ram[0xF000], jmp_wozmon, sizeof(jmp_wozmon));
 #if NEO1_DIAGNOSTICS
     printf("[neo1] neo1-50 entry stubs installed: E000/F000 -> FF00 until overwritten\n");
-#endif
-}
-#endif
-
-typedef struct {
-    const uint8_t* data;
-    size_t size;
-} neo1_rom_t;
-
-static neo1_rom_t neo1_selected_rom(void) {
-#if NEO1_PERSONALITY == NEO1_PERSONALITY_50
-    return (neo1_rom_t){
-        .data = neo1_apple1_rom_bin,
-        .size = (size_t)neo1_apple1_rom_bin_len,
-    };
-#else
-    return (neo1_rom_t){
-        .data = neo1_system_rom_bin,
-        .size = (size_t)neo1_system_rom_bin_len,
-    };
 #endif
 }
 
@@ -281,13 +248,11 @@ static void neo1_cffa1_port_write(void* user_data, uint16_t addr, uint8_t data) 
 // - which output callback receives machine-generated characters
 //
 static neo1_machine_desc_t neo1_machine_desc(void) {
-    const neo1_rom_t rom = neo1_selected_rom();
+    const neo1_profile_t* profile = neo1_profile_find(NEO1_PERSONALITY);
+    assert(profile);
 
     return (neo1_machine_desc_t){
-        .rom = rom.data,
-        .rom_size = rom.size,
-        .rom_base = NEO1_ROM_BASE,
-        .rom_protect_base = NEO1_ROM_PROTECT_BASE,
+        .profile = profile,
         .char_out = neo1_char_out,
         .char_out_user_data = 0,
 #if NEO1_ENABLE_MSC
@@ -338,9 +303,9 @@ static void app_init(void) {
         ram[0xFFFE], ram[0xFFFF]);
 #endif
 
-#if NEO1_PERSONALITY == NEO1_PERSONALITY_50
-    neo1_install_neo150_entry_stubs(&state.machine);
-#endif
+    if (state.machine.profile->personality == NEO1_PERSONALITY_50) {
+        neo1_install_neo150_entry_stubs(&state.machine);
+    }
 
     neo1_machine_reset(&state.machine);
     neo1_wdc_runner_reset(&state.cpu);
@@ -471,12 +436,11 @@ int main(void) {
     sleep_ms(200);
 
 #if NEO1_DIAGNOSTICS
-    const neo1_rom_t rom = neo1_selected_rom();
     printf("[neo1] personality=%u rom_base=$%04X rom_protect_base=$%04X rom_size=%u bytes\n",
-        (unsigned)NEO1_PERSONALITY,
-        (unsigned)NEO1_ROM_BASE,
-        (unsigned)NEO1_ROM_PROTECT_BASE,
-        (unsigned)rom.size);
+        (unsigned)state.machine.profile->personality,
+        (unsigned)state.machine.profile->rom_base,
+        (unsigned)state.machine.profile->rom_protect_base,
+        (unsigned)state.machine.profile->rom_size);
 
     printf("[neo1] vectors: NMI=%02X%02X RESET=%02X%02X IRQ=%02X%02X\n",
         state.machine.ram[0xFFFB], state.machine.ram[0xFFFA],
@@ -499,7 +463,7 @@ int main(void) {
 #endif
 
     printf("[neo1] ready personality=%u vaci=%u vcffa1=%u diagnostics=%u\n",
-           (unsigned)NEO1_PERSONALITY,
+           (unsigned)state.machine.profile->personality,
            (unsigned)NEO1_ENABLE_VACI,
            (unsigned)NEO1_ENABLE_VCFFA1,
            (unsigned)NEO1_DIAGNOSTICS);
