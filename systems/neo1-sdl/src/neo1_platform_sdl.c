@@ -8,7 +8,7 @@
 // Observable terminal differences from Pico are intentional preservation of
 // current behavior: SDL erases for Backspace, ignores LF and form feed, uses six
 // font bits in 14x16 cells, and draws its cursor directly. Rendering is
-// unconditional each runner iteration and ignores update_display pixel inputs.
+// unconditional each runner iteration.
 
 #include <SDL.h>
 #include <stdbool.h>
@@ -32,8 +32,6 @@ enum {
 };
 
 static neo1_terminal_t terminal;
-static bool term_dirty;
-static uint64_t frame_count;
 
 static bool should_reset;
 
@@ -156,8 +154,6 @@ void neo1_platform_init(int width, int height, const char* title) {
     SDL_StartTextInput();
 
     neo1_terminal_clear(&terminal);
-    term_dirty = true;
-    frame_count = 0;
     should_reset = false;
 
     (void)neo1_platform_open_disk_image();
@@ -181,30 +177,18 @@ void neo1_platform_shutdown(void) {
     SDL_Quit();
 }
 
-void neo1_platform_update_display(const uint32_t* pixels, int width, int height) {
-    (void)pixels;
-    (void)width;
-    (void)height;
-
+void neo1_platform_present(void) {
     if (!renderer_handle) {
         return;
     }
 
-    // Redraw unconditionally; term_dirty and frame_count do not gate rendering.
     neo1_term_draw();
-    term_dirty = false;
-    frame_count++;
     SDL_RenderPresent(renderer_handle);
 }
 
 void neo1_platform_put_char(uint8_t ch) {
     ch &= 0x7F;
-    const bool backspace_changed = (ch == 0x08) && (terminal.cursor_x > 0);
     neo1_terminal_sdl_putc(&terminal, ch);
-    if ((ch == '\r') || (ch == '\n') || (ch >= 0x20) ||
-        backspace_changed) {
-        term_dirty = true;
-    }
 }
 
 bool neo1_platform_should_reset(void) {
@@ -257,7 +241,6 @@ bool neo1_platform_poll_key(uint8_t* out_apple1_keycode, bool* out_pressed) {
 
             if (ctrl && key == SDLK_l) {
                 neo1_terminal_clear(&terminal);
-                term_dirty = true;
                 continue;
             }
             if (ctrl && key == SDLK_r) {

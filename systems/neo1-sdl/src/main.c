@@ -95,7 +95,7 @@ int main(void) {
 #endif
     };
 
-    neo1_platform_init(window_width, window_height, "Neo1 Host (M0)");
+    neo1_platform_init(window_width, window_height, "Neo1 SDL");
     printf("[neo1-sdl] disk image: %s\n", neo1_platform_disk_path());
     if (neo1_platform_disk_read(0, disk_probe, 1)) {
         printf("[neo1-sdl] storage self-test: sector 0 read OK (first bytes: %02X %02X %02X %02X)\n",
@@ -151,7 +151,7 @@ int main(void) {
         if (elapsed_us > 0) {
             (void)neo1_soft_runner_exec_us(&cpu, (uint32_t)elapsed_us);
         }
-        neo1_platform_update_display(NULL, 0, 0);
+        neo1_platform_present();
         neo1_platform_sleep_ms(NEO1_SDL_IDLE_SLEEP_MS);
     }
 

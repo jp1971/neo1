@@ -1,8 +1,9 @@
 #pragma once
 
 // SDL-local service surface implemented only by neo1_platform_sdl.c. It mixes
-// window lifecycle, a duplicate terminal, input events, time, and raw block I/O;
-// it is not the intended portable machine or future cross-target platform API.
+// window lifecycle, shared-grid presentation, input events, time, and raw block
+// I/O; it is not the intended portable machine or future cross-target platform
+// API.
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -12,9 +13,8 @@
 void neo1_platform_init(int width, int height, const char* title);
 // Close the raw image and destroy SDL renderer/window state.
 void neo1_platform_shutdown(void);
-// Redraw the SDL-local terminal and present it. The current implementation
-// ignores the pixel pointer and dimensions.
-void neo1_platform_update_display(const uint32_t* pixels, int width, int height);
+// Redraw the shared terminal grid using the SDL renderer and present it.
+void neo1_platform_present(void);
 // Consume one machine display byte: strip bit 7, treat CR as newline, ignore LF,
 // erase one cell for Backspace, and ignore other bytes below $20. Unlike Pico,
 // form feed does not clear this terminal and $7F is accepted as a glyph.
