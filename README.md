@@ -21,6 +21,11 @@ Platform targets:
 - `systems/neo1-pico/` — Olimex Neo6502 / RP2040 hardware target
 - `systems/neo1-sdl/` — macOS/Linux host target using SDL2
 
+Adafruit Fruit Jam is the proposed next hardware target. Its staged SDK,
+software-CPU, HSTX video, USB keyboard, and microSD work is defined in the
+[Fruit Jam execution plan](docs/fruit-jam-execution-plan.md); no Fruit Jam
+implementation is claimed yet.
+
 ## Monitor entry points
 
 On reset, the machine boots into Woz Monitor.
