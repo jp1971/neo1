@@ -21,13 +21,11 @@ static bool g_stdout_echo = false;
 
 #if NEO1_ENABLE_MSC
 static uint8_t neo1_msc_port_read(void* user_data, uint16_t addr) {
-    (void)user_data;
-    return neo1_msc_io_read(addr);
+    return neo1_msc_read((neo1_msc_t*)user_data, addr);
 }
 
 static void neo1_msc_port_write(void* user_data, uint16_t addr, uint8_t data) {
-    (void)user_data;
-    neo1_msc_io_write(addr, data);
+    neo1_msc_write((neo1_msc_t*)user_data, addr, data);
 }
 #endif
 
@@ -65,6 +63,9 @@ int main(void) {
     neo1_machine_t machine;
     neo1_soft_runner_t cpu;
     uint8_t disk_probe[512];
+#if NEO1_ENABLE_MSC
+    neo1_msc_t msc;
+#endif
 
     g_stdout_echo = (getenv("NEO1_SDL_STDOUT") != NULL);
 
@@ -83,6 +84,7 @@ int main(void) {
         .msc = {
             .read = neo1_msc_port_read,
             .write = neo1_msc_port_write,
+            .user_data = &msc,
         },
 #endif
 #if NEO1_ENABLE_VCFFA1
@@ -103,7 +105,11 @@ int main(void) {
     }
 
 #if NEO1_ENABLE_MSC
-    neo1_msc_init();
+    if (!neo1_msc_init(&msc, neo1_sdl_msc_backend())) {
+        fprintf(stderr, "[neo1-sdl] MSC initialization failed\n");
+        neo1_platform_shutdown();
+        return 1;
+    }
 #endif
 #if NEO1_ENABLE_VCFFA1
     neo1_cffa1_init();

@@ -20,6 +20,19 @@ target_link_libraries(neo1_msc_tests PRIVATE neo1_msc_protocol)
 
 add_test(NAME neo1_msc_register_contract COMMAND neo1_msc_tests)
 
+add_executable(neo1_sdl_storage_tests
+    test_neo1_sdl_storage.c
+    ${CMAKE_SOURCE_DIR}/systems/neo1-sdl/src/neo1_storage_stub.c
+)
+target_include_directories(neo1_sdl_storage_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/systems/neo1-sdl/src
+)
+target_compile_options(neo1_sdl_storage_tests PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(neo1_sdl_storage_tests PRIVATE neo1_msc_protocol)
+
+add_test(NAME neo1_sdl_storage_backends COMMAND neo1_sdl_storage_tests)
+
 add_executable(neo1_vaci_payload_tests
     test_vaci_basic.c
 )

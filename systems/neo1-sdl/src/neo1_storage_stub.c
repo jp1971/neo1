@@ -3,27 +3,17 @@
 #include "neo1_platform.h"
 #include "neo1_storage_stub.h"
 
-// SDL storage accommodation. Both nominal devices map to the one raw host image
-// exposed by neo1_platform_disk_read/write; this file duplicates their visible
-// state machines rather than providing a backend for the Pico implementations.
-// It must not be treated as equivalent VACI/VCFFA1 behavior or as the intended
-// shared storage boundary.
+// SDL storage adapters. MSC supplies raw-image I/O to the shared Neo1 register
+// protocol; VCFFA1 remains an SDL-local compatibility state machine.
 //
-// MSC deviations: READ and WRITE address raw 512-byte sectors. OPEN, CLOSE,
-// directory, indexed-file, and unknown commands succeed as no-ops; SIZE, INFO,
-// and INDEX have no file-service effect. WRITE accepts either buffer bytes before
-// the command or exactly 512 bytes after it is armed. It never reports BUSY.
+// The MSC backend permits sector READ/WRITE without OPEN, has an empty
+// directory, and cannot truncate the raw image after a short logical write.
+// Command/status/data sequencing is owned by the shared protocol.
 //
 // VCFFA1 deviations: STATUS probes raw block zero; READ/WRITE delegate range and
 // media checks to the platform; WRITE does not preflight media or expose a
 // distinct write-protect error. Direct ALTSTATUS/DEVCTRL writes do not update
 // STATUS. Neither emulated device asserts IRQ or NMI.
-
-static uint8_t g_msc_regs[9];
-static uint8_t g_msc_buffer[512];
-static uint16_t g_msc_offset;
-static bool g_msc_write_armed;
-static bool g_msc_data_dirty;
 
 static uint8_t g_cffa_regs[NEO1_CFFA1_IO_SIZE];
 static uint8_t g_cffa_buffer[512];
@@ -31,13 +21,87 @@ static uint16_t g_cffa_offset;
 static uint32_t g_cffa_write_lba;
 static bool g_cffa_write_pending;
 
-static uint16_t msc_sector(void) {
-    return (uint16_t)g_msc_regs[(unsigned)(NEO1_IO_MSC_SECTOR_LO - NEO1_IO_MSC_CMD)] |
-           ((uint16_t)g_msc_regs[(unsigned)(NEO1_IO_MSC_SECTOR_HI - NEO1_IO_MSC_CMD)] << 8);
+static uint8_t neo1_sdl_msc_open(void* context,
+                                  const char* name,
+                                  uint32_t* out_size) {
+    (void)context;
+    (void)name;
+    *out_size = 0;
+    return 0;
 }
 
-static void msc_set_status(uint8_t status) {
-    g_msc_regs[(unsigned)(NEO1_IO_MSC_STATUS - NEO1_IO_MSC_CMD)] = status;
+static void neo1_sdl_msc_close(void* context) {
+    (void)context;
+}
+
+static uint8_t neo1_sdl_msc_read(void* context,
+                                  uint16_t sector,
+                                  uint8_t* buffer,
+                                  size_t* out_size) {
+    (void)context;
+    if (!neo1_platform_disk_read(sector, buffer, 1)) {
+        return 1;
+    }
+    *out_size = NEO1_MSC_SECTOR_SIZE;
+    return 0;
+}
+
+static uint8_t neo1_sdl_msc_write(void* context,
+                                   uint16_t sector,
+                                   const uint8_t* buffer,
+                                   uint16_t size,
+                                   uint32_t* out_file_size) {
+    (void)context;
+    (void)size;
+    if (!neo1_platform_disk_write(sector, buffer, 1)) {
+        return 1;
+    }
+    *out_file_size = 0;
+    return 0;
+}
+
+static uint8_t neo1_sdl_msc_dir_open(void* context) {
+    (void)context;
+    return 0;
+}
+
+static uint8_t neo1_sdl_msc_dir_next(void* context,
+                                      neo1_msc_dir_entry_t* out_entry) {
+    (void)context;
+    out_entry->valid = false;
+    return 0;
+}
+
+static void neo1_sdl_msc_dir_close(void* context) {
+    (void)context;
+}
+
+static uint8_t neo1_sdl_msc_delete(void* context, const char* name) {
+    (void)context;
+    (void)name;
+    return 1;
+}
+
+static const neo1_msc_backend_ops_t neo1_sdl_msc_ops = {
+    .open = neo1_sdl_msc_open,
+    .close = neo1_sdl_msc_close,
+    .read_sector = neo1_sdl_msc_read,
+    .write_sector = neo1_sdl_msc_write,
+    .dir_open = neo1_sdl_msc_dir_open,
+    .dir_next = neo1_sdl_msc_dir_next,
+    .dir_close = neo1_sdl_msc_dir_close,
+    .delete_file = neo1_sdl_msc_delete,
+};
+
+const neo1_msc_backend_t* neo1_sdl_msc_backend(void) {
+    static const neo1_msc_backend_t backend = {
+        .ops = &neo1_sdl_msc_ops,
+        .context = NULL,
+        .flags = NEO1_MSC_BACKEND_OPEN_OPTIONAL,
+        .not_found_error = 1,
+        .invalid_state_error = 1,
+    };
+    return &backend;
 }
 
 static uint32_t cffa_lba(void) {
@@ -61,92 +125,6 @@ static void cffa_set_ok(uint8_t with_drq) {
 static void cffa_set_error(uint8_t code) {
     g_cffa_regs[NEO1_CFFA1_REG_ERROR_FEATURE] = code;
     cffa_set_status(NEO1_CFFA1_STATUS_DRDY | NEO1_CFFA1_STATUS_DSC | NEO1_CFFA1_STATUS_ERR);
-}
-
-void neo1_msc_init(void) {
-    memset(g_msc_regs, 0, sizeof(g_msc_regs));
-    memset(g_msc_buffer, 0, sizeof(g_msc_buffer));
-    g_msc_offset = 0;
-    g_msc_write_armed = false;
-    g_msc_data_dirty = false;
-    msc_set_status(NEO1_MSC_STATUS_READY);
-}
-
-uint8_t neo1_msc_io_read(uint16_t addr) {
-    if (addr == NEO1_IO_MSC_DATA) {
-        uint8_t out = 0;
-        if (g_msc_offset < sizeof(g_msc_buffer)) {
-            out = g_msc_buffer[g_msc_offset++];
-        }
-        return out;
-    }
-
-    if ((addr >= NEO1_IO_MSC_CMD) && (addr <= NEO1_IO_MSC_SIZE_HI)) {
-        return g_msc_regs[(unsigned)(addr - NEO1_IO_MSC_CMD)];
-    }
-    return 0;
-}
-
-void neo1_msc_io_write(uint16_t addr, uint8_t data) {
-    if (addr == NEO1_IO_MSC_DATA) {
-        if (g_msc_offset < sizeof(g_msc_buffer)) {
-            g_msc_buffer[g_msc_offset++] = data;
-            g_msc_data_dirty = true;
-        }
-        if (g_msc_write_armed && (g_msc_offset >= sizeof(g_msc_buffer))) {
-            if (neo1_platform_disk_write(msc_sector(), g_msc_buffer, 1)) {
-                msc_set_status(NEO1_MSC_STATUS_READY);
-            } else {
-                msc_set_status((uint8_t)(NEO1_MSC_STATUS_ERROR | 1u));
-            }
-            g_msc_write_armed = false;
-            g_msc_offset = 0;
-            g_msc_data_dirty = false;
-        }
-        return;
-    }
-
-    if ((addr >= NEO1_IO_MSC_CMD) && (addr <= NEO1_IO_MSC_SIZE_HI)) {
-        const unsigned idx = (unsigned)(addr - NEO1_IO_MSC_CMD);
-        g_msc_regs[idx] = data;
-
-        if (addr == NEO1_IO_MSC_CMD) {
-            switch (data) {
-                case NEO1_MSC_CMD_READ:
-                    g_msc_offset = 0;
-                    if (neo1_platform_disk_read(msc_sector(), g_msc_buffer, 1)) {
-                        msc_set_status(NEO1_MSC_STATUS_READY);
-                    } else {
-                        msc_set_status((uint8_t)(NEO1_MSC_STATUS_ERROR | 1u));
-                    }
-                    g_msc_write_armed = false;
-                    break;
-
-                case NEO1_MSC_CMD_WRITE:
-                    if (g_msc_data_dirty) {
-                        if (neo1_platform_disk_write(msc_sector(), g_msc_buffer, 1)) {
-                            msc_set_status(NEO1_MSC_STATUS_READY);
-                        } else {
-                            msc_set_status((uint8_t)(NEO1_MSC_STATUS_ERROR | 1u));
-                        }
-                        g_msc_data_dirty = false;
-                        g_msc_offset = 0;
-                        g_msc_write_armed = false;
-                    } else {
-                        g_msc_offset = 0;
-                        g_msc_write_armed = true;
-                        msc_set_status(NEO1_MSC_STATUS_READY);
-                    }
-                    break;
-
-                default:
-                    // File-oriented and unknown commands have no raw-image action.
-                    msc_set_status(NEO1_MSC_STATUS_READY);
-                    g_msc_write_armed = false;
-                    break;
-            }
-        }
-    }
 }
 
 void neo1_cffa1_init(void) {
