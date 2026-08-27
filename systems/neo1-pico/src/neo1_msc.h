@@ -1,6 +1,6 @@
 #pragma once
 
-// Pico FatFs implementation of the shared Neo1 MSC register contract.
+// Pico FatFs backend for the shared Neo1 MSC register protocol.
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -14,6 +14,4 @@
 #define NEO1_MSC_DEBUG NEO1_DIAGNOSTICS
 #endif
 
-void neo1_msc_init(void);
-uint8_t neo1_msc_io_read(uint16_t addr);
-void neo1_msc_io_write(uint16_t addr, uint8_t data);
+const neo1_msc_backend_t* neo1_msc_fatfs_backend(void);

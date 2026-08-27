@@ -68,6 +68,9 @@ typedef struct {
     neo1_machine_t machine;
     neo1_wdc_runner_t cpu;
     neo1_terminal_t term;
+#if NEO1_ENABLE_MSC
+    neo1_msc_t msc;
+#endif
 } state_t;
 
 static state_t __not_in_flash() state;
@@ -218,13 +221,11 @@ static void neo1_char_out(uint8_t ch, void* user_data) {
 
 #if NEO1_ENABLE_MSC
 static uint8_t neo1_msc_port_read(void* user_data, uint16_t addr) {
-    (void)user_data;
-    return neo1_msc_io_read(addr);
+    return neo1_msc_read((neo1_msc_t*)user_data, addr);
 }
 
 static void neo1_msc_port_write(void* user_data, uint16_t addr, uint8_t data) {
-    (void)user_data;
-    neo1_msc_io_write(addr, data);
+    neo1_msc_write((neo1_msc_t*)user_data, addr, data);
 }
 #endif
 
@@ -259,6 +260,7 @@ static neo1_machine_desc_t neo1_machine_desc(void) {
         .msc = {
             .read = neo1_msc_port_read,
             .write = neo1_msc_port_write,
+            .user_data = &state.msc,
         },
 #endif
 #if NEO1_ENABLE_VCFFA1
@@ -315,7 +317,10 @@ static void app_init(void) {
     neo1_cffa1_init();
 #endif
 #if NEO1_ENABLE_MSC
-    neo1_msc_init();
+    const bool msc_initialized =
+        neo1_msc_init(&state.msc, neo1_msc_fatfs_backend());
+    assert(msc_initialized);
+    (void)msc_initialized;
 #endif
     neo1_usb_init(neo1_usb_char_in, 0);
 

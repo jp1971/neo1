@@ -88,6 +88,7 @@ target_include_directories(neo1 PRIVATE
 
 target_link_libraries(neo1
     neo1_machine
+    neo1_msc_protocol
     neo1_terminal_grid
     pico_stdlib
     pico_multicore

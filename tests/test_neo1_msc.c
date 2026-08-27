@@ -31,6 +31,7 @@ static FRESULT g_sync_result;
 static FRESULT g_unlink_result;
 static bool g_short_write;
 static int g_failures;
+static neo1_msc_t g_msc;
 
 #define CHECK(condition) \
     do { \
@@ -39,6 +40,18 @@ static int g_failures;
             g_failures++; \
         } \
     } while (0)
+
+static uint8_t neo1_msc_io_read(uint16_t addr) {
+    return neo1_msc_read(&g_msc, addr);
+}
+
+static void neo1_msc_io_write(uint16_t addr, uint8_t data) {
+    neo1_msc_write(&g_msc, addr, data);
+}
+
+static void test_protocol_init(void) {
+    CHECK(neo1_msc_init(&g_msc, neo1_msc_fatfs_backend()));
+}
 
 static void fake_reset(void) {
     memset(g_files, 0, sizeof(g_files));
@@ -53,7 +66,7 @@ static void fake_reset(void) {
     g_sync_result = FR_OK;
     g_unlink_result = FR_OK;
     g_short_write = false;
-    neo1_msc_init();
+    test_protocol_init();
 }
 
 static fake_file_t* fake_add_file(const char* name, size_t size, uint8_t attributes) {
@@ -289,9 +302,31 @@ static void test_reset_and_command_errors(void) {
     neo1_msc_io_write(NEO1_IO_MSC_CMD, 0xFF);
     CHECK(status() == (NEO1_MSC_STATUS_ERROR | 1u));
 
-    neo1_msc_init();
+    test_protocol_init();
     neo1_msc_io_write(NEO1_IO_MSC_CMD, NEO1_MSC_CMD_READ);
     CHECK(status() == (NEO1_MSC_STATUS_ERROR | 1u));
+
+    neo1_msc_io_write(NEO1_IO_MSC_CMD, NEO1_MSC_CMD_DIR_NEXT);
+    CHECK(status() == (NEO1_MSC_STATUS_ERROR | FR_INVALID_OBJECT));
+}
+
+static void test_independent_protocol_instances(void) {
+    neo1_msc_t first;
+    neo1_msc_t second;
+    CHECK(neo1_msc_init(&first, neo1_msc_fatfs_backend()));
+    CHECK(neo1_msc_init(&second, neo1_msc_fatfs_backend()));
+
+    neo1_msc_write(&first, NEO1_IO_MSC_SECTOR_LO, 0x34);
+    neo1_msc_write(&first, NEO1_IO_MSC_SECTOR_HI, 0x12);
+    neo1_msc_write(&first, NEO1_IO_MSC_INDEX, 7);
+    neo1_msc_write(&first, NEO1_IO_MSC_CMD, NEO1_MSC_CMD_OPEN);
+
+    CHECK(first.sector == 0x1234);
+    CHECK(neo1_msc_read(&first, NEO1_IO_MSC_INDEX) == 7);
+    CHECK(neo1_msc_read(&first, NEO1_IO_MSC_STATUS) == NEO1_MSC_STATUS_BUSY);
+    CHECK(second.sector == 0);
+    CHECK(neo1_msc_read(&second, NEO1_IO_MSC_INDEX) == 0);
+    CHECK(neo1_msc_read(&second, NEO1_IO_MSC_STATUS) == NEO1_MSC_STATUS_READY);
 }
 
 static void test_media_and_open_errors(void) {
@@ -355,7 +390,7 @@ static void test_multi_sector_write_and_truncating_overwrite(void) {
 
     set_sector(0);
     set_write_size(512);
-    stream_pattern(512, 0x10);
+    stream_pattern(520, 0x10);
     neo1_msc_io_write(NEO1_IO_MSC_CMD, NEO1_MSC_CMD_WRITE);
     CHECK(status() == NEO1_MSC_STATUS_READY);
 
@@ -424,6 +459,7 @@ static void test_io_failures_and_delete(void) {
 
 int main(void) {
     test_reset_and_command_errors();
+    test_independent_protocol_instances();
     test_media_and_open_errors();
     test_directory_index_and_short_read();
     test_multi_sector_write_and_truncating_overwrite();

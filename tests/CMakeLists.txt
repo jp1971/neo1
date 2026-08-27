@@ -16,6 +16,7 @@ target_compile_definitions(neo1_msc_tests PRIVATE
 )
 
 target_compile_options(neo1_msc_tests PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(neo1_msc_tests PRIVATE neo1_msc_protocol)
 
 add_test(NAME neo1_msc_register_contract COMMAND neo1_msc_tests)
 
