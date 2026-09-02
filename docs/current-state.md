@@ -37,6 +37,17 @@ snapshot, not the architecture contract or a roadmap.
   `99 + 01` overflow flag. All thirteen host tests passed, both SDL profiles
   reached WozMon headlessly, both Pico profiles built with SDK 2.3.0, and both
   build directories were restored to normal Neo1-23.
+- Fruit Jam checkpoint 1A selected qe6502 1.0.0, pinned at commit
+  `8ae9074203e0a6c46ae687e19194c6a3f4bc1d07`, as fake65c02's replacement on
+  2026-09-01. The MIT-licensed C11 core stores each WDC65C02 in a 16-byte
+  caller-owned value and exposes reset, IRQ, NMI, and every memory transaction
+  as explicit bus cycles without callbacks, allocation, or mutable global CPU
+  state. Its WDC Klaus standard and extended tests passed; all 2,540,000
+  available WDC65C02 SingleStepTests cases passed with final state and bus-cycle
+  comparison; its functional, save/load, netlist, and interrupt-lockstep subset
+  passed; and the unmodified static core compiled for the Fruit Jam RP2350 ARM
+  target with SDK 2.3.0. Selection is complete, but Neo1 integration and the
+  checkpoint-1 regression gate remain pending.
 - Normal Neo1-23 and Neo1-50 Pico builds passed on 2026-08-24 with the VACI
   error-line follow-up. Normal and diagnostic builds for both profiles passed
   on 2026-08-23; ELF inspection confirmed normal builds omit verbose trace

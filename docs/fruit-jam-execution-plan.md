@@ -240,6 +240,9 @@ the CPU dependency decision cannot be supported by tests and provenance.
 
 ## Checkpoint 1A: software CPU replacement
 
+Status: qe6502 1.0.0 selected on 2026-09-01; vendoring and Neo1 integration
+remain pending.
+
 ### Boundary
 
 Select and pin a clearly licensed, instance-owned W65C02 core before adding the
@@ -250,12 +253,78 @@ constraint in a separate commit.
 Candidate evaluation must cover:
 
 - ordinary C/C++ suitability for macOS/Linux and RP2350 ARM builds;
-- explicit per-instance registers, IRQ/NMI inputs, and memory callbacks;
+- explicit per-instance registers, IRQ/NMI inputs, and memory or bus access;
 - W65C02 rather than NMOS-6502 opcode and decimal semantics;
 - instruction-cycle reporting suitable for Neo1's elapsed-time scheduler;
 - an unambiguous license and a pinned upstream revision;
 - published or reproducible Klaus Dormann 6502, decimal, interrupt, and 65C02
   extended-opcode results.
+
+### Candidate decision
+
+| Candidate | Evidence-backed fit | Decision |
+| --- | --- | --- |
+| [qe6502](https://github.com/nnqe/qe6502) | MIT, C11, explicit WDC model, 16-byte caller-owned state, no allocation or mutable global CPU state, and one visible bus request per tick | Select version 1.0.0 at commit `8ae9074203e0a6c46ae687e19194c6a3f4bc1d07` |
+| [vrEmu6502](https://github.com/visrealm/vrEmu6502) | MIT, C99, WDC model, multiple CPU objects, and strong bundled Klaus tests | Do not select: memory callbacks have no caller context, CPU construction allocates opaque state, and its aggregate interrupt timing needs adapter correction |
+| [C99-6502](https://github.com/MercuriusDream/C99-6502) | C99 and CMOS instruction support | Do not select: AGPL-3.0 and a larger emulator-owned bus/memory framework are a poorer dependency boundary |
+| [redcode/6502](https://github.com/redcode/6502) | Mature ANSI C, caller context, explicit callbacks, and per-instance state | Do not select: it implements the NMOS 6502 rather than the required W65C02 |
+
+qe6502 represents the physical component directly: the runner owns a CPU value
+and services explicit address, data, read/write, opcode-fetch, reset, IRQ, and
+NMI cycles through `neo1_machine_read()` and `neo1_machine_write()`. This is a
+better fit than an instruction callback API and does not introduce a universal
+emulator framework into the shared machine.
+
+The pin is the `v1.0.0` release commit. The evaluated upstream `main` revision
+was `7af43cec306de72459e0b71d6587066876afaa3a`; only README changes separate it
+from the selected release, so the tested CPU sources are byte-identical to the
+pin.
+
+### Selection evidence
+
+- The complete selected source is MIT-licensed, has 373 commits beginning in
+  2025, and identifies one copyright holder/contributor identity.
+- The upstream native build completed with AppleClang 17. The WDC Klaus
+  functional and extended-opcode tests passed at more than 300 emulated MHz on
+  the development host.
+- Twelve selected upstream functional, save/load, netlist, and interrupt
+  lockstep tests passed. The interrupt lockstep suite exercises NMOS timing;
+  Neo1's unchanged WDC-focused IRQ/NMI tests remain the integration gate.
+- The upstream SingleStep harness passed all 2,540,000 available cases from
+  [SingleStepTests/65x02 commit `2f6980a`](https://github.com/SingleStepTests/65x02/tree/2f6980a2d95757486c7bee24355c360e40e2a224/wdc65c02/v1).
+  The comparison covered final registers, memory, and every expected bus cycle
+  for all 256 opcode files; the WAI (`$CB`) and STP (`$DB`) files contain no
+  vectors, while the other 254 files contain 10,000 cases each. The Klaus
+  extended suite separately reaches the WDC extended instruction surface.
+- The unmodified qe6502 static C core configured and linked for
+  `adafruit_fruit_jam` as `rp2350-arm-s` with Pico SDK 2.3.0 and Arm GNU
+  Toolchain 13.3.Rel1. The minimal compile-check image used 105,740 bytes of
+  text; its 66,320-byte BSS included the harness's 64 KB test memory rather
+  than CPU-owned memory.
+- vrEmu6502 revision `aae98cb14386d832cb7357c99626520b6590bc24` also
+  compiled for RP2350 and passed all eleven bundled tests, but its callback and
+  interrupt-adapter costs make it the runner-up rather than the selection.
+
+### Integration sequence
+
+1. Vendor qe6502's license, native C headers, source, and control-store files at
+   the pinned release without formatting or semantic edits. Record the upstream
+   URL, tag, commit, and local verification commands beside the dependency.
+2. Add a static CMake target consumed only by software runners. Do not expose
+   qe6502 types through `neo1_machine` or platform interfaces.
+3. Make `neo1_soft_runner_t` own `qe6502_t` and its pending bus request. Service
+   each read/write tick through the ordinary machine interface and remove the
+   active-runner callback bridge and single-instance restriction.
+4. Preserve the public runner contract: reset completes through the real reset
+   sequence without charging later instruction budgets, NMI remains one latched
+   edge, IRQ remains a level, and `neo1_soft_runner_step()` continues to return
+   the represented cycles expected by the checkpoint-1 tests.
+5. Run the unchanged Neo1 CPU contract, all host tests, both SDL WozMon smokes,
+   both Pico builds, the pinned qe6502 Klaus suites, and the pinned WDC
+   SingleStepTests harness before deleting fake65c02.
+6. Keep dependency import, runner adaptation, fake65c02 removal, and milestone
+   documentation in reviewable commits. No Fruit Jam platform code belongs in
+   this checkpoint.
 
 ### Acceptance gate
 
@@ -471,10 +540,10 @@ upgrade, target bring-up, and physical I/O work in one commit.
 
 ## Recommended next step
 
-Proceed with checkpoint 1A: replace fake65c02 with a pinned, clearly licensed,
-instance-owned W65C02 core. Checkpoints 0 and 1 established the SDK, board, and
-software-runner boundaries, but the qualified dependency must not become a
-second hardware target's accidental contract.
+Continue checkpoint 1A by vendoring pinned qe6502 1.0.0 and adapting
+`neo1_soft_runner` behind its existing interface. Keep the dependency import,
+runner change, and fake65c02 removal separate; checkpoint 2 begins only after
+the unchanged CPU contract and SDL/Pico gates pass.
 
 ## Upstream references
 
@@ -483,3 +552,5 @@ second hardware target's accidental contract.
 - [Raspberry Pi Pico SDK releases](https://github.com/raspberrypi/pico-sdk/releases)
 - [Raspberry Pi RP2350 HSTX DVI example](https://github.com/raspberrypi/pico-examples/tree/master/hstx/dvi_out_hstx_encoder)
 - [Adafruit Fruit Jam SDIO guide](https://learn.adafruit.com/adafruit-fruit-jam/sdio-usage)
+- [qe6502 1.0.0 source pin](https://github.com/nnqe/qe6502/tree/8ae9074203e0a6c46ae687e19194c6a3f4bc1d07)
+- [SingleStepTests WDC65C02 vectors](https://github.com/SingleStepTests/65x02/tree/2f6980a2d95757486c7bee24355c360e40e2a224/wdc65c02/v1)
