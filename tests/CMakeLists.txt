@@ -153,6 +153,21 @@ target_link_libraries(neo1_soft_timing_tests PRIVATE neo1_soft_runner)
 
 add_test(NAME neo1_soft_cycle_budget COMMAND neo1_soft_timing_tests)
 
+add_executable(neo1_soft_cpu_tests
+    test_neo1_soft_cpu.c
+)
+target_include_directories(neo1_soft_cpu_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_compile_options(neo1_soft_cpu_tests PRIVATE
+    -Wall
+    -Wextra
+    -Werror
+)
+target_link_libraries(neo1_soft_cpu_tests PRIVATE neo1_soft_runner)
+
+add_test(NAME neo1_soft_cpu_contract COMMAND neo1_soft_cpu_tests)
+
 add_executable(neo1_terminal_tests
     test_neo1_terminal.c
     ${CMAKE_SOURCE_DIR}/systems/neo1-pico/src/neo1_terminal_pico.c

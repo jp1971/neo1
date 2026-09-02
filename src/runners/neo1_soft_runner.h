@@ -18,6 +18,7 @@ typedef struct {
     neo1_machine_t* machine;
     uint32_t system_cycles;
     bool irq;
+    bool nmi_pending;
     bool valid;
 } neo1_soft_runner_t;
 
@@ -32,7 +33,9 @@ void neo1_soft_runner_discard(neo1_soft_runner_t* runner);
 // state are deliberately not reset by the CPU runner.
 void neo1_soft_runner_reset(neo1_soft_runner_t* runner);
 
-// Execute one complete instruction and return its represented cycle count.
+// Execute one complete instruction and return its represented cycle count,
+// including the seven entry cycles when a pending NMI or accepted IRQ is
+// presented at this instruction boundary.
 uint32_t neo1_soft_runner_step(neo1_soft_runner_t* runner);
 
 // Execute complete instructions until at least the requested time budget is
@@ -40,4 +43,8 @@ uint32_t neo1_soft_runner_step(neo1_soft_runner_t* runner);
 uint32_t neo1_soft_runner_exec_us(neo1_soft_runner_t* runner, uint32_t microseconds);
 
 void neo1_soft_runner_set_irq(neo1_soft_runner_t* runner, bool asserted);
+
+// Latch one NMI edge for delivery before the next instruction. Multiple edges
+// before that boundary collapse into one pending NMI, matching a CPU input
+// latch rather than an unbounded host-event queue.
 void neo1_soft_runner_nmi(neo1_soft_runner_t* runner);

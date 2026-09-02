@@ -42,16 +42,28 @@ void neo1_soft_runner_discard(neo1_soft_runner_t* runner) {
 void neo1_soft_runner_reset(neo1_soft_runner_t* runner) {
     assert(runner && runner->valid && (active_runner == runner));
     runner->irq = false;
+    runner->nmi_pending = false;
     runner->system_cycles = 0;
     reset6502();
 }
 
 uint32_t neo1_soft_runner_step(neo1_soft_runner_t* runner) {
     assert(runner && runner->valid && (active_runner == runner));
-    if (runner->irq) {
+
+    uint32_t interrupt_cycles = 0;
+    if (runner->nmi_pending) {
+        runner->nmi_pending = false;
+        nmi6502();
+        interrupt_cycles = 7;
+    } else if (runner->irq && ((status & FLAG_INTERRUPT) == 0)) {
+        // fake65c02 exposes no accepted/not-accepted result, so inspect its
+        // internal I flag before presenting the level. Keep that dependency
+        // isolated here until the provisional CPU core is replaced.
         irq6502();
+        interrupt_cycles = 7;
     }
-    const uint32_t cycles = step6502();
+
+    const uint32_t cycles = interrupt_cycles + step6502();
     assert(cycles > 0);
     runner->system_cycles += cycles;
     return cycles;
@@ -75,6 +87,5 @@ void neo1_soft_runner_set_irq(neo1_soft_runner_t* runner, bool asserted) {
 
 void neo1_soft_runner_nmi(neo1_soft_runner_t* runner) {
     assert(runner && runner->valid && (active_runner == runner));
-    (void)runner;
-    nmi6502();
+    runner->nmi_pending = true;
 }
