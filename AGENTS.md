@@ -51,12 +51,6 @@ profiles and PIA state, a shared terminal grid, and a shared MSC register
 protocol. Treat the following as remaining areas to inspect rather than
 patterns to preserve:
 
-- `src/chips/fake65c02.h` is the SDL runner's temporary software-CPU
-  dependency. Its source lineage is traced to archived MyLittle6502 commit
-  `2684fba`, but the upstream notice leaves incorporated Commander X16 code's
-  licensing unresolved. Its state is process-global, focused Neo1 tests are
-  not broad W65C02 qualification, and the recorded decision is to replace it
-  before a Fruit Jam runner is added.
 - `systems/neo1-sdl/src/neo1_platform.h` mixes display, input, timing,
   lifecycle, and block storage in an SDL-local interface. It is not
   automatically the future shared platform API.
@@ -97,9 +91,9 @@ platform seam, and which is a temporary SDL accommodation.
 - New abstractions require at least two concrete consumers and must state which
   physical component or observable behavior they represent.
 - Keep 6502-side programs and generated images separate from platform code.
-- Preserve attribution and license notices when extracting or rewriting derived
-  code. Treat the provenance and suitability of `fake65c02.h` as an explicit
-  dependency decision, not an accidental permanent choice.
+- Preserve attribution, license notices, and source pins when extracting,
+  importing, or rewriting derived code. Keep qe6502 isolated behind the
+  software-runner boundary rather than exposing it through the shared machine.
 - Do not combine behavior changes, architectural extraction, broad renaming, and
   new features in one commit.
 

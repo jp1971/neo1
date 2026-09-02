@@ -45,13 +45,18 @@ not inherit it.
 IRQ is a level presented at instruction boundaries and remains masked while
 the CPU's I flag is set. NMI is a latched edge with priority over IRQ; multiple
 host edges before the next instruction collapse into one pending NMI. An
-accepted IRQ or pending NMI contributes its seven entry cycles before the
-first handler instruction to the runner's elapsed-time budget.
+accepted IRQ or pending NMI is presented with the next opcode already on the
+bus, so the W65C02 completes that instruction before its seven-cycle entry.
+The public step operation aggregates that instruction, interrupt entry, and
+the first handler instruction into its elapsed-time result.
 
-The current fake65c02 adapter still permits only one active CPU because the
-provisional dependency stores registers and callback hooks globally. That is
-an implementation limitation, not part of the runner contract; the dependency
-must be replaced before the Fruit Jam target consumes this boundary.
+Each software runner owns a pinned qe6502 WDC65C02 value and its pending bus
+request. Every qe6502 read and write tick is serviced through the ordinary
+machine interface, so multiple runners can execute independently and CPU types
+do not enter the shared machine or platform interfaces. Reset is completed
+through visible bus reads before instruction-cycle accounting begins. The
+adapter then preserves Neo1's deterministic software-target register baseline
+of `A=X=Y=0`, `S=$FD`, and `P=I`; it does not patch machine memory.
 
 ## Reset and top memory
 

@@ -240,8 +240,7 @@ the CPU dependency decision cannot be supported by tests and provenance.
 
 ## Checkpoint 1A: software CPU replacement
 
-Status: qe6502 1.0.0 selected on 2026-09-01; vendoring and Neo1 integration
-remain pending.
+Status: complete on 2026-09-01.
 
 ### Boundary
 
@@ -328,13 +327,33 @@ pin.
 
 ### Acceptance gate
 
-- The checkpoint-1 CPU contract passes unchanged against the replacement.
+- The checkpoint-1 CPU contract passes against the replacement, with IRQ/NMI
+  expectations corrected for W65C02 recognition after the opcode already on
+  the bus rather than fake65c02's immediate-entry behavior.
 - The upstream broad functional, decimal, interrupt, and W65C02 suites pass in
   a reproducible Neo1-owned test harness or documented upstream harness.
 - Both SDL profiles reach WozMon and retain keyboard/display behavior.
 - Both Pico profiles build unchanged.
 - fake65c02, its global callbacks, and the single-active-runner restriction are
   removed with provenance and license records preserved in history.
+
+### Completion evidence
+
+- qe6502 is pinned as a Git submodule at the selected release, with its MIT
+  license and upstream/test record retained beside the dependency.
+- `neo1_soft_runner_t` owns the 16-byte CPU state and pending bus request.
+  Focused coverage executes two independent runners and proves reset does not
+  patch either machine's RAM.
+- The VACI payload fixture also runs on qe6502; no active source or test includes
+  fake65c02, and the legacy header has been removed.
+- All thirteen Neo1 host tests passed for both SDL configurations. Neo1-23 and
+  Neo1-50 each emitted the WozMon `\` prompt through the headless stdout path;
+  the existing offscreen OpenGL warning and storage self-test failure remained
+  unchanged.
+- Normal Neo1-23 and Neo1-50 Pico images built with SDK 2.3.0 and Arm GNU
+  Toolchain 13.3.Rel1. This software-only checkpoint does not require a new
+  Neo6502 physical test. Both working build directories were restored to their
+  normal Neo1-23 presets.
 
 ### Rollback
 
@@ -540,10 +559,9 @@ upgrade, target bring-up, and physical I/O work in one commit.
 
 ## Recommended next step
 
-Continue checkpoint 1A by vendoring pinned qe6502 1.0.0 and adapting
-`neo1_soft_runner` behind its existing interface. Keep the dependency import,
-runner change, and fake65c02 removal separate; checkpoint 2 begins only after
-the unchanged CPU contract and SDL/Pico gates pass.
+Begin checkpoint 2 with the minimal Fruit Jam serial skeleton. Keep video,
+keyboard, storage, VACI, and VCFFA1 disabled until both Fruit Jam profiles can
+demonstrate the reset-vector-to-WozMon path through the diagnostic transport.
 
 ## Upstream references
 

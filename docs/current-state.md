@@ -37,7 +37,7 @@ snapshot, not the architecture contract or a roadmap.
   `99 + 01` overflow flag. All thirteen host tests passed, both SDL profiles
   reached WozMon headlessly, both Pico profiles built with SDK 2.3.0, and both
   build directories were restored to normal Neo1-23.
-- Fruit Jam checkpoint 1A selected qe6502 1.0.0, pinned at commit
+- Fruit Jam checkpoint 1A integrated qe6502 1.0.0, pinned at commit
   `8ae9074203e0a6c46ae687e19194c6a3f4bc1d07`, as fake65c02's replacement on
   2026-09-01. The MIT-licensed C11 core stores each WDC65C02 in a 16-byte
   caller-owned value and exposes reset, IRQ, NMI, and every memory transaction
@@ -46,8 +46,13 @@ snapshot, not the architecture contract or a roadmap.
   available WDC65C02 SingleStepTests cases passed with final state and bus-cycle
   comparison; its functional, save/load, netlist, and interrupt-lockstep subset
   passed; and the unmodified static core compiled for the Fruit Jam RP2350 ARM
-  target with SDK 2.3.0. Selection is complete, but Neo1 integration and the
-  checkpoint-1 regression gate remain pending.
+  target with SDK 2.3.0. Each software runner now owns its CPU and explicit bus
+  request; two-runner coverage passes and the global callback/state restriction
+  and old core are gone. The integration also corrected the contract test to
+  reflect W65C02 IRQ/NMI recognition after the opcode already on the bus. All
+  thirteen host tests pass, both SDL profiles reach WozMon headlessly, and both
+  Pico profiles build with SDK 2.3.0. Both working build directories were
+  restored to normal Neo1-23.
 - Normal Neo1-23 and Neo1-50 Pico builds passed on 2026-08-24 with the VACI
   error-line follow-up. Normal and diagnostic builds for both profiles passed
   on 2026-08-23; ELF inspection confirmed normal builds omit verbose trace
@@ -55,8 +60,8 @@ snapshot, not the architecture contract or a roadmap.
   was restored to the normal Neo1-23 profile afterward.
 - Normal and diagnostic Pico presets set `NEO1_DIAGNOSTICS` explicitly so
   switching back to a normal profile restores concise serial output.
-- The SDL-23 target builds locally and now schedules the software CPU from a
-  monotonic elapsed-time budget using fake65c02's instruction cycle counts. A
+- The SDL-23 target builds locally and now schedules its qe6502 software CPU
+  from a monotonic elapsed-time budget using explicit represented bus cycles. A
   headless WozMon startup smoke and the focused cycle-budget test passed on
   2026-08-24; this does not establish equivalent Pico storage or hardware
   behavior.
@@ -242,19 +247,7 @@ directory, bitmap, file-size, and destination limitations.
     error register immediately after command issue, then polls DRQ without a
     timeout or further busy/error checks. A device or backend that never raises
     DRQ stalls the 6502 utility indefinitely.
-10. **The software CPU dependency must be replaced before Fruit Jam.** The
-    checked-in fake65c02 source was traced to archived MyLittle6502 commit
-    `2684fbaab72162110aa959787053f72304689547`; before checkpoint 1 it matched
-    that header after line-ending normalization except for a missing-semicolon
-    fix. The upstream header calls itself public domain/CC0 while also saying it
-    incorporates changes from a non-public-domain Commander X16 emulator and
-    leaves the resulting license question unresolved. Checkpoint 1 adds a
-    local decimal-overflow correction. CPU state and callbacks remain
-    process-global, there is no snapshot API, and the focused Neo1 tests are
-    not a broad W65C02 qualification suite. Keep it as the temporary SDL core
-    only; use a pinned, clearly licensed, instance-owned replacement before a
-    Fruit Jam Neo1 runner is added.
-11. **USB-storage recovery is cold-boot verified only.** During checkpoint 9,
+10. **USB-storage recovery is cold-boot verified only.** During checkpoint 9,
     the specialized VACI BASIC `L` command returned silently to its menu when
     storage was unavailable instead of printing an error. Live reinsertion did
     not establish recovery; power cycling with the USB medium already inserted

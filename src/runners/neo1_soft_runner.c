@@ -22,9 +22,9 @@ static void neo1_soft_runner_complete_reset(neo1_soft_runner_t* runner) {
         neo1_soft_runner_service_tick(runner);
     }
 
-    // Preserve the deterministic software-runner reset state established by
-    // fake65c02. Real W65C02 hardware does not specify these register values,
-    // but SDL programs have historically begun with A/X/Y=0 and S=$FD.
+    // Preserve Neo1's deterministic software-runner reset state. Real W65C02
+    // hardware does not specify these values, but SDL programs have
+    // historically begun with A/X/Y=0 and S=$FD.
     qe6502_set_a(&runner->cpu, 0);
     qe6502_set_x(&runner->cpu, 0);
     qe6502_set_y(&runner->cpu, 0);
