@@ -17,25 +17,28 @@ or accesses storage.
 
 ## Targets and long-term shape
 
-Neo1 has two current execution targets:
+Neo1 has three current execution targets:
 
 - `systems/neo1-pico/`: Olimex Neo6502, where an RP2040 services the bus of a
   physical W65C02 and provides DVI, USB keyboard, and USB storage.
 - `systems/neo1-sdl/`: a desktop SDL target using a software 65C02.
+- `systems/neo1-fruitjam/`: an Adafruit Fruit Jam RP2350 target using the same
+  software-CPU runner. Its current serial skeleton owns USB-CDC diagnostics,
+  elapsed-time scheduling, and lifecycle reset; video, Apple-1 input, storage,
+  VACI, VCFFA1, and audio are not yet enabled.
 
-An Adafruit Fruit Jam target is a future goal. It should reuse the software-CPU
-and shared-machine path established for SDL while supplying Fruit Jam-specific
-display, input, timing, audio, and storage services. Do not create Fruit Jam
-code or a speculative universal HAL until the existing two targets establish
-the required boundaries.
+Fruit Jam should continue to reuse the software-CPU and shared-machine path
+established for SDL while adding Fruit Jam-specific display, input, audio, and
+storage services in evidence-backed checkpoints. Do not introduce a speculative
+universal HAL; extract a shared boundary only after two concrete targets need it.
 
 The intended architecture is one shared Apple-1 machine model with thin runners:
 
 - the shared machine owns the 64 KB memory space, ROM/RAM policy, Apple-1
   PIA-like behavior, memory-mapped device contracts, and machine profiles;
 - the Neo6502 runner owns physical W65C02 bus timing and GPIO/latch behavior;
-- a software-CPU runner owns emulated CPU execution and is shared by SDL and,
-  eventually, Fruit Jam;
+- a software-CPU runner owns emulated CPU execution and is shared by SDL and
+  Fruit Jam;
 - each platform owns its event loop, display transport, input transport,
   storage backend, timing, and lifecycle.
 
@@ -45,10 +48,11 @@ machine.
 
 ## Current portability baseline
 
-The active Reload/CHIPS execution surface has been removed. Both runners now
-use the ordinary shared `neo1_machine` read/write interface, shared machine
-profiles and PIA state, a shared terminal grid, and a shared MSC register
-protocol. Treat the following as remaining areas to inspect rather than
+The active Reload/CHIPS execution surface has been removed. All three runners
+use the ordinary shared `neo1_machine` read/write interface, machine profiles,
+and PIA state. Pico and SDL additionally consume the shared terminal grid and
+MSC register protocol; the Fruit Jam serial skeleton does not yet attach those
+services. Treat the following as remaining areas to inspect rather than
 patterns to preserve:
 
 - `systems/neo1-sdl/src/neo1_platform.h` mixes display, input, timing,
@@ -71,7 +75,7 @@ platform seam, and which is a temporary SDL accommodation.
 ## Architectural rules
 
 - Preserve verified behavior before restructuring it.
-- Keep both Neo6502 and SDL buildable at every completed milestone.
+- Keep Neo6502, SDL, and Fruit Jam buildable at every completed milestone.
 - Maintain one shared implementation of each 6502-visible device protocol.
 - Do not duplicate the Apple-1 keyboard/display model, terminal state machine,
   MSC register state machine, or VCFFA1 register state machine by platform.

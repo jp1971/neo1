@@ -363,6 +363,8 @@ PIA exceptions.
 
 ## Checkpoint 2: Fruit Jam serial skeleton
 
+Status: complete on 2026-09-01.
+
 ### Boundary
 
 Add `systems/neo1-fruitjam/` and explicit `fruitjam` CMake presets with a
@@ -382,6 +384,26 @@ Neo1-50 entry-stub policy.
 - Ctrl-R or a documented board reset action reliably repeats the reset path.
 - The runner neither patches RAM nor changes shared machine semantics.
 - Existing SDL and Pico gates remain green.
+
+### Completion evidence
+
+- The `neo1-fruitjam-23-serial` and `neo1-fruitjam-50-serial` presets configure
+  the official `adafruit_fruit_jam` board as `rp2350-arm-s` in the separate
+  `build-fruitjam/` tree. Both compile with SDK 2.3.0 and Arm GNU Toolchain
+  13.3.Rel1.
+- The target owns one static 64 KB machine, one qe6502 runner, monotonic-time
+  scheduling, USB-CDC character output, and serial Ctrl-R lifecycle reset. It
+  attaches no storage device and installs no target-specific RAM contents.
+- Both profiles were flashed on Fruit Jam `21A41F42391B99FA`. Neo1-23 and
+  Neo1-50 each reported `reset=$FF00 entry=$FF00`, emitted the WozMon `\`
+  prompt, and repeated the same sequence after Ctrl-R.
+- Link/source inspection confirms video, Apple-1 input, MSC, VACI, VCFFA1,
+  audio, PicoDVI, the physical W65C02 runner, and Neo1-50 entry stubs are absent.
+- All thirteen host tests pass, both SDL profiles reach WozMon headlessly, and
+  both Pico profiles build with SDK 2.3.0. The Neo6502 TinyUSB host
+  configuration now resides in its owning target directory so it cannot
+  override Fruit Jam's USB-device CDC configuration. All three working build
+  directories were restored to Neo1-23.
 
 ### Rollback
 
@@ -559,9 +581,9 @@ upgrade, target bring-up, and physical I/O work in one commit.
 
 ## Recommended next step
 
-Begin checkpoint 2 with the minimal Fruit Jam serial skeleton. Keep video,
-keyboard, storage, VACI, and VCFFA1 disabled until both Fruit Jam profiles can
-demonstrate the reset-vector-to-WozMon path through the diagnostic transport.
+Begin checkpoint 3 with a Fruit Jam-only HSTX DVI text renderer fed by the
+shared terminal grid. Preserve serial diagnostics and reset while keeping
+keyboard, storage, VACI, VCFFA1, and audio disabled.
 
 ## Upstream references
 

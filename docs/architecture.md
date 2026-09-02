@@ -8,13 +8,13 @@ implementation status and known deviations belong in `docs/current-state.md`.
 Neo1 presents one 64 KB address space to a 65C02. The machine model owns machine
 profiles, RAM, ROM protection, Apple-1 keyboard/display behavior, and optional
 storage-device address decoding. A runner supplies CPU bus cycles: Neo1 Pico
-observes a physical W65C02, while SDL drives the same read/write surface from a
-software CPU.
+observes a physical W65C02, while SDL and Fruit Jam drive the same read/write
+surface from the shared software-CPU runner.
 
 The ordinary shared `neo1_machine` C module implements that CPU-neutral state
 and explicit bus surface. `neo1_soft_runner` attaches a software CPU to that
 surface and owns instruction stepping, reset/interrupt presentation, and cycle
-budgeting for SDL and future host-style targets. Pico owns a separate
+budgeting for SDL and Fruit Jam. Pico owns a separate
 `neo1_wdc_runner` that drives the physical W65C02 clock, reset and interrupt
 pins, reads the Neo6502 address/data latches, and forwards each captured bus
 access to `neo1_machine_read()` or `neo1_machine_write()`. Platform runners may
@@ -29,7 +29,7 @@ ignored.
 
 The ordinary shared `neo1_profile` module is the sole definition of each
 profile's identity, ROM image, ROM size, placement, and protection boundary.
-Both runners select a profile by personality and pass it to the shared machine;
+All runners select a profile by personality and pass it to the shared machine;
 the machine retains that immutable profile. Build presets choose the
 personality, while runner-installed RAM software remains runner policy.
 
@@ -57,6 +57,14 @@ do not enter the shared machine or platform interfaces. Reset is completed
 through visible bus reads before instruction-cycle accounting begins. The
 adapter then preserves Neo1's deterministic software-target register baseline
 of `A=X=Y=0`, `S=$FD`, and `P=I`; it does not patch machine memory.
+
+The Fruit Jam serial skeleton owns one shared machine and one software runner.
+It schedules represented cycles from RP2350 monotonic time and routes display
+bytes to USB-CDC without installing a terminal renderer or Apple-1 input path.
+Serial Ctrl-R is target lifecycle control: it resets PIA and CPU state but is
+not delivered to `$D010/$D011`. The target attaches no MSC or VCFFA1 port,
+installs no RAM utilities or Neo1-50 entry stubs, and links no PicoDVI or
+physical-W65C02 code.
 
 ## Reset and top memory
 

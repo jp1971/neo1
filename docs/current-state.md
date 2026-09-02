@@ -53,6 +53,19 @@ snapshot, not the architecture contract or a roadmap.
   thirteen host tests pass, both SDL profiles reach WozMon headlessly, and both
   Pico profiles build with SDK 2.3.0. Both working build directories were
   restored to normal Neo1-23.
+- Fruit Jam checkpoint 2 passed on 2026-09-01. Named Neo1-23 and Neo1-50 serial
+  presets build in `build-fruitjam/` for the official `adafruit_fruit_jam`
+  `rp2350-arm-s` target with SDK 2.3.0. The target owns one shared machine, one
+  qe6502 runner, elapsed-time scheduling, USB-CDC output, and serial Ctrl-R
+  lifecycle reset; video, Apple-1 input, storage, VACI, VCFFA1, audio, PicoDVI,
+  physical-W65C02 code, and Neo1-50 entry stubs remain absent. Both profiles
+  were flashed to Fruit Jam serial `21A41F42391B99FA`; each reported
+  `reset=$FF00 entry=$FF00`, printed the WozMon `\` prompt, and repeated the
+  sequence after Ctrl-R. All thirteen host tests passed, both SDL profiles
+  reached WozMon headlessly, and both Pico profiles built. Moving the Neo6502
+  TinyUSB host configuration into its target directory preserved both Pico
+  builds while preventing it from contaminating Fruit Jam USB-device CDC. The
+  Pico, SDL, and Fruit Jam build directories were restored to Neo1-23.
 - Normal Neo1-23 and Neo1-50 Pico builds passed on 2026-08-24 with the VACI
   error-line follow-up. Normal and diagnostic builds for both profiles passed
   on 2026-08-23; ELF inspection confirmed normal builds omit verbose trace

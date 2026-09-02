@@ -1,6 +1,9 @@
 # Neo1
 
-Neo1 is a modern 65C02 system project with multiple personalities and, now, multiple platform targets. The current hardware target runs on the Olimex Neo6502 platform and can be configured as a Neo1-50 to emulate an Apple-1 50 years after it was first demoed at the Homebrew Computer Club in April 1976 or a Neo1-23 to emulate a Replica 1 23 years after its initial release in 2003.
+Neo1 is a modern 65C02 system project with two machine personalities and three
+platform targets. Neo1-50 marks fifty years since the Apple-1's 1976 debut;
+Neo1-23 follows the Replica 1 introduced in 2003. The Olimex Neo6502 uses a
+physical W65C02, while SDL and Adafruit Fruit Jam use a software W65C02.
 
 ## Naming Axes
 
@@ -8,7 +11,7 @@ Neo1 now has three distinct naming axes that should stay separate:
 
 - `Neo1` — the overall project and machine family.
 - `23` / `50` — the machine personality selected at compile time.
-- `pico` / `sdl` — the platform implementation target.
+- `pico` / `sdl` / `fruitjam` — the platform implementation target.
 
 Working rule:
 
@@ -20,11 +23,13 @@ Platform targets:
 
 - `systems/neo1-pico/` — Olimex Neo6502 / RP2040 hardware target
 - `systems/neo1-sdl/` — macOS/Linux host target using SDL2
+- `systems/neo1-fruitjam/` — Adafruit Fruit Jam / RP2350 software-CPU target
 
-Adafruit Fruit Jam is the proposed next hardware target. Its staged SDK,
-software-CPU, HSTX video, USB keyboard, and microSD work is defined in the
-[Fruit Jam execution plan](docs/fruit-jam-execution-plan.md). The standalone
-SDK/board probe is verified; no Fruit Jam Neo1 runner is claimed yet.
+Fruit Jam currently provides the checkpoint-2 serial skeleton: both ROM
+personalities run through the shared machine and software CPU, with USB-CDC
+diagnostics and lifecycle reset. HSTX video, Apple-1 keyboard input, storage,
+VACI, VCFFA1, and audio remain disabled. Their staged work is defined in the
+[Fruit Jam execution plan](docs/fruit-jam-execution-plan.md).
 
 ## Monitor entry points
 
@@ -41,8 +46,8 @@ From WozMon on Neo1 Pico:
 | `1810R` | VCFFA1 enabled | Enter the VCFFA1 utility |
 
 On Neo1-50 Pico, `$E000` and `$F000` initially contain return-to-WozMon stubs
-until a storage utility overwrites them. SDL does not currently install the
-VACI or VCFFA1 RAM utilities.
+until a storage utility overwrites them. SDL and Fruit Jam do not currently
+install the VACI or VCFFA1 RAM utilities.
 
 ## Neo1 Pico build profiles
 
@@ -89,17 +94,17 @@ baseline.
 ### Prepare the checkout
 
 Install the Raspberry Pi Pico extension, allow it to install the verified SDK
-and toolchain, and initialize the three project submodules from the repository
+and toolchain, and initialize the four project submodules from the repository
 root:
 
 ```sh
-git submodule update --init -- lib/pico-sdk lib/PicoDVI lib/tinyusb
+git submodule update --init -- lib/pico-sdk lib/PicoDVI lib/tinyusb lib/qe6502
 ```
 
 The build uses the extension-managed official SDK. The checked-in Pico SDK fork
 is still required because it supplies Neo1's project-specific
 `olimex_neo6502.h` board definition. PicoDVI and TinyUSB are linked from the
-checked-in submodules.
+checked-in submodules; software targets use the pinned qe6502 submodule.
 
 ### Understand the two CMake controls
 
@@ -191,7 +196,38 @@ cmake --build --preset build-neo1-pico-23-full --target clean
 The SDL target remains a development and behavioral-test target, but it is not
 part of this hardware quickstart.
 
-### Host storage tests
+## Fruit Jam serial checkpoint
+
+Fruit Jam uses the official `adafruit_fruit_jam` SDK board definition and a
+separate `build-fruitjam/` directory. Configure and build either serial-only
+profile through CMake Tools or the equivalent commands:
+
+```sh
+cmake --preset neo1-fruitjam-23-serial
+cmake --build --preset build-neo1-fruitjam-23-serial
+```
+
+Use `neo1-fruitjam-50-serial` and
+`build-neo1-fruitjam-50-serial` for Neo1-50. The UF2 is written to:
+
+```text
+build-fruitjam/systems/neo1-fruitjam/neo1.uf2
+```
+
+Flash a connected Fruit Jam through picotool (or copy the UF2 while the board
+is in BOOTSEL mode):
+
+```sh
+picotool load -f -x build-fruitjam/systems/neo1-fruitjam/neo1.uf2
+```
+
+Connect the Fruit Jam through its USB-C device port and open its USB-CDC serial
+port. Startup reports the selected personality, reset vector, and first opcode
+fetch; WozMon then prints its `\` prompt. Serial Ctrl-R resets the shared PIA and
+software CPU and repeats that evidence. Other serial bytes are deliberately
+ignored rather than injected as Apple-1 keyboard input.
+
+## Host storage tests
 
 The SDL configure enables storage-focused CTest targets that run without real
 media:
