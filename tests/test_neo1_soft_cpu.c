@@ -124,16 +124,16 @@ static void test_irq_masking_and_rti(void) {
     CHECK(neo1_soft_runner_step(&fixture.runner) == 2); // CLI
     CHECK(fixture.machine.ram[0x1000] == 0x11);
 
-    // IRQ entry is seven cycles, followed by the six-cycle handler INC.
-    CHECK(neo1_soft_runner_step(&fixture.runner) == 13);
+    // W65C02 IRQ recognition after CLI is delayed through the following NOP.
+    // The step then includes seven-cycle entry and the six-cycle handler INC.
+    CHECK(neo1_soft_runner_step(&fixture.runner) == 15);
     CHECK(fixture.machine.ram[0x1001] == 1);
     CHECK(fixture.machine.ram[0x01FD] == 0x02);
-    CHECK(fixture.machine.ram[0x01FC] == 0x07);
+    CHECK(fixture.machine.ram[0x01FC] == 0x08);
     CHECK((fixture.machine.ram[0x01FB] & FLAG_BREAK) == 0);
     neo1_soft_runner_set_irq(&fixture.runner, false);
 
     CHECK(neo1_soft_runner_step(&fixture.runner) == 6); // RTI
-    CHECK(neo1_soft_runner_step(&fixture.runner) == 2); // resumed NOP
     CHECK(neo1_soft_runner_step(&fixture.runner) == 2); // LDA
     CHECK(neo1_soft_runner_step(&fixture.runner) == 4); // STA
     CHECK(fixture.machine.ram[0x1002] == 0x22);
@@ -158,13 +158,14 @@ static void test_nmi_and_rti(void) {
 
     fixture_start(&fixture);
     neo1_soft_runner_nmi(&fixture.runner);
-    CHECK(neo1_soft_runner_step(&fixture.runner) == 13);
+    // The NMI edge is presented with the NOP already on the bus, so the W65C02
+    // completes that instruction before seven-cycle entry and the handler INC.
+    CHECK(neo1_soft_runner_step(&fixture.runner) == 15);
     CHECK(fixture.machine.ram[0x1004] == 1);
     CHECK(fixture.machine.ram[0x01FD] == 0x02);
-    CHECK(fixture.machine.ram[0x01FC] == 0x00);
+    CHECK(fixture.machine.ram[0x01FC] == 0x01);
     CHECK((fixture.machine.ram[0x01FB] & FLAG_BREAK) == 0);
     CHECK(neo1_soft_runner_step(&fixture.runner) == 6); // RTI
-    CHECK(neo1_soft_runner_step(&fixture.runner) == 2); // resumed NOP
     CHECK(neo1_soft_runner_step(&fixture.runner) == 2); // LDA
     CHECK(neo1_soft_runner_step(&fixture.runner) == 4); // STA
     CHECK(fixture.machine.ram[0x1003] == 0x33);

@@ -2,13 +2,14 @@
 
 // Software 65C02 execution runner for the CPU-neutral Neo1 machine.
 //
-// The checked-in fake65c02 core keeps its architectural state and callback
-// hooks in process-global storage. This runner therefore supports exactly one
-// active instance. That limitation is explicit here rather than leaking into
-// neo1_machine_t, and can be removed when the software CPU dependency changes.
+// Each runner owns one qe6502 WDC65C02 value and services its explicit bus
+// requests through a separately owned neo1_machine. CPU state remains outside
+// neo1_machine_t and multiple runners may execute independently.
 
 #include <stdbool.h>
 #include <stdint.h>
+
+#include <qe6502/qe6502.h>
 
 #include "systems/neo1_machine.h"
 
@@ -16,15 +17,16 @@
 
 typedef struct {
     neo1_machine_t* machine;
+    qe6502_t cpu;
+    qe6502_tick_t tick;
     uint32_t system_cycles;
-    bool irq;
     bool nmi_pending;
     bool valid;
 } neo1_soft_runner_t;
 
-// Attach the one active software CPU to a separately initialized machine and
-// fetch its RESET vector. The runner never initializes or patches machine RAM.
-// Returns false when arguments are invalid or another runner is active.
+// Attach an instance-owned software CPU to a separately initialized machine
+// and complete its RESET sequence through explicit machine reads. The runner
+// never initializes or patches machine RAM.
 bool neo1_soft_runner_init(neo1_soft_runner_t* runner, neo1_machine_t* machine);
 
 void neo1_soft_runner_discard(neo1_soft_runner_t* runner);
@@ -33,9 +35,9 @@ void neo1_soft_runner_discard(neo1_soft_runner_t* runner);
 // state are deliberately not reset by the CPU runner.
 void neo1_soft_runner_reset(neo1_soft_runner_t* runner);
 
-// Execute one complete instruction and return its represented cycle count,
-// including the seven entry cycles when a pending NMI or accepted IRQ is
-// presented at this instruction boundary.
+// Execute one complete instruction and return its represented bus-cycle count.
+// For compatibility with the established runner contract, an accepted IRQ or
+// pending NMI includes its entry sequence and the first handler instruction.
 uint32_t neo1_soft_runner_step(neo1_soft_runner_t* runner);
 
 // Execute complete instructions until at least the requested time budget is

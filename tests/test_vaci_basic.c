@@ -3,14 +3,9 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <qe6502/qe6502.h>
+
 #include "neo1_vaci_v1.h"
-
-#define FAKE6502_USE_STDINT
-
-uint8_t read6502(uint16_t address);
-void write6502(uint16_t address, uint8_t value);
-
-#include "chips/fake65c02.h"
 
 #define MSC_CMD      0xD014u
 #define MSC_SECT_LO  0xD015u
@@ -139,7 +134,7 @@ static void msc_command(uint8_t command) {
     }
 }
 
-uint8_t read6502(uint16_t address) {
+static uint8_t vaci_read(uint16_t address) {
     switch (address) {
         case KBDCR:
             return g_keys[g_key_offset] != '\0' ? 0x80 : 0;
@@ -167,7 +162,7 @@ uint8_t read6502(uint16_t address) {
     }
 }
 
-void write6502(uint16_t address, uint8_t value) {
+static void vaci_write(uint16_t address, uint8_t value) {
     switch (address) {
         case DSP:
             if (g_display_length + 1 < sizeof(g_display)) {
@@ -216,13 +211,35 @@ static bool run_vaci(const char* keys) {
     g_key_offset = 0;
     g_memory[0xFFFC] = (uint8_t)NEO1_VACI_V1_ADDR;
     g_memory[0xFFFD] = (uint8_t)(NEO1_VACI_V1_ADDR >> 8);
-    reset6502();
+
+    qe6502_t cpu = qe6502_setup(qe6502_model_wdc);
+    qe6502_tick_t tick = qe6502_restart(&cpu);
+    while (qe6502_is_reset(tick) || !qe6502_is_fetch(tick)) {
+        uint8_t input = 0;
+        if (qe6502_is_write(tick)) {
+            vaci_write(tick.address, tick.bus);
+        } else {
+            input = vaci_read(tick.address);
+        }
+        tick = qe6502_tick(&cpu, input);
+    }
+    qe6502_set_a(&cpu, 0);
+    qe6502_set_x(&cpu, 0);
+    qe6502_set_y(&cpu, 0);
+    qe6502_set_s(&cpu, 0xFD);
+    qe6502_set_p(&cpu, qe6502_flag_I | qe6502_flag_UN);
 
     for (size_t count = 0; count < 2000000u; count++) {
-        if (pc == 0xFF00u) {
+        if (qe6502_is_fetch(tick) && tick.address == 0xFF00u) {
             return g_keys[g_key_offset] == '\0';
         }
-        step6502();
+        uint8_t input = 0;
+        if (qe6502_is_write(tick)) {
+            vaci_write(tick.address, tick.bus);
+        } else {
+            input = vaci_read(tick.address);
+        }
+        tick = qe6502_tick(&cpu, input);
     }
     return false;
 }

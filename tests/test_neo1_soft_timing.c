@@ -31,20 +31,24 @@ int main(void) {
         .profile = &profile,
     };
     neo1_machine_t machine;
+    neo1_machine_t second_machine;
     neo1_soft_runner_t runner;
     neo1_soft_runner_t second_runner;
     CHECK(neo1_machine_init(&machine, &desc));
+    CHECK(neo1_machine_init(&second_machine, &desc));
     CHECK(machine.ram[0x0000] == 0x00);
     CHECK(machine.ram[0x0001] == 0xFF);
     CHECK(machine.ram[0x0002] == 0x00);
     CHECK(neo1_soft_runner_init(&runner, &machine));
-    CHECK(!neo1_soft_runner_init(&second_runner, &machine));
+    CHECK(neo1_soft_runner_init(&second_runner, &second_machine));
     CHECK(machine.ram[0x0000] == 0x00);
     CHECK(machine.ram[0x0001] == 0xFF);
     CHECK(machine.ram[0x0002] == 0x00);
 
     CHECK(neo1_soft_runner_step(&runner) == 2);
+    CHECK(neo1_soft_runner_step(&second_runner) == 2);
     CHECK(runner.system_cycles == 2);
+    CHECK(second_runner.system_cycles == 2);
 
     machine.ram[0x0300] = 0xA5;
     neo1_soft_runner_reset(&runner);
@@ -60,6 +64,7 @@ int main(void) {
     CHECK(runner.system_cycles == overshoot_cycles);
 
     neo1_soft_runner_discard(&runner);
+    neo1_soft_runner_discard(&second_runner);
     if (g_failures != 0) {
         fprintf(stderr, "neo1_soft_timing_tests: %d failure(s)\n", g_failures);
         return 1;

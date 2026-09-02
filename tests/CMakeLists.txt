@@ -46,9 +46,8 @@ target_compile_options(neo1_vaci_payload_tests PRIVATE
     -Wall
     -Wextra
     -Werror
-    # The included fake65c02 dependency carries one unused internal helper.
-    -Wno-unused-function
 )
+target_link_libraries(neo1_vaci_payload_tests PRIVATE neo1_qe6502)
 
 add_test(NAME neo1_vaci_payload_contract COMMAND neo1_vaci_payload_tests)
 
