@@ -18,14 +18,6 @@ void write6502(unsigned short address, unsigned char value) {
 
 #include "chips/fake65c02.h"
 
-static void neo1_soft_runner_install_brk_recovery(neo1_machine_t* machine) {
-    const uint16_t reset_vector =
-        (uint16_t)machine->ram[0xFFFC] | ((uint16_t)machine->ram[0xFFFD] << 8);
-    machine->ram[0x0000] = 0x4C; // JMP abs
-    machine->ram[0x0001] = (uint8_t)(reset_vector & 0xFF);
-    machine->ram[0x0002] = (uint8_t)(reset_vector >> 8);
-}
-
 bool neo1_soft_runner_init(neo1_soft_runner_t* runner, neo1_machine_t* machine) {
     if (!runner || !machine || (active_runner && active_runner->valid)) {
         return false;
@@ -36,7 +28,6 @@ bool neo1_soft_runner_init(neo1_soft_runner_t* runner, neo1_machine_t* machine) 
     runner->valid = true;
     active_runner = runner;
 
-    neo1_soft_runner_install_brk_recovery(machine);
     reset6502();
     return true;
 }

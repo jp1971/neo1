@@ -21,8 +21,8 @@ typedef struct {
     bool valid;
 } neo1_soft_runner_t;
 
-// Attach the one active software CPU to a separately initialized machine,
-// install the SDL BRK-recovery jump at $0000-$0002, and fetch RESET vector.
+// Attach the one active software CPU to a separately initialized machine and
+// fetch its RESET vector. The runner never initializes or patches machine RAM.
 // Returns false when arguments are invalid or another runner is active.
 bool neo1_soft_runner_init(neo1_soft_runner_t* runner, neo1_machine_t* machine);
 

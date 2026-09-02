@@ -19,6 +19,18 @@
 
 static bool g_stdout_echo = false;
 
+// Neo1-50's authentic IRQ/BRK vector is $0000. SDL historically made an
+// accidental BRK return to RESET instead of entering alternating-pattern RAM.
+// Keep that compatibility policy target-owned; the reusable software CPU must
+// not silently initialize machine memory for Fruit Jam or another runner.
+static void neo1_sdl_install_brk_recovery(neo1_machine_t* machine) {
+    const uint16_t reset_vector =
+        (uint16_t)machine->ram[0xFFFC] | ((uint16_t)machine->ram[0xFFFD] << 8);
+    machine->ram[0x0000] = 0x4C; // JMP abs
+    machine->ram[0x0001] = (uint8_t)(reset_vector & 0xFF);
+    machine->ram[0x0002] = (uint8_t)(reset_vector >> 8);
+}
+
 #if NEO1_ENABLE_MSC
 static uint8_t neo1_msc_port_read(void* user_data, uint16_t addr) {
     return neo1_msc_read((neo1_msc_t*)user_data, addr);
@@ -114,10 +126,14 @@ int main(void) {
 #if NEO1_ENABLE_VCFFA1
     neo1_cffa1_init();
 #endif
-    if (!neo1_machine_init(&machine, &desc) ||
-        !neo1_soft_runner_init(&cpu, &machine))
-    {
-        fprintf(stderr, "[neo1-sdl] machine/CPU initialization failed\n");
+    if (!neo1_machine_init(&machine, &desc)) {
+        fprintf(stderr, "[neo1-sdl] machine initialization failed\n");
+        neo1_platform_shutdown();
+        return 1;
+    }
+    neo1_sdl_install_brk_recovery(&machine);
+    if (!neo1_soft_runner_init(&cpu, &machine)) {
+        fprintf(stderr, "[neo1-sdl] CPU initialization failed\n");
         neo1_platform_shutdown();
         return 1;
     }

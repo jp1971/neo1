@@ -39,9 +39,9 @@ int main(void) {
     CHECK(machine.ram[0x0002] == 0x00);
     CHECK(neo1_soft_runner_init(&runner, &machine));
     CHECK(!neo1_soft_runner_init(&second_runner, &machine));
-    CHECK(machine.ram[0x0000] == 0x4C);
-    CHECK(machine.ram[0x0001] == 0x00);
-    CHECK(machine.ram[0x0002] == 0xFF);
+    CHECK(machine.ram[0x0000] == 0x00);
+    CHECK(machine.ram[0x0001] == 0xFF);
+    CHECK(machine.ram[0x0002] == 0x00);
 
     CHECK(neo1_soft_runner_step(&runner) == 2);
     CHECK(runner.system_cycles == 2);
