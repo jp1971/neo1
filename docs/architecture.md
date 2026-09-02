@@ -60,13 +60,14 @@ of `A=X=Y=0`, `S=$FD`, and `P=I`; it does not patch machine memory.
 
 The Fruit Jam serial skeleton owns one shared machine and one software runner.
 It schedules represented cycles from RP2350 monotonic time and routes display
-bytes to USB-CDC without installing a terminal renderer. Its target-local
-console adapter converts lowercase serial input to uppercase, collapses CRLF,
-and feeds accepted bytes to the shared Apple-1 keyboard latch at
-`$D010/$D011`. Serial Ctrl-R remains target lifecycle control: it resets PIA
-and CPU state and is not delivered as a key. The target attaches no MSC or
-VCFFA1 port, installs no RAM utilities or Neo1-50 entry stubs, and links no
-PicoDVI or physical-W65C02 code.
+bytes to USB-CDC without installing a terminal renderer. The output adapter
+preserves ordinary bytes and expands Apple-1 CR to CRLF for serial-terminal
+line advancement. Its target-local console input adapter converts lowercase
+serial input to uppercase, collapses CRLF, and feeds accepted bytes to the
+shared Apple-1 keyboard latch at `$D010/$D011`. Serial Ctrl-R remains target
+lifecycle control: it resets PIA and CPU state and is not delivered as a key.
+The target attaches no MSC or VCFFA1 port, installs no RAM utilities or Neo1-50
+entry stubs, and links no PicoDVI or physical-W65C02 code.
 
 ## Reset and top memory
 

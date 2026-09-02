@@ -227,7 +227,9 @@ fetch; WozMon then prints its `\` prompt. Serial Ctrl-R resets the shared PIA an
 software CPU and repeats that evidence. Printable console input, Backspace, and
 Return feed the shared Apple-1 keyboard latch; lowercase letters are converted
 to uppercase, and CR, LF, or CRLF terminal line endings each produce one Apple-1
-Return. WozMon echoes accepted input through the same serial console.
+Return. WozMon echoes accepted input through the same serial console. Because
+Apple-1 software emits CR without LF, the Fruit Jam console renders outgoing CR
+as CRLF so ordinary serial terminals advance to a new line.
 
 ## Host storage tests
 

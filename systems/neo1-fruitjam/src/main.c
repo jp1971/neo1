@@ -55,7 +55,13 @@ static bool neo1_fruitjam_serial_key(int input, uint8_t* key) {
 
 static void neo1_fruitjam_char_out(uint8_t ch, void* user_data) {
     (void)user_data;
-    putchar((int)(ch & 0x7Fu));
+    const uint8_t ascii = ch & 0x7Fu;
+    putchar((int)ascii);
+    if (ascii == '\r') {
+        // Apple-1 software emits CR only; USB-CDC terminals need LF to move
+        // down instead of returning the cursor to column zero on the same row.
+        putchar('\n');
+    }
 }
 
 static void neo1_fruitjam_print_entry(const char* reason) {

@@ -442,6 +442,10 @@ the shared PIA or introduce a shared input abstraction for this single consumer.
   `CC` at `$0302` using CRLF. Each line ending submitted one command.
 - Ctrl-R after the interaction again reported `reset=$FF00 entry=$FF00` and
   returned to the WozMon prompt.
+- A 2026-09-02 physical follow-up found that WozMon's CR-only output returned
+  the cursor to column zero without advancing the USB-CDC terminal. Expanding
+  outgoing CR to CRLF in the target callback corrected line presentation;
+  WozMon, Integer BASIC, and Krusader then worked interactively on Neo1-23.
 - The Pico, SDL, and Fruit Jam working build directories were restored to their
   Neo1-23 presets. The Fruit Jam remains flashed with Neo1-23.
 

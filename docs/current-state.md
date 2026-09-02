@@ -74,7 +74,10 @@ snapshot, not the architecture contract or a roadmap.
   line ending submitted one command. Ctrl-R then returned to WozMon with
   `reset=$FF00 entry=$FF00`. Both Fruit Jam and Pico profiles built with SDK
   2.3.0, all thirteen host tests passed, and all build directories were
-  restored to Neo1-23. The Fruit Jam remains flashed with Neo1-23.
+  restored to Neo1-23. A 2026-09-02 follow-up expanded outgoing Apple-1 CR to
+  CRLF in the Fruit Jam console transport; physical testing confirmed proper
+  line advancement and successful interactive use of WozMon, Integer BASIC,
+  and Krusader. The Fruit Jam remains flashed with Neo1-23.
 - Normal Neo1-23 and Neo1-50 Pico builds passed on 2026-08-24 with the VACI
   error-line follow-up. Normal and diagnostic builds for both profiles passed
   on 2026-08-23; ELF inspection confirmed normal builds omit verbose trace
