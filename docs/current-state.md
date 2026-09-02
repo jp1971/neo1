@@ -66,6 +66,15 @@ snapshot, not the architecture contract or a roadmap.
   TinyUSB host configuration into its target directory preserved both Pico
   builds while preventing it from contaminating Fruit Jam USB-device CDC. The
   Pico, SDL, and Fruit Jam build directories were restored to Neo1-23.
+- Fruit Jam checkpoint 2A passed on 2026-09-01. The target-local USB-CDC console
+  adapter uppercases input, collapses CRLF, applies one-byte backpressure at the
+  shared Apple-1 PIA latch, and reserves Ctrl-R for lifecycle reset. On Fruit
+  Jam `21A41F42391B99FA`, lowercase console bursts deposited and examined `AA`,
+  `BB`, and `CC` at `$0300-$0302` using CR, LF, and CRLF respectively; each
+  line ending submitted one command. Ctrl-R then returned to WozMon with
+  `reset=$FF00 entry=$FF00`. Both Fruit Jam and Pico profiles built with SDK
+  2.3.0, all thirteen host tests passed, and all build directories were
+  restored to Neo1-23. The Fruit Jam remains flashed with Neo1-23.
 - Normal Neo1-23 and Neo1-50 Pico builds passed on 2026-08-24 with the VACI
   error-line follow-up. Normal and diagnostic builds for both profiles passed
   on 2026-08-23; ELF inspection confirmed normal builds omit verbose trace

@@ -411,6 +411,40 @@ Revert if target setup leaks RP2350 conditionals into the shared machine or if
 the target cannot demonstrate the reset-vector-to-WozMon path independently of
 video and storage.
 
+## Checkpoint 2A: serial WozMon interaction
+
+Status: complete on 2026-09-01.
+
+### Boundary
+
+Use USB-CDC as a temporary target-local console input transport before HSTX
+video and USB-host input are added. Convert lowercase ASCII to uppercase,
+accept CR, LF, and CRLF as one Return, retain input while the one-byte PIA latch
+is occupied, and keep Ctrl-R reserved for target lifecycle reset. Do not change
+the shared PIA or introduce a shared input abstraction for this single consumer.
+
+### Acceptance gate
+
+- Both Fruit Jam profiles compile without changing the shared machine or CPU.
+- Lowercase serial commands can deposit and examine memory in WozMon.
+- CR, LF, and CRLF terminal modes each submit exactly one command.
+- Ctrl-R still resets the shared PIA and software CPU.
+- Existing host, SDL, and Pico regression gates remain green.
+
+### Completion evidence
+
+- Both Fruit Jam profiles compiled with SDK 2.3.0 and Arm GNU Toolchain
+  13.3.Rel1. All thirteen host tests passed, and both Pico profiles built.
+- Neo1-23 was flashed to Fruit Jam `21A41F42391B99FA`. A single lowercase
+  console burst deposited `AA` at `$0300` and examined it successfully, proving
+  ASCII normalization, PIA delivery, WozMon execution, and input backpressure.
+- Additional bursts deposited and examined `BB` at `$0301` using bare LF and
+  `CC` at `$0302` using CRLF. Each line ending submitted one command.
+- Ctrl-R after the interaction again reported `reset=$FF00 entry=$FF00` and
+  returned to the WozMon prompt.
+- The Pico, SDL, and Fruit Jam working build directories were restored to their
+  Neo1-23 presets. The Fruit Jam remains flashed with Neo1-23.
+
 ## Checkpoint 3: HSTX DVI text output
 
 ### Boundary

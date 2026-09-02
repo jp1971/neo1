@@ -24,8 +24,8 @@ Neo1 has three current execution targets:
 - `systems/neo1-sdl/`: a desktop SDL target using a software 65C02.
 - `systems/neo1-fruitjam/`: an Adafruit Fruit Jam RP2350 target using the same
   software-CPU runner. Its current serial skeleton owns USB-CDC diagnostics,
-  elapsed-time scheduling, and lifecycle reset; video, Apple-1 input, storage,
-  VACI, VCFFA1, and audio are not yet enabled.
+  console input, elapsed-time scheduling, and lifecycle reset; video, USB-host
+  keyboard input, storage, VACI, VCFFA1, and audio are not yet enabled.
 
 Fruit Jam should continue to reuse the software-CPU and shared-machine path
 established for SDL while adding Fruit Jam-specific display, input, audio, and

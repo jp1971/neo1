@@ -224,8 +224,10 @@ picotool load -f -x build-fruitjam/systems/neo1-fruitjam/neo1.uf2
 Connect the Fruit Jam through its USB-C device port and open its USB-CDC serial
 port. Startup reports the selected personality, reset vector, and first opcode
 fetch; WozMon then prints its `\` prompt. Serial Ctrl-R resets the shared PIA and
-software CPU and repeats that evidence. Other serial bytes are deliberately
-ignored rather than injected as Apple-1 keyboard input.
+software CPU and repeats that evidence. Printable console input, Backspace, and
+Return feed the shared Apple-1 keyboard latch; lowercase letters are converted
+to uppercase, and CR, LF, or CRLF terminal line endings each produce one Apple-1
+Return. WozMon echoes accepted input through the same serial console.
 
 ## Host storage tests
 
