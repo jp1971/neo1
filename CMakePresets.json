@@ -118,6 +118,38 @@
         "NEO1_ENABLE_VACI": "1",
         "NEO1_ENABLE_VCFFA1": "0"
       }
+    },
+    {
+      "name": "base-fruitjam",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-fruitjam",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "NEO1_PLATFORM": "fruitjam",
+        "NEO1_PERSONALITY": "50",
+        "NEO1_ENABLE_VACI": "0",
+        "NEO1_ENABLE_MSC": "0",
+        "NEO1_ENABLE_VCFFA1": "0"
+      }
+    },
+    {
+      "name": "neo1-fruitjam-23-serial",
+      "displayName": "Neo1 Fruit Jam 23 Serial",
+      "description": "Fruit Jam serial-only Neo1-23 skeleton; video, Apple-1 input, and storage disabled.",
+      "inherits": "base-fruitjam",
+      "cacheVariables": {
+        "NEO1_PERSONALITY": "23"
+      }
+    },
+    {
+      "name": "neo1-fruitjam-50-serial",
+      "displayName": "Neo1 Fruit Jam 50 Serial",
+      "description": "Fruit Jam serial-only Neo1-50 skeleton; video, Apple-1 input, and storage disabled.",
+      "inherits": "base-fruitjam",
+      "cacheVariables": {
+        "NEO1_PERSONALITY": "50"
+      }
     }
   ],
   "buildPresets": [
@@ -160,6 +192,16 @@
       "name": "build-neo1-sdl-50-vaci-only",
       "displayName": "Build Neo1 SDL 50 (VACI on, VCFFA1 off)",
       "configurePreset": "neo1-sdl-50-vaci-only"
+    },
+    {
+      "name": "build-neo1-fruitjam-23-serial",
+      "displayName": "Build Neo1 Fruit Jam 23 Serial",
+      "configurePreset": "neo1-fruitjam-23-serial"
+    },
+    {
+      "name": "build-neo1-fruitjam-50-serial",
+      "displayName": "Build Neo1 Fruit Jam 50 Serial",
+      "configurePreset": "neo1-fruitjam-50-serial"
     }
   ]
 }

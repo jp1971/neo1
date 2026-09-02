@@ -14,33 +14,39 @@ endif()
 # ====================================================================================
 cmake_minimum_required(VERSION 3.12)
 
-set(NEO1_PLATFORM "pico" CACHE STRING "Neo1 platform target: pico or sdl")
-set_property(CACHE NEO1_PLATFORM PROPERTY STRINGS pico sdl)
+set(NEO1_PLATFORM "pico" CACHE STRING "Neo1 platform target: pico, sdl, or fruitjam")
+set_property(CACHE NEO1_PLATFORM PROPERTY STRINGS pico sdl fruitjam)
 
 # The Pico SDK import must happen before project() so CMake selects the ARM
 # toolchain on a clean configure. The VS Code Pico extension's generated block
 # above supplies its managed PICO_SDK_PATH. Standalone builds without that
 # block/environment fall back to the checked-in SDK submodule.
-if (NEO1_PLATFORM STREQUAL "pico")
+if (NEO1_PLATFORM STREQUAL "pico" OR NEO1_PLATFORM STREQUAL "fruitjam")
     if (NOT PICO_SDK_PATH)
         set(PICO_SDK_PATH "${CMAKE_CURRENT_LIST_DIR}/lib/pico-sdk")
     endif()
-    # Olimex Neo6502 is a project-specific RP2040 board definition carried by
-    # the checked-in SDK fork; expose just that board header to managed SDKs.
-    list(APPEND PICO_BOARD_HEADER_DIRS
-        "${CMAKE_CURRENT_LIST_DIR}/lib/pico-sdk/src/boards/include/boards")
-    list(REMOVE_DUPLICATES PICO_BOARD_HEADER_DIRS)
-    set(PICO_BOARD olimex_neo6502 CACHE STRING "Pico SDK board")
-    set(PICO_TINYUSB_PATH "${CMAKE_CURRENT_LIST_DIR}/lib/tinyusb")
+    if (NEO1_PLATFORM STREQUAL "pico")
+        # Olimex Neo6502 is a project-specific RP2040 board definition carried
+        # by the checked-in SDK fork; expose just that header to managed SDKs.
+        list(APPEND PICO_BOARD_HEADER_DIRS
+            "${CMAKE_CURRENT_LIST_DIR}/lib/pico-sdk/src/boards/include/boards")
+        list(REMOVE_DUPLICATES PICO_BOARD_HEADER_DIRS)
+        set(PICO_BOARD olimex_neo6502 CACHE STRING "Pico SDK board")
+        set(PICO_TINYUSB_PATH "${CMAKE_CURRENT_LIST_DIR}/lib/tinyusb")
+    else()
+        set(PICO_BOARD adafruit_fruit_jam CACHE STRING "Pico SDK board")
+    endif()
     include(pico_sdk_import.cmake)
 endif()
 
 project(neo1                           C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
-if (NEO1_PLATFORM STREQUAL "pico")
+if (NEO1_PLATFORM STREQUAL "pico" OR NEO1_PLATFORM STREQUAL "fruitjam")
     pico_sdk_init()
+endif()
 
+if (NEO1_PLATFORM STREQUAL "pico")
     # The Pico runner requires PicoDVI. Keep the option visible so unsupported
     # attempts to disable it fail with an explicit configuration error below.
     option(ENABLE_DVI "Enable DVI output using PicoDVI" ON)
@@ -71,13 +77,14 @@ if (NEO1_PLATFORM STREQUAL "pico")
     endif()
 
     add_subdirectory(lib/fatfs/source)
-elseif (NOT NEO1_PLATFORM STREQUAL "sdl")
-    message(FATAL_ERROR "NEO1_PLATFORM must be 'pico' or 'sdl'")
+elseif (NOT NEO1_PLATFORM STREQUAL "sdl" AND
+        NOT NEO1_PLATFORM STREQUAL "fruitjam")
+    message(FATAL_ERROR "NEO1_PLATFORM must be 'pico', 'sdl', or 'fruitjam'")
 endif()
 
 add_subdirectory(src/devices)
 add_subdirectory(src/systems)
-if (NEO1_PLATFORM STREQUAL "sdl")
+if (NEO1_PLATFORM STREQUAL "sdl" OR NEO1_PLATFORM STREQUAL "fruitjam")
     add_subdirectory(src/runners)
 endif()
 add_subdirectory(src/terminal)
