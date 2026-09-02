@@ -33,6 +33,26 @@ Both runners select a profile by personality and pass it to the shared machine;
 the machine retains that immutable profile. Build presets choose the
 personality, while runner-installed RAM software remains runner policy.
 
+## Software CPU boundary
+
+`neo1_soft_runner` consumes only `neo1_machine_read()` and
+`neo1_machine_write()`. Initialization fetches the selected profile's RESET
+vector but does not install programs, patch zero page, or otherwise initialize
+machine RAM. SDL retains its historical Neo1-50 BRK recovery jump at
+`$0000-$0002` as explicit SDL startup policy; another software-CPU target does
+not inherit it.
+
+IRQ is a level presented at instruction boundaries and remains masked while
+the CPU's I flag is set. NMI is a latched edge with priority over IRQ; multiple
+host edges before the next instruction collapse into one pending NMI. An
+accepted IRQ or pending NMI contributes its seven entry cycles before the
+first handler instruction to the runner's elapsed-time budget.
+
+The current fake65c02 adapter still permits only one active CPU because the
+provisional dependency stores registers and callback hooks globally. That is
+an implementation limitation, not part of the runner contract; the dependency
+must be replaced before the Fruit Jam target consumes this boundary.
+
 ## Reset and top memory
 
 The reset vector is read from `$FFFC-$FFFD` and resolves to WozMon at `$FF00` in

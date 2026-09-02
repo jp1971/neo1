@@ -51,9 +51,12 @@ profiles and PIA state, a shared terminal grid, and a shared MSC register
 protocol. Treat the following as remaining areas to inspect rather than
 patterns to preserve:
 
-- `src/chips/fake65c02.h` is the SDL runner's direct software-CPU dependency.
-  Its state is process-global, its provenance remains unresolved, and broad
-  W65C02 compatibility has not been established.
+- `src/chips/fake65c02.h` is the SDL runner's temporary software-CPU
+  dependency. Its source lineage is traced to archived MyLittle6502 commit
+  `2684fba`, but the upstream notice leaves incorporated Commander X16 code's
+  licensing unresolved. Its state is process-global, focused Neo1 tests are
+  not broad W65C02 qualification, and the recorded decision is to replace it
+  before a Fruit Jam runner is added.
 - `systems/neo1-sdl/src/neo1_platform.h` mixes display, input, timing,
   lifecycle, and block storage in an SDL-local interface. It is not
   automatically the future shared platform API.

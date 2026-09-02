@@ -28,6 +28,15 @@ snapshot, not the architecture contract or a roadmap.
   GPIO/PIO-USB-host, and SD pins. Picotool identified the tested silicon as
   RP2350 revision A4 in the QFN80 package; the probe then produced a sustained
   heartbeat.
+- Fruit Jam checkpoint 1 qualified the current software-CPU boundary on
+  2026-09-01. The reusable runner no longer patches `$0000-$0002`; SDL owns
+  that compatibility jump explicitly. IRQ masking, IRQ/NMI entry and RTI, BRK,
+  interrupt-entry cycles, decimal ADC/SBC flags, reset-vector execution, and
+  the `STZ`, `PHX/PHY`, and `PLX/PLY` forms used by Neo1 RAM utilities now have
+  focused host coverage. The audit found and corrected fake65c02's decimal
+  `99 + 01` overflow flag. All thirteen host tests passed, both SDL profiles
+  reached WozMon headlessly, both Pico profiles built with SDK 2.3.0, and both
+  build directories were restored to normal Neo1-23.
 - Normal Neo1-23 and Neo1-50 Pico builds passed on 2026-08-24 with the VACI
   error-line follow-up. Normal and diagnostic builds for both profiles passed
   on 2026-08-23; ELF inspection confirmed normal builds omit verbose trace
@@ -46,14 +55,14 @@ snapshot, not the architecture contract or a roadmap.
 - `NEO1_ENABLE_MSC` now controls `$D014-$D01C` ownership explicitly. Focused
   host tests prove enabled accesses reach the device and disabled accesses use
   backing RAM; VACI-without-MSC configurations are rejected.
-- The SDL host configuration now includes twelve focused tests. All passed
-  locally through 2026-08-26: the production Pico MSC contract against an
+- The SDL host configuration now includes thirteen focused tests. All passed
+  locally through 2026-09-01: the production Pico MSC contract against an
   in-memory FatFs fake, the SDL raw MSC backend and separate VCFFA1 state, the
   generated VACI BASIC/ordinary transfer paths, enabled and disabled MSC and
   VCFFA1 address decode, the shared Apple-1 PIA contract, the CPU-neutral
-  RAM/ROM/address-space contract, software-CPU cycle budgeting, the real
-  Neo1-23/Neo1-50 profile layouts, and the shared terminal grid plus preserved
-  Pico/SDL control-byte policies.
+  RAM/ROM/address-space contract, software-CPU cycle budgeting and CPU contract,
+  the real Neo1-23/Neo1-50 profile layouts, and the shared terminal grid plus
+  preserved Pico/SDL control-byte policies.
 - Portable-core checkpoint 1 now gives Pico and SDL one shared 40×24 terminal
   grid while leaving control-byte policy and rendering target-owned. Both SDL
   profiles reach WozMon headlessly, both Pico profiles build, and the eight host
@@ -222,11 +231,18 @@ directory, bitmap, file-size, and destination limitations.
     error register immediately after command issue, then polls DRQ without a
     timeout or further busy/error checks. A device or backend that never raises
     DRQ stalls the 6502 utility indefinitely.
-10. **The software CPU dependency remains provisional.** The checked-in
-    fake65c02 core and its callback API keep CPU state process-global, so
-    `neo1_soft_runner` explicitly permits only one active instance. Its source
-    provenance/license chain remains unresolved, it has no snapshot API, and
-    broad W65C02 compatibility has not been established.
+10. **The software CPU dependency must be replaced before Fruit Jam.** The
+    checked-in fake65c02 source was traced to archived MyLittle6502 commit
+    `2684fbaab72162110aa959787053f72304689547`; before checkpoint 1 it matched
+    that header after line-ending normalization except for a missing-semicolon
+    fix. The upstream header calls itself public domain/CC0 while also saying it
+    incorporates changes from a non-public-domain Commander X16 emulator and
+    leaves the resulting license question unresolved. Checkpoint 1 adds a
+    local decimal-overflow correction. CPU state and callbacks remain
+    process-global, there is no snapshot API, and the focused Neo1 tests are
+    not a broad W65C02 qualification suite. Keep it as the temporary SDL core
+    only; use a pinned, clearly licensed, instance-owned replacement before a
+    Fruit Jam Neo1 runner is added.
 11. **USB-storage recovery is cold-boot verified only.** During checkpoint 9,
     the specialized VACI BASIC `L` command returned silently to its menu when
     storage was unavailable instead of printing an error. Live reinsertion did

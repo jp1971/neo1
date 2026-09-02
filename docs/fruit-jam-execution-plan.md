@@ -69,18 +69,17 @@ copy pin numbers from an example without that comparison.
 
 1. The build recognizes only `pico` and `sdl`; its on-device branch also
    hard-codes RP2040 TinyUSB and PicoDVI assumptions.
-2. The managed SDK baseline is now 2.3.0, but the official Fruit Jam board
-   selection and minimal diagnostic probe have not been exercised.
-3. `neo1_soft_runner` still installs an SDL BRK-recovery jump into
-   `$0000-$0002`. A CPU runner must not silently alter shared machine memory.
-4. The checked-in `fake65c02` dependency is process-global, has unresolved
-   provenance, and lacks a broad, focused W65C02 compatibility suite.
-5. Pico's HID report decoding is embedded in RP2040 USB lifecycle code even
+2. The official Fruit Jam board selection is proven only by a standalone
+   diagnostic probe; no Neo1 Fruit Jam target exists yet.
+3. The checked-in `fake65c02` dependency is process-global. Its source lineage
+   is traced, but its license remains unresolved and it lacks a broad, focused
+   W65C02 compatibility suite.
+4. Pico's HID report decoding is embedded in RP2040 USB lifecycle code even
    though Fruit Jam needs the same key-to-Apple-1 translation over a different
    host transport.
-6. Pico's FatFs file backend is reusable in concept but process-global, while
+5. Pico's FatFs file backend is reusable in concept but process-global, while
    the checked-in `diskio.c` is specifically a USB-MSC transport.
-7. No selected, pinned, licensed GPIO/PIO USB-host dependency exists in this
+6. No selected, pinned, licensed GPIO/PIO USB-host dependency exists in this
    repository.
 
 These are checkpoint boundaries, not reasons to create one broad platform API.
@@ -173,7 +172,7 @@ Verify:
   heartbeat. Picotool identified the tested chip as RP2350 revision A4 in the
   QFN80 package.
 - The probe lives under `tools/fruit-jam-probe/` and contains no Neo1 machine
-  code. All checkpoint-0 gates are complete; checkpoint 1 is next.
+  code. All checkpoint-0 gates are complete.
 
 ### Rollback
 
@@ -181,6 +180,9 @@ Do not retain the SDK upgrade if the existing Neo6502 baseline regresses or the
 extension and command-line workflows select different SDKs.
 
 ## Checkpoint 1: software-runner readiness
+
+Status: qualification complete on 2026-09-01; checkpoint 1A replacement is
+required before checkpoint 2.
 
 ### Boundary
 
@@ -208,10 +210,68 @@ combined with RP2350 bring-up.
   exceptions.
 - Both Pico profiles remain buildable and behaviorally untouched.
 
+### Evidence and decision
+
+- `neo1_soft_runner` performs no machine-memory initialization. SDL now owns
+  its historical Neo1-50 `$0000-$0002` BRK-to-RESET jump explicitly.
+- IRQ masking, seven-cycle IRQ/NMI entry, RTI, BRK stack/return behavior,
+  reset-vector execution, decimal ADC/SBC flags, and the `STZ`, `PHX/PHY`, and
+  `PLX/PLY` forms used by Neo1's RAM utilities have focused black-box tests.
+- The decimal `99 + 01` case exposed an incorrect overflow flag in fake65c02;
+  a focused local correction now passes the W65C02 expectation.
+- All thirteen host tests pass, both SDL profiles reach WozMon headlessly, and
+  both Pico profiles build with SDK 2.3.0. Both build directories are restored
+  to normal Neo1-23. Because Pico does not compile the software runner or
+  fake65c02, this checkpoint does not require a new Neo6502 physical gate.
+- Neo1's imported header was traced to archived
+  [MyLittle6502 commit `2684fba`](https://github.com/C-Chads/MyLittle6502/tree/2684fbaab72162110aa959787053f72304689547).
+  Before the decimal correction, it matched the upstream file after CRLF
+  normalization except for Neo1's missing-semicolon fix. The upstream notice
+  claims public-domain/CC0 status but also identifies incorporated
+  non-public-domain Commander X16 work and leaves that license question open.
+- Decision: do not make fake65c02 a Fruit Jam dependency. Keep it temporarily
+  for SDL, then replace it in checkpoint 1A with an instance-owned core having
+  an explicit license, pinned source revision, and broad W65C02 test evidence.
+
 ### Rollback
 
 Revert if SDL needs a new shared-machine exception, ROM behavior changes, or
 the CPU dependency decision cannot be supported by tests and provenance.
+
+## Checkpoint 1A: software CPU replacement
+
+### Boundary
+
+Select and pin a clearly licensed, instance-owned W65C02 core before adding the
+Fruit Jam runner. Adapt `neo1_soft_runner` without changing the shared machine
+or SDL platform interface, then remove fake65c02 and its global callback/state
+constraint in a separate commit.
+
+Candidate evaluation must cover:
+
+- ordinary C/C++ suitability for macOS/Linux and RP2350 ARM builds;
+- explicit per-instance registers, IRQ/NMI inputs, and memory callbacks;
+- W65C02 rather than NMOS-6502 opcode and decimal semantics;
+- instruction-cycle reporting suitable for Neo1's elapsed-time scheduler;
+- an unambiguous license and a pinned upstream revision;
+- published or reproducible Klaus Dormann 6502, decimal, interrupt, and 65C02
+  extended-opcode results.
+
+### Acceptance gate
+
+- The checkpoint-1 CPU contract passes unchanged against the replacement.
+- The upstream broad functional, decimal, interrupt, and W65C02 suites pass in
+  a reproducible Neo1-owned test harness or documented upstream harness.
+- Both SDL profiles reach WozMon and retain keyboard/display behavior.
+- Both Pico profiles build unchanged.
+- fake65c02, its global callbacks, and the single-active-runner restriction are
+  removed with provenance and license records preserved in history.
+
+### Rollback
+
+Do not adopt a core with unclear licensing, global architectural state,
+missing W65C02 operations, or timing semantics that require machine-memory or
+PIA exceptions.
 
 ## Checkpoint 2: Fruit Jam serial skeleton
 
@@ -409,14 +469,12 @@ Keep at least these concerns separate:
 Do not combine generated 6502 payload changes, CPU-core replacement, SDK
 upgrade, target bring-up, and physical I/O work in one commit.
 
-## Recommended starting point
+## Recommended next step
 
-Begin with checkpoint 0 only: upgrade and validate SDK 2.3.0 across the current
-targets, then prove that the official Fruit Jam board definition can build and
-run a minimal diagnostic probe. Checkpoint 1 follows before Neo1 Fruit Jam
-target code because the current software runner's hidden `$0000-$0002` patch
-and unqualified CPU dependency should not become a second hardware target's
-accidental contract.
+Proceed with checkpoint 1A: replace fake65c02 with a pinned, clearly licensed,
+instance-owned W65C02 core. Checkpoints 0 and 1 established the SDK, board, and
+software-runner boundaries, but the qualified dependency must not become a
+second hardware target's accidental contract.
 
 ## Upstream references
 
