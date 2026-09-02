@@ -432,16 +432,16 @@ static void putvalue(ushort saveval) {
 static void adc() {
     penaltyop = 1;
     if (status & FLAG_DECIMAL) {
-        ushort AL, A  /*, result_dec */;
+        ushort AL, A, binary_result;
         A = a;
         value = getvalue();
-        /*result_dec = (ushort)A + value + (ushort)(status & FLAG_CARRY); dec*/
+        binary_result = (ushort)a + value + (ushort)(status & FLAG_CARRY);
         AL = (A & 0x0F) + (value & 0x0F) + (ushort)(status & FLAG_CARRY); /*SEQ 1A or 2A*/
         if(AL >= 0xA) AL = ((AL + 0x06) & 0x0F) + 0x10; /*1B or 2B*/
         A = (A & 0xF0) + (value & 0xF0) + AL; /*1C or 2C*/
         if(A >= 0xA0) A += 0x60; /*1E*/
         result = A; /*1F*/
-        if(A & 0xff80) setoverflow(); else clearoverflow();
+        overflowcalc(binary_result, a, value);
         if(A >= 0x100) setcarry(); else clearcarry(); /*SEQ 1G*/
         zerocalc(result);                /* 65C02 change, Decimal Arithmetic sets NZV */
         signcalc(result);
