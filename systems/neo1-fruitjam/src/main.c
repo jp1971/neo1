@@ -2,8 +2,9 @@
 //
 // The RP2350 owns lifecycle, elapsed-time scheduling, and USB-CDC diagnostics.
 // The shared machine owns the Apple-1 address space and the software runner
-// owns qe6502 execution. Video, Apple-1 keyboard input, storage, VACI, VCFFA1,
-// audio, and the Neo1-50 Pico entry stubs are deliberately absent.
+// owns qe6502 execution. USB-CDC console input feeds the shared Apple-1
+// keyboard latch; video, USB-host keyboard input, storage, VACI, VCFFA1, audio,
+// and the Neo1-50 Pico entry stubs are deliberately absent.
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -27,6 +28,30 @@ enum {
 // Keep the 64 KB machine out of the RP2350's small default C stack.
 static neo1_machine_t machine;
 static neo1_soft_runner_t cpu;
+static bool serial_previous_was_cr;
+
+// Convert console input to the uppercase ASCII produced by an Apple-1
+// keyboard. Treat CRLF as one Return while still accepting a bare LF.
+static bool neo1_fruitjam_serial_key(int input, uint8_t* key) {
+    if (input == '\n' && serial_previous_was_cr) {
+        serial_previous_was_cr = false;
+        return false;
+    }
+
+    serial_previous_was_cr = input == '\r';
+    if (input == '\n') {
+        input = '\r';
+    } else if (input >= 'a' && input <= 'z') {
+        input -= 'a' - 'A';
+    }
+
+    if (input == '\r' || input == '\b' ||
+        (input >= 0x20 && input <= 0x7E)) {
+        *key = (uint8_t)input;
+        return true;
+    }
+    return false;
+}
 
 static void neo1_fruitjam_char_out(uint8_t ch, void* user_data) {
     (void)user_data;
@@ -43,12 +68,13 @@ static void neo1_fruitjam_print_entry(const char* reason) {
            (unsigned)machine.profile->personality,
            (unsigned)vector,
            (unsigned)cpu.tick.address);
-    printf("[neo1-fruitjam] serial Ctrl-R resets; video/Apple-1 input/storage disabled\n");
+    printf("[neo1-fruitjam] serial console input enabled; Ctrl-R resets; video/storage disabled\n");
 }
 
 static void neo1_fruitjam_reset(void) {
     neo1_machine_reset(&machine);
     neo1_soft_runner_reset(&cpu);
+    serial_previous_was_cr = false;
     neo1_fruitjam_print_entry("reset");
 }
 
@@ -78,15 +104,9 @@ int main(void) {
 
     neo1_fruitjam_print_entry("ready");
     uint64_t previous_time_us = time_us_64();
+    int pending_input = PICO_ERROR_TIMEOUT;
 
     while (true) {
-        const int input = getchar_timeout_us(0);
-        if (input == NEO1_FRUITJAM_CTRL_R) {
-            neo1_fruitjam_reset();
-            previous_time_us = time_us_64();
-            continue;
-        }
-
         const uint64_t current_time_us = time_us_64();
         uint64_t elapsed_us = current_time_us - previous_time_us;
         previous_time_us = current_time_us;
@@ -95,6 +115,27 @@ int main(void) {
         }
         if (elapsed_us > 0) {
             (void)neo1_soft_runner_exec_us(&cpu, (uint32_t)elapsed_us);
+        }
+
+        // Retain one console byte until WozMon consumes the PIA latch. Leaving
+        // subsequent bytes in USB-CDC avoids dropping pasted commands at the
+        // one-byte Apple-1 input boundary.
+        if (pending_input == PICO_ERROR_TIMEOUT) {
+            pending_input = getchar_timeout_us(0);
+        }
+        if (pending_input == NEO1_FRUITJAM_CTRL_R) {
+            neo1_fruitjam_reset();
+            pending_input = PICO_ERROR_TIMEOUT;
+            previous_time_us = time_us_64();
+            continue;
+        }
+        if (pending_input != PICO_ERROR_TIMEOUT &&
+            machine.pia.keyboard_latch == 0) {
+            uint8_t key = 0;
+            if (neo1_fruitjam_serial_key(pending_input, &key)) {
+                neo1_machine_key_down(&machine, key);
+            }
+            pending_input = PICO_ERROR_TIMEOUT;
         }
 
         sleep_us(NEO1_FRUITJAM_IDLE_SLEEP_US);

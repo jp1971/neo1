@@ -136,7 +136,7 @@
     {
       "name": "neo1-fruitjam-23-serial",
       "displayName": "Neo1 Fruit Jam 23 Serial",
-      "description": "Fruit Jam serial-only Neo1-23 skeleton; video, Apple-1 input, and storage disabled.",
+      "description": "Fruit Jam Neo1-23 serial console; video, USB-host input, and storage disabled.",
       "inherits": "base-fruitjam",
       "cacheVariables": {
         "NEO1_PERSONALITY": "23"
@@ -145,7 +145,7 @@
     {
       "name": "neo1-fruitjam-50-serial",
       "displayName": "Neo1 Fruit Jam 50 Serial",
-      "description": "Fruit Jam serial-only Neo1-50 skeleton; video, Apple-1 input, and storage disabled.",
+      "description": "Fruit Jam Neo1-50 serial console; video, USB-host input, and storage disabled.",
       "inherits": "base-fruitjam",
       "cacheVariables": {
         "NEO1_PERSONALITY": "50"

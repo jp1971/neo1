@@ -1,5 +1,6 @@
-# Minimal RP2350 software-CPU runner. This checkpoint intentionally links no
-# video, keyboard, audio, storage, VACI, VCFFA1, or physical-W65C02 services.
+# Minimal RP2350 software-CPU runner. USB-CDC supplies console input; this
+# checkpoint intentionally links no video, USB-host keyboard, audio, storage,
+# VACI, VCFFA1, or physical-W65C02 services.
 set(NEO1_PERSONALITY "50" CACHE STRING "Neo1 personality: 23 or 50")
 set_property(CACHE NEO1_PERSONALITY PROPERTY STRINGS 23 50)
 
@@ -34,7 +35,7 @@ target_link_libraries(neo1 PRIVATE
     pico_stdlib
 )
 
-# USB-C CDC is the checkpoint-2 diagnostic and lifecycle-control transport.
+# USB-C CDC is the checkpoint-2 console and lifecycle-control transport.
 # The Fruit Jam's USB-A host ports and UART remain untouched.
 pico_enable_stdio_usb(neo1 1)
 pico_enable_stdio_uart(neo1 0)
