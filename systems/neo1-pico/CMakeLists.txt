@@ -60,7 +60,10 @@ message(STATUS
 # Normal firmware builds consume checked-in RAM image headers and never run
 # assemblers or generators. Regeneration is an explicit maintenance operation,
 # documented in src/ram/README.md, and requires Python plus cc65 tools.
-target_include_directories(neo1 BEFORE PRIVATE ${CMAKE_SOURCE_DIR}/src/ram)
+target_include_directories(neo1 BEFORE PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/ram
+)
 
 target_compile_options(neo1 PRIVATE -Wall)
 

@@ -1,9 +1,7 @@
 #ifndef _TUSB_CONFIG_H_
 #define _TUSB_CONFIG_H_
 
-// tusb_config.h
-//
-// TinyUSB host stack configuration for Neo1 top-level host app components.
+// TinyUSB host-stack configuration owned by the Neo6502 Pico target.
 //
 // This configuration enables host mode with:
 // - HID support (keyboard + generic HID gamepad path)
