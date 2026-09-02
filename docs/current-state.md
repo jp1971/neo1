@@ -1,6 +1,6 @@
 # Neo1 Current State
 
-Last updated: 2026-08-27
+Last updated: 2026-09-01
 
 This document records evidence-backed capabilities and known defects. It is a
 snapshot, not the architecture contract or a roadmap.
@@ -19,6 +19,15 @@ snapshot, not the architecture contract or a roadmap.
   matched its checked-in header. Both build directories were restored to the
   normal Neo1-23 profile. The user then supplied a passing normal Neo1-23
   hardware result.
+- Fruit Jam checkpoint 0 passed on 2026-09-01 without adding a Neo1 target or
+  changing existing-target code. The standalone probe selected the official
+  `adafruit_fruit_jam` board, built as an RP2350 ARM Secure image with SDK
+  2.3.0 and Arm GNU Toolchain 13.3.Rel1, flashed through picotool 2.3.0, and
+  enumerated as USB CDC. Its transcript confirmed the board definition,
+  RP2350B platform, 16 MB flash, 8 MB PSRAM, and the expected HSTX,
+  GPIO/PIO-USB-host, and SD pins. Picotool identified the tested silicon as
+  RP2350 revision A4 in the QFN80 package; the probe then produced a sustained
+  heartbeat.
 - Normal Neo1-23 and Neo1-50 Pico builds passed on 2026-08-24 with the VACI
   error-line follow-up. Normal and diagnostic builds for both profiles passed
   on 2026-08-23; ELF inspection confirmed normal builds omit verbose trace
@@ -182,9 +191,10 @@ directory, bitmap, file-size, and destination limitations.
    Pico VACI file behavior.
 3. **Neo1-50 hardware behavior is build-verified only in this pass.** The dated
    physical smoke result above is for Neo1-23.
-4. **Fruit Jam board support has not been exercised.** SDK 2.3.0 is verified
-   for the existing Neo6502 and SDL targets, but the planned minimal
-   `adafruit_fruit_jam` configure/build/flash diagnostic probe has not started.
+4. **The Fruit Jam Neo1 target has not started.** Official SDK board selection,
+   flashing, and USB diagnostics are verified by the standalone checkpoint-0
+   probe, but it intentionally contains no shared machine, software CPU,
+   display, keyboard, or storage integration.
 5. **Automated coverage remains limited.** Focused host tests cover the shared
    MSC protocol with the Pico FatFs backend, the SDL raw MSC backend and basic
    VCFFA1 separation, and execute VACI BASIC plus ordinary read/write paths on

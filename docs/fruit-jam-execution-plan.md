@@ -128,8 +128,7 @@ testing when existing builds and host contracts remain unchanged.
 
 ## Checkpoint 0: SDK 2.3.0 and board-support gate
 
-Status: existing-target SDK gate complete on 2026-08-27; Fruit Jam probe
-outstanding
+Status: complete on 2026-09-01
 
 ### Boundary
 
@@ -165,7 +164,16 @@ Verify:
 - Both SDL profiles built, all twelve host tests passed, Neo1-50 reached WozMon
   headlessly, and the generated VACI payload check passed.
 - The user supplied a passing normal Neo1-23 hardware result on 2026-08-27.
-- The minimal Fruit Jam board probe remains the only open checkpoint-0 gate.
+- The standalone probe configured the official `adafruit_fruit_jam` board as
+  `rp2350-arm-s`, built with SDK 2.3.0 and Arm GNU Toolchain 13.3.Rel1, and
+  produced an RP2350 ARM Secure UF2 identified by picotool 2.3.0.
+- The UF2 flashed successfully to physical Fruit Jam hardware and rebooted
+  into USB CDC diagnostics. The transcript confirmed RP2350B, 16 MB flash,
+  8 MB PSRAM, the official HSTX/USB-host/SD pin constants, and a sustained
+  heartbeat. Picotool identified the tested chip as RP2350 revision A4 in the
+  QFN80 package.
+- The probe lives under `tools/fruit-jam-probe/` and contains no Neo1 machine
+  code. All checkpoint-0 gates are complete; checkpoint 1 is next.
 
 ### Rollback
 

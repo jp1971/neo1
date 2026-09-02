@@ -23,8 +23,8 @@ Platform targets:
 
 Adafruit Fruit Jam is the proposed next hardware target. Its staged SDK,
 software-CPU, HSTX video, USB keyboard, and microSD work is defined in the
-[Fruit Jam execution plan](docs/fruit-jam-execution-plan.md); no Fruit Jam
-implementation is claimed yet.
+[Fruit Jam execution plan](docs/fruit-jam-execution-plan.md). The standalone
+SDK/board probe is verified; no Fruit Jam Neo1 runner is claimed yet.
 
 ## Monitor entry points
 
