@@ -545,6 +545,55 @@ Neo6502 disposable-media smoke.
 Revert if the SD transport changes VACI's 6502-visible status/error contract,
 duplicates the MSC register state machine, or regresses Pico USB storage.
 
+## Checkpoint 5A: repository consolidation and documentation
+
+### Boundary
+
+After HSTX, USB-host keyboard, and microSD/VACI establish the target's actual
+ownership boundaries, perform a dedicated repository-structure and
+documentation pass before profile hardening. This checkpoint may move, rename,
+archive, or remove files only when their owner and replacement are proven by
+the three working targets. It must not introduce new machine behavior, a
+speculative platform HAL, or performance changes.
+
+The pass should:
+
+1. inventory active source, generated artifacts, hardware probes, tests, plans,
+   and historical evidence with their current owners;
+2. separate current documentation from superseded plans and dated test logs;
+3. decide whether bring-up tools such as `tools/fruit-jam-probe/` remain useful,
+   should be archived as evidence, or can be removed;
+4. consolidate 6502-side payload sources, generators, and checked-in outputs
+   without mixing them into platform code;
+5. normalize file and directory names where the established architecture makes
+   ownership unambiguous;
+6. remove dead compatibility code and stale inline claims only after confirming
+   that no build, test, or documented workflow consumes them; and
+7. add or refresh a concise documentation map for new contributors.
+
+Keep file moves, documentation changes, dead-code removal, and any necessary
+build-path adjustments in reviewable commits. Preserve attribution, licenses,
+and historical evidence rather than rewriting old records as current claims.
+
+### Acceptance gate
+
+- Pico, SDL, and Fruit Jam both-personality builds remain green.
+- All focused host tests pass from the consolidated layout.
+- No 6502-visible address, protocol, ROM/RAM policy, or target behavior changes.
+- Current documents agree on supported targets, completed checkpoints, known
+  defects, and the next implementation step.
+- Historical documents are clearly labeled, and active instructions do not
+  depend on superseded plans.
+- The worktree contains no unexplained duplicate implementation or orphaned
+  generated artifact discovered by the inventory.
+
+### Rollback
+
+Revert a move or deletion if ownership is still ambiguous, a historical or
+license record would be lost, a target needs compatibility forwarding solely
+because of the reorganization, or behavioral fixes become entangled with the
+cleanup.
+
 ## Checkpoint 6: profile parity and target hardening
 
 ### Boundary
@@ -607,8 +656,9 @@ Keep at least these concerns separate:
 8. FatFs adapter extraction;
 9. SD-SPI transport;
 10. VACI installation and storage behavior;
-11. performance changes;
-12. documentation and milestone evidence.
+11. repository consolidation and documentation structure;
+12. performance changes;
+13. documentation and milestone evidence.
 
 Do not combine generated 6502 payload changes, CPU-core replacement, SDK
 upgrade, target bring-up, and physical I/O work in one commit.
