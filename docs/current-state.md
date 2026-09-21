@@ -1,6 +1,6 @@
 # Neo1 Current State
 
-Last updated: 2026-09-01
+Last updated: 2026-09-20
 
 This document records evidence-backed capabilities and known defects. It is a
 snapshot, not the architecture contract or a roadmap.
@@ -78,6 +78,14 @@ snapshot, not the architecture contract or a roadmap.
   CRLF in the Fruit Jam console transport; physical testing confirmed proper
   line advancement and successful interactive use of WozMon, Integer BASIC,
   and Krusader. The Fruit Jam remains flashed with Neo1-23.
+- A headless Neo6502 regression passed on 2026-09-20 using the normal Neo1-23
+  profile built with SDK 2.3.0 and flashed immediately before testing. Through
+  the serial console, Ctrl-R reached WozMon, `$0300` accepted and returned an
+  `A5` deposit, `E000R` entered Integer BASIC, and `F000R` entered Krusader.
+  With USB storage present from boot, VACI `R` listed the root directory and
+  cancellation plus `Q` returned cleanly to WozMon. The test was read-only;
+  video, USB keyboard, storage writes, and live media reinsertion were not
+  exercised.
 - Normal Neo1-23 and Neo1-50 Pico builds passed on 2026-08-24 with the VACI
   error-line follow-up. Normal and diagnostic builds for both profiles passed
   on 2026-08-23; ELF inspection confirmed normal builds omit verbose trace
@@ -179,12 +187,14 @@ snapshot, not the architecture contract or a roadmap.
   or 6502-visible behavior changed, so no additional physical gate is required.
 ## Last Neo6502 hardware validation
 
-User-supplied results from 2026-08-22 through 2026-08-27 used the Neo1-23
-profile with VACI and VCFFA1 enabled. The latest result is the passing normal
-Neo1-23 regression gate after moving the build baseline to SDK 2.3.0.
-Checkpoint 9 remains the latest detailed disposable-media result: ordinary
-storage operation passed; live USB reinsertion was not established, and
-recovery was verified by power cycling with the medium inserted.
+User-supplied results from 2026-08-22 through 2026-09-20 used the Neo1-23
+profile with VACI and VCFFA1 enabled. The latest result is the passing headless,
+read-only normal Neo1-23 gate described above. Video and USB keyboard were not
+attached for that run, so their verified status remains based on the earlier
+full hardware gates. Checkpoint 9 remains the latest detailed disposable-media
+result: ordinary storage operation passed; live USB reinsertion was not
+established, and recovery was verified by power cycling with the medium
+inserted.
 
 | Capability | Result | Evidence |
 | --- | --- | --- |
