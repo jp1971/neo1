@@ -10,10 +10,10 @@ endif()
 
 foreach(feature IN ITEMS NEO1_ENABLE_VACI NEO1_ENABLE_MSC NEO1_ENABLE_VCFFA1)
     if (NOT DEFINED ${feature})
-        set(${feature} "0" CACHE STRING "Disabled by the Fruit Jam serial skeleton")
+        set(${feature} "0" CACHE STRING "Disabled by the Fruit Jam serial target")
     endif()
     if (NOT ${feature} STREQUAL "0")
-        message(FATAL_ERROR "${feature} must remain 0 for the Fruit Jam serial skeleton")
+        message(FATAL_ERROR "${feature} must remain 0 for the Fruit Jam serial target")
     endif()
 endforeach()
 

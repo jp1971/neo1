@@ -23,7 +23,7 @@ Neo1 has three current execution targets:
   physical W65C02 and provides DVI, USB keyboard, and USB storage.
 - `systems/neo1-sdl/`: a desktop SDL target using a software 65C02.
 - `systems/neo1-fruitjam/`: an Adafruit Fruit Jam RP2350 target using the same
-  software-CPU runner. Its current serial skeleton owns USB-CDC diagnostics,
+  software-CPU runner. Its current serial target owns USB-CDC diagnostics,
   console input, elapsed-time scheduling, and lifecycle reset; video, USB-host
   keyboard input, storage, VACI, VCFFA1, and audio are not yet enabled.
 
@@ -51,7 +51,7 @@ machine.
 The active Reload/CHIPS execution surface has been removed. All three runners
 use the ordinary shared `neo1_machine` read/write interface, machine profiles,
 and PIA state. Pico and SDL additionally consume the shared terminal grid and
-MSC register protocol; the Fruit Jam serial skeleton does not yet attach those
+MSC register protocol; the Fruit Jam serial target does not yet attach those
 services. Treat the following as remaining areas to inspect rather than
 patterns to preserve:
 

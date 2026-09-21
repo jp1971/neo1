@@ -251,10 +251,10 @@ directory, bitmap, file-size, and destination limitations.
    Pico VACI file behavior.
 3. **Neo1-50 hardware behavior is build-verified only in this pass.** The dated
    physical smoke result above is for Neo1-23.
-4. **The Fruit Jam Neo1 target has not started.** Official SDK board selection,
-   flashing, and USB diagnostics are verified by the standalone checkpoint-0
-   probe, but it intentionally contains no shared machine, software CPU,
-   display, keyboard, or storage integration.
+4. **Fruit Jam physical I/O remains incomplete.** Checkpoints 2 and 2A provide
+   the shared machine, qe6502 software runner, USB-CDC display output and
+   Apple-1 console input for both personalities. HSTX video, USB-host keyboard
+   input, microSD storage, VACI, VCFFA1, and audio are not implemented.
 5. **Automated coverage remains limited.** Focused host tests cover the shared
    MSC protocol with the Pico FatFs backend, the SDL raw MSC backend and basic
    VCFFA1 separation, and execute VACI BASIC plus ordinary read/write paths on

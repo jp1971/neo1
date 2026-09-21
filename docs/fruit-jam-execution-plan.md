@@ -2,7 +2,9 @@
 
 Date: 2026-08-26
 
-Status: proposed; no Fruit Jam implementation has started
+Last updated: 2026-09-20
+
+Status: checkpoints 0 through 2A complete; checkpoint 3 is next
 
 Baseline: `neo1-portable-core-complete-2026-08-26`
 
@@ -13,17 +15,17 @@ a second consumer of the software-CPU path established by SDL. It must not be a
 port of the Neo6502 physical-bus runner and must not turn SDL's mixed local
 interface into a speculative universal HAL.
 
-The implementation should add `systems/neo1-fruitjam/` as a thin RP2350B
-runner around the existing shared machine and `neo1_soft_runner`. Fruit Jam
-will own HSTX video, GPIO/PIO USB-host transport, microSD transport, timing,
-diagnostics, and lifecycle. The shared machine will continue to own all
-6502-visible memory and device behavior.
+`systems/neo1-fruitjam/` is now a thin RP2350B runner around the shared machine
+and `neo1_soft_runner`. It owns timing, USB-CDC diagnostics and console input,
+and lifecycle. Later checkpoints add Fruit Jam-owned HSTX video, GPIO/PIO
+USB-host transport, and microSD transport. The shared machine continues to own
+all 6502-visible memory and device behavior.
 
-Work should begin with Pico SDK 2.3.0 compatibility and software-CPU
-qualification. Board code should not begin by copying the Neo6502 RP2040
-runner: Fruit Jam has no physical W65C02 bus, uses HSTX rather than PicoDVI,
-uses GPIO-based USB host rather than the RP2040 native-host arrangement, and
-uses onboard microSD rather than USB mass storage for its preferred media.
+The completed foundation established Pico SDK 2.3.0 compatibility and qualified
+the software CPU without copying the Neo6502 RP2040 runner. Fruit Jam has no
+physical W65C02 bus, uses HSTX rather than PicoDVI, uses GPIO-based USB host
+rather than the RP2040 native-host arrangement, and uses onboard microSD rather
+than USB mass storage for its preferred media.
 
 ## Hardware and toolchain evidence
 
@@ -56,31 +58,25 @@ copy pin numbers from an example without that comparison.
 | 64 KB address space, RAM/ROM policy, decode | `neo1_machine` | Reuse unchanged |
 | Neo1-23/Neo1-50 ROM layouts | `neo1_profile` | Reuse unchanged |
 | Apple-1 `$D010-$D013` behavior | `neo1_apple1_pia` | Reuse unchanged |
-| Software 65C02 execution and timing budget | `neo1_soft_runner` | Reuse after qualification |
-| 40x24 character cells and scrolling | `neo1_terminal` | Reuse unchanged |
-| `$D014-$D01C` MSC protocol | `neo1_msc` | Reuse unchanged |
+| Software 65C02 execution and timing budget | `neo1_soft_runner` | Reused by the current serial target |
+| 40x24 character cells and scrolling | `neo1_terminal` | Attach in checkpoint 3 |
+| `$D014-$D01C` MSC protocol | `neo1_msc` | Attach in checkpoint 5 |
 | Pixel rendering and output-byte policy | Pico/SDL target code | Add Fruit Jam HSTX implementation |
-| Keyboard transport | Pico TinyUSB or SDL events | Add Fruit Jam GPIO/PIO USB host |
+| Keyboard transport | Fruit Jam USB-CDC console, Pico TinyUSB, or SDL events | Add Fruit Jam GPIO/PIO USB host in checkpoint 4 |
 | Filesystem transport | Pico USB MSC or SDL raw image | Add Fruit Jam microSD/FatFs transport |
 | VACI RAM payload installation | Pico runner | Share only when Pico and Fruit Jam consume it |
 | VCFFA1 | Separate Pico and SDL compatibility code | Disabled initially |
 
-## Gaps to resolve before target completion
+## Gap disposition
 
-1. The build recognizes only `pico` and `sdl`; its on-device branch also
-   hard-codes RP2040 TinyUSB and PicoDVI assumptions.
-2. The official Fruit Jam board selection is proven only by a standalone
-   diagnostic probe; no Neo1 Fruit Jam target exists yet.
-3. The checked-in `fake65c02` dependency is process-global. Its source lineage
-   is traced, but its license remains unresolved and it lacks a broad, focused
-   W65C02 compatibility suite.
-4. Pico's HID report decoding is embedded in RP2040 USB lifecycle code even
-   though Fruit Jam needs the same key-to-Apple-1 translation over a different
-   host transport.
-5. Pico's FatFs file backend is reusable in concept but process-global, while
-   the checked-in `diskio.c` is specifically a USB-MSC transport.
-6. No selected, pinned, licensed GPIO/PIO USB-host dependency exists in this
-   repository.
+| Original gap | Status | Current disposition |
+| --- | --- | --- |
+| Build and target selection | Resolved | `fruitjam` is a first-class platform with isolated presets and TinyUSB configuration. |
+| Fruit Jam board and Neo1 runner | Resolved | Both personalities build and run on the official SDK board definition. |
+| Process-global `fake65c02` dependency | Resolved | The instance-owned, MIT-licensed qe6502 runner passed the recorded compatibility gates. |
+| Reusable HID report decoding | Open | Address in checkpoint 4 only when Pico and Fruit Jam are concrete consumers. |
+| Reusable FatFs named-file backend | Open | Address in checkpoint 5 while keeping target transports separate. |
+| GPIO/PIO USB-host dependency | Open | Select, pin, license, and qualify it in checkpoint 4. |
 
 These are checkpoint boundaries, not reasons to create one broad platform API.
 
@@ -117,7 +113,7 @@ Each completed checkpoint must:
 3. build Pico-23 and Pico-50;
 4. identify any affected 6502-visible addresses;
 5. keep completed work in separately reviewable commits;
-6. restore the normal Neo1-23 Pico and SDL build directories;
+6. restore the normal Neo1-23 Pico, SDL, and Fruit Jam build directories;
 7. state the exact Fruit Jam and Neo6502 physical tests still required.
 
 An SDK, shared machine, shared device, input-decoder, FatFs adapter, or
@@ -621,7 +617,7 @@ upgrade, target bring-up, and physical I/O work in one commit.
 
 Begin checkpoint 3 with a Fruit Jam-only HSTX DVI text renderer fed by the
 shared terminal grid. Preserve serial diagnostics and reset while keeping
-keyboard, storage, VACI, VCFFA1, and audio disabled.
+USB-host keyboard input, storage, VACI, VCFFA1, and audio disabled.
 
 ## Upstream references
 
