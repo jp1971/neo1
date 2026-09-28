@@ -239,8 +239,10 @@ block write. Writable operation requires a preferred writable image such as
 `CFFA1RW.PO` or `CFFA1RW.HDV`; fallback images are opened read-only.
 
 VCFFA1 is retained as an optional Replica 1 compatibility feature, but the
-reliability work in defects 1 and 6-9 is deferred until after the next
-portable-core checkpoint. VACI remains the preferred Apple-1 storage path.
+controller and firmware compatibility work is deferred until after Fruit Jam
+checkpoint 7. The staged rework and local-only CFFA1 v1.1 ROM policy are
+recorded in `docs/vcffa1-execution-plan.md`. VACI remains the preferred
+Apple-1 storage path.
 Until that work resumes, use VCFFA1 `W` and `D` only with disposable images;
 the verified catalog/load workflow may continue to be used within the stated
 directory, bitmap, file-size, and destination limitations.

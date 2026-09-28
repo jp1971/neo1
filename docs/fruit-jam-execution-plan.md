@@ -94,7 +94,8 @@ The first useful Fruit Jam release will provide:
 
 The following are explicitly deferred:
 
-- VCFFA1;
+- VCFFA1; its CFFA1 v1.1 compatibility rework resumes only after this plan's
+  checkpoint 7, as specified in `docs/vcffa1-execution-plan.md`;
 - audio, cassette waveform emulation, Wi-Fi, mouse, gamepad, and networking;
 - SDIO and PSRAM optimization;
 - snapshots and multiple concurrent software CPUs;
@@ -668,6 +669,10 @@ upgrade, target bring-up, and physical I/O work in one commit.
 Begin checkpoint 3 with a Fruit Jam-only HSTX DVI text renderer fed by the
 shared terminal grid. Preserve serial diagnostics and reset while keeping
 USB-host keyboard input, storage, VACI, VCFFA1, and audio disabled.
+
+After checkpoint 7 is complete and tagged, the next planned compatibility
+workstream is `docs/vcffa1-execution-plan.md`. Fruit Jam does not acquire
+VCFFA1 implicitly as part of that workstream.
 
 ## Upstream references
 

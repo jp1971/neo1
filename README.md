@@ -369,7 +369,9 @@ Exposes CFFA1 signature bytes at `$AFDC`/`$AFDD` and a ProDOS block interface
 at `$AFF0-$AFFF`. VCFFA1 is an optional Replica 1 compatibility feature; VACI
 is the preferred Apple-1-oriented storage interface. The current VCFFA1
 implementation is retained for compatibility while its reliability work is
-deferred until after the next portable-core checkpoint.
+deferred until the Fruit Jam release baseline is complete. The planned path to
+the original CFFA1 v1.1 user experience, including the local-only ROM policy,
+is recorded in the [VCFFA1 compatibility plan](docs/vcffa1-execution-plan.md).
 
 - Prefers writable `CFFA1RW.PO` or `CFFA1RW.HDV` images.
 - Falls back to read-only `CFFA1.PO` or `CFFA1.HDV`, then the first recognized
@@ -417,6 +419,8 @@ ledger.
 
 - `docs/architecture.md` — stable 6502-visible memory and device contracts
 - `docs/current-state.md` — verified capabilities, known defects, and dated test evidence
+- `docs/fruit-jam-execution-plan.md` — active Fruit Jam checkpoint plan
+- `docs/vcffa1-execution-plan.md` — deferred CFFA1 v1.1 compatibility plan and ROM policy
 - `docs/neo1-milestone-plan.md` — historical overall milestone plan (VACI track)
 - `docs/vcffa1-v0-baseline.md` — dated VCFFA1 V0 smoke-test log
 - `docs/neo1-sdl-emulator-plan.md` — SDL experiment plan; verify its claims against current code
