@@ -9,8 +9,10 @@
 // - scanlines are generated continuously for a 640x480@60 mode
 // - monochrome 1-bpp lines are TMDS-encoded and submitted to PicoDVI
 //
-// Text is doubled to 16x16 pixels per cell, filling 640x384 and leaving 48 blank
-// scanlines above and below. A blinking '@' glyph is overlaid at the cursor.
+// Native text is doubled to 16x16 pixels per cell, filling 640x384 and leaving
+// 48 blank scanlines above and below. Widescreen-stretch correction instead
+// uses 12x16 cells in a centered 480x384 area while retaining 640x480 timing.
+// A blinking '@' glyph is overlaid at the cursor.
 // A short cross-core critical section protects snapshot-index publication; the
 // terminal-sized copy stays outside that lock and outside the DVI IRQ path.
 
@@ -50,12 +52,15 @@
 #define DVI_TIMING    dvi_timing_640x480p_60hz
 
 #define NEO1_SCALED_CHAR_WIDTH   (FONT_CHAR_WIDTH * 2)
+#define NEO1_CORRECTED_CHAR_WIDTH 12
 #define NEO1_SCALED_CHAR_HEIGHT  (FONT_CHAR_HEIGHT * 2)
 #define NEO1_ACTIVE_HEIGHT       (NEO1_TERM_ROWS * NEO1_SCALED_CHAR_HEIGHT)
 #define NEO1_EMPTY_LINES         (((FRAME_HEIGHT - NEO1_ACTIVE_HEIGHT) / 2))
 #define NEO1_SCANLINE_BYTES      (FRAME_WIDTH / 8)
 #define NEO1_TEXT_BYTES          (NEO1_TERM_COLS * 2)
 #define NEO1_LEFT_PAD_BYTES      ((NEO1_SCANLINE_BYTES - NEO1_TEXT_BYTES) / 2)
+#define NEO1_CORRECTED_TEXT_WIDTH (NEO1_TERM_COLS * NEO1_CORRECTED_CHAR_WIDTH)
+#define NEO1_CORRECTED_LEFT_PAD   ((FRAME_WIDTH - NEO1_CORRECTED_TEXT_WIDTH) / 2)
 
 // -----------------------------------------------------------------------------
 // module state
@@ -65,6 +70,8 @@ static struct dvi_inst dvi0;
 static struct semaphore dvi_start_sem;
 static volatile uint32_t dvi_frame_counter = 0;
 static volatile uint32_t dvi_line_counter = 0;
+static volatile bool g_widescreen_correction_requested = false;
+static volatile bool g_widescreen_correction_active = false;
 
 // Terminal snapshot ownership uses three buffers:
 // - front is read only by core 1 scanline rendering
@@ -82,6 +89,7 @@ static volatile uint32_t g_set_terminal_calls = 0;
 static volatile uint32_t g_terminal_buffer_swaps = 0;
 #define NEO1_CURSOR_BLINK_FRAMES 30
 static uint16_t __not_in_flash("neo1_video_font") g_font_16x8_ram[256 * FONT_CHAR_HEIGHT];
+static uint16_t __not_in_flash("neo1_video_font") g_font_12x8_ram[256 * FONT_CHAR_HEIGHT];
 
 // Reverse bit order in one byte.
 static inline uint8_t neo1_reverse_bits8(uint8_t v) {
@@ -100,6 +108,37 @@ static inline uint16_t neo1_expand_row_2x(uint8_t bits) {
         }
     }
     return out;
+}
+
+// Expand eight source pixels across a 12-pixel cell. The alternating one- and
+// two-pixel spans provide the exact 3:2 horizontal scale required to make a
+// 480-pixel image appear 640 pixels wide after a 16:9 display stretches it.
+static inline uint16_t neo1_expand_row_3_over_2(uint8_t bits) {
+    uint16_t out = 0;
+    for (uint32_t i = 0; i < FONT_CHAR_WIDTH; i++) {
+        if (bits & (1u << i)) {
+            const uint32_t first = (i * NEO1_CORRECTED_CHAR_WIDTH) / FONT_CHAR_WIDTH;
+            const uint32_t end = ((i + 1u) * NEO1_CORRECTED_CHAR_WIDTH) / FONT_CHAR_WIDTH;
+            for (uint32_t dst = first; dst < end; dst++) {
+                out |= (uint16_t)(1u << dst);
+            }
+        }
+    }
+    return out;
+}
+
+// Place a 12-bit glyph row at an arbitrary pixel position in the 1-bpp line.
+// Corrected cells alternate between byte-aligned and nibble-aligned starts.
+static inline void neo1_blit_row_12(uint8_t* scanbuf, uint32_t x, uint16_t bits) {
+    const uint32_t dst_byte = x / 8u;
+    const uint32_t shift = x & 7u;
+    const uint32_t shifted = ((uint32_t)bits) << shift;
+
+    scanbuf[dst_byte] |= (uint8_t)(shifted & 0xFFu);
+    scanbuf[dst_byte + 1u] |= (uint8_t)((shifted >> 8) & 0xFFu);
+    if (shift > 4u) {
+        scanbuf[dst_byte + 2u] |= (uint8_t)((shifted >> 16) & 0xFFu);
+    }
 }
 
 // Build and encode one scanline for the current line index.
@@ -124,6 +163,7 @@ static void __not_in_flash_func(neo1_video_prepare_scanline)(uint32_t line) {
             const uint32_t cursor_y = g_term_buffers[g_front_buffer_index].cursor_y;
 
             if (row < NEO1_TERM_ROWS) {
+                const bool corrected = g_widescreen_correction_active;
                 for (uint32_t col = 0; col < NEO1_TERM_COLS; col++) {
                     uint8_t ch = g_term_buffers[g_front_buffer_index].chars[row][col];
                     if (cursor_blink_on && (cursor_y == row) && (cursor_x == col)) {
@@ -131,8 +171,15 @@ static void __not_in_flash_func(neo1_video_prepare_scanline)(uint32_t line) {
                     }
                     ch &= 0x7F;
 
-                    uint32_t dst_byte = NEO1_LEFT_PAD_BYTES + (col * 2);
-                    if ((dst_byte + 1) < NEO1_SCANLINE_BYTES) {
+                    if (corrected) {
+                        const uint16_t bits12 =
+                            g_font_12x8_ram[((uint32_t)ch * FONT_CHAR_HEIGHT) + gy];
+                        neo1_blit_row_12(
+                            scanbuf,
+                            NEO1_CORRECTED_LEFT_PAD + (col * NEO1_CORRECTED_CHAR_WIDTH),
+                            bits12);
+                    } else {
+                        uint32_t dst_byte = NEO1_LEFT_PAD_BYTES + (col * 2);
                         // Font rows are pre-expanded to 16 bits (2 bytes per glyph row).
                         uint16_t bits16 = g_font_16x8_ram[((uint32_t)ch * FONT_CHAR_HEIGHT) + gy];
                         scanbuf[dst_byte + 0] = (uint8_t)(bits16 & 0xFFu);
@@ -157,6 +204,7 @@ static void __not_in_flash_func(_scanline_callback)(void) {
     if (dvi_line_counter == FRAME_HEIGHT) {
         dvi_frame_counter++;
         dvi_line_counter = 0;
+        g_widescreen_correction_active = g_widescreen_correction_requested;
 
         critical_section_enter_blocking(&g_term_publication_lock);
         if (g_has_pending_buffer) {
@@ -228,6 +276,8 @@ void neo1_video_init(neo1_terminal_t* term) {
     g_term_bound = (term != 0);
     g_set_terminal_calls = 0;
     g_terminal_buffer_swaps = 0;
+    g_widescreen_correction_requested = false;
+    g_widescreen_correction_active = false;
 
     if (term) {
         memcpy(&g_term_buffers[0], term, sizeof(g_term_buffers[0]));
@@ -247,6 +297,7 @@ void neo1_video_init(neo1_terminal_t* term) {
                 bits = neo1_reverse_bits8(bits);
             }
             g_font_16x8_ram[(ch * FONT_CHAR_HEIGHT) + row] = neo1_expand_row_2x(bits);
+            g_font_12x8_ram[(ch * FONT_CHAR_HEIGHT) + row] = neo1_expand_row_3_over_2(bits);
         }
     }
 
@@ -266,4 +317,9 @@ void neo1_video_start(void) {
     hw_set_bits(&bus_ctrl_hw->priority, BUSCTRL_BUS_PRIORITY_PROC1_BITS);
     multicore_launch_core1(core1_main);
     sem_release(&dvi_start_sem);
+}
+
+bool neo1_video_toggle_widescreen_correction(void) {
+    g_widescreen_correction_requested = !g_widescreen_correction_requested;
+    return g_widescreen_correction_requested;
 }

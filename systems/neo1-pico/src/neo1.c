@@ -183,6 +183,17 @@ static void neo1_usb_char_in(uint8_t ch, void* user_data) {
     neo1_machine_key_down(&state.machine, ch);
 }
 
+// Handle Pico-owned USB keyboard actions without exposing them to the 6502.
+static void neo1_usb_action_in(neo1_usb_action_t action, void* user_data) {
+    (void)user_data;
+
+    if (action == NEO1_USB_ACTION_TOGGLE_VIDEO_ASPECT) {
+        const bool corrected = neo1_video_toggle_widescreen_correction();
+        printf("[neo1] video=%s\n",
+               corrected ? "16:9 stretch correction" : "native 4:3");
+    }
+}
+
 // -----------------------------------------------------------------------------
 // machine output callback
 // -----------------------------------------------------------------------------
@@ -322,7 +333,7 @@ static void app_init(void) {
     assert(msc_initialized);
     (void)msc_initialized;
 #endif
-    neo1_usb_init(neo1_usb_char_in, 0);
+    neo1_usb_init(neo1_usb_char_in, neo1_usb_action_in, 0);
 
 }
 

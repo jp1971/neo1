@@ -50,6 +50,19 @@ On Neo1-50 Pico, `$E000` and `$F000` initially contain return-to-WozMon stubs
 until a storage utility overwrites them. SDL and Fruit Jam do not currently
 install the VACI or VCFFA1 RAM utilities.
 
+### Pico video aspect
+
+Neo1 Pico emits a 640×480 60 Hz DVI signal, which is natively 4:3. Its normal
+40-column view uses the complete 640-pixel width; this is the correct mode for
+4:3 displays such as a 1024×768 panel. Some 16:9 displays forcibly stretch a
+4:3 input instead of preserving its aspect ratio.
+
+Press **F12** on the USB keyboard to toggle a centered 480-pixel-wide
+compensation view for those displays. Press F12 again to restore native 4:3
+rendering. The setting affects only Pico rasterization, is not delivered to the
+Apple-1 keyboard latch, and returns to native 4:3 after a firmware restart or
+power cycle.
+
 ## Neo1 Pico build profiles
 
 The Pico build exposes these CMake cache variables:

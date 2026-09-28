@@ -140,6 +140,14 @@ LF/form feed, and renders the cells with SDL. Both target callbacks strip the
 Apple-1 output high bit before applying those policies; the shared grid itself
 preserves all eight bits supplied to its glyph primitive.
 
+Pico always emits 640×480 60 Hz DVI timing. Its default renderer uses 16×16
+cells across the full 640×384 text area for native 4:3 output. A target-owned
+F12 action can instead render 12×16 cells in a centered 480×384 area to
+compensate for 16:9 displays that forcibly stretch a 4:3 input. This choice
+does not resize the shared grid, alter the DVI timing, or place F12 in the
+Apple-1 keyboard latch; a firmware restart or power cycle restores native 4:3
+rendering.
+
 ## Neo1 MSC file interface
 
 The optional storage service at `$D014-$D01C` is a Neo1 extension used by VACI.

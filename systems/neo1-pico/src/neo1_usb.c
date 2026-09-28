@@ -7,6 +7,7 @@
 // - six-key reports are edge-detected against the previous report
 // - Shift selects the TinyUSB lookup column; Ctrl-letter emits $01-$1A
 // - Enter, Backspace, Tab, and Space have explicit translations
+// - F12 emits a Pico-owned video-aspect action rather than an Apple-1 key
 // - decoded bytes are forwarded to the runner callback
 //
 // Storage path:
@@ -36,7 +37,8 @@
 static const uint8_t keycode2ascii[128][2] = { HID_KEYCODE_TO_ASCII };
 
 static neo1_usb_char_handler_t g_char_handler = NULL;
-static void* g_char_handler_user_data = NULL;
+static neo1_usb_action_handler_t g_action_handler = NULL;
+static void* g_handler_user_data = NULL;
 
 static bool g_keyboard_mounted = false;
 static hid_keyboard_report_t g_prev_report = { 0 };
@@ -61,7 +63,13 @@ static inline bool neo1_usb_is_key_in_report(hid_keyboard_report_t const* report
 // Forward one decoded byte to system callback if registered.
 static void neo1_usb_emit_char(uint8_t ch) {
     if (g_char_handler) {
-        g_char_handler(ch, g_char_handler_user_data);
+        g_char_handler(ch, g_handler_user_data);
+    }
+}
+
+static void neo1_usb_emit_action(neo1_usb_action_t action) {
+    if (g_action_handler) {
+        g_action_handler(action, g_handler_user_data);
     }
 }
 
@@ -85,6 +93,10 @@ static void neo1_usb_process_kbd_report(hid_keyboard_report_t const* report) {
         }
 
         switch (keycode) {
+            case HID_KEY_F12:
+                neo1_usb_emit_action(NEO1_USB_ACTION_TOGGLE_VIDEO_ASPECT);
+                break;
+
             case HID_KEY_ENTER:
                 neo1_usb_emit_char('\r');
                 break;
@@ -127,10 +139,14 @@ static void neo1_usb_process_kbd_report(hid_keyboard_report_t const* report) {
 // public API
 // -----------------------------------------------------------------------------
 
-void neo1_usb_init(neo1_usb_char_handler_t handler, void* user_data) {
+void neo1_usb_init(
+    neo1_usb_char_handler_t char_handler,
+    neo1_usb_action_handler_t action_handler,
+    void* user_data) {
     // Reset module state before bringing up TinyUSB host stack.
-    g_char_handler = handler;
-    g_char_handler_user_data = user_data;
+    g_char_handler = char_handler;
+    g_action_handler = action_handler;
+    g_handler_user_data = user_data;
     g_keyboard_mounted = false;
     memset(&g_prev_report, 0, sizeof(g_prev_report));
 

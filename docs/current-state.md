@@ -1,6 +1,6 @@
 # Neo1 Current State
 
-Last updated: 2026-09-20
+Last updated: 2026-09-27
 
 This document records evidence-backed capabilities and known defects. It is a
 snapshot, not the architecture contract or a roadmap.
@@ -86,6 +86,12 @@ snapshot, not the architecture contract or a roadmap.
   cancellation plus `Q` returned cleanly to WozMon. The test was read-only;
   video, USB keyboard, storage writes, and live media reinsertion were not
   exercised.
+- A 2026-09-22 follow-up confirmed DVI video and USB keyboard operation on the
+  Neo6502. The Pico renderer now retains full-width 640×480 output by default
+  and offers an F12-controlled centered 480-pixel compensation view for 16:9
+  displays that stretch 4:3 input. On 2026-09-27, the user confirmed that F12
+  switches the physical display successfully. The 1024×768 4:3 Beetronics has
+  not yet received the separate full-width comparison.
 - Normal Neo1-23 and Neo1-50 Pico builds passed on 2026-08-24 with the VACI
   error-line follow-up. Normal and diagnostic builds for both profiles passed
   on 2026-08-23; ELF inspection confirmed normal builds omit verbose trace
@@ -187,22 +193,22 @@ snapshot, not the architecture contract or a roadmap.
   or 6502-visible behavior changed, so no additional physical gate is required.
 ## Last Neo6502 hardware validation
 
-User-supplied results from 2026-08-22 through 2026-09-20 used the Neo1-23
-profile with VACI and VCFFA1 enabled. The latest result is the passing headless,
-read-only normal Neo1-23 gate described above. Video and USB keyboard were not
-attached for that run, so their verified status remains based on the earlier
-full hardware gates. Checkpoint 9 remains the latest detailed disposable-media
-result: ordinary storage operation passed; live USB reinsertion was not
-established, and recovery was verified by power cycling with the medium
-inserted.
+User-supplied results from 2026-08-22 through 2026-09-27 used the Neo1-23
+profile with VACI and VCFFA1 enabled. The latest follow-up confirms DVI video
+and USB keyboard after the passing headless, read-only normal Neo1-23 gate, and
+the F12 widescreen-stretch correction now has a passing physical result.
+Checkpoint 9 remains the latest detailed disposable-media result: ordinary
+storage operation passed; live USB reinsertion was not established, and
+recovery was verified by power cycling with the medium inserted. The Beetronics
+comparison remains outstanding.
 
 | Capability | Result | Evidence |
 | --- | --- | --- |
 | Reset and WozMon | Verified | Reset reached WozMon and monitor commands executed |
 | Neo1-23 ROM entries | Verified | `E000R` entered Integer BASIC and `F000R` entered Krusader |
-| DVI video | Verified | The shared-grid checkpoint passed sustained WozMon output/scrolling, form-feed clear, cursor, keyboard, and VACI-return checks on Neo1-23 |
+| DVI video | Verified; Beetronics comparison pending | The shared-grid checkpoint passed sustained WozMon output/scrolling, form-feed clear, cursor, keyboard, and VACI-return checks on Neo1-23; DVI operation was reconfirmed on 2026-09-22 and the F12 aspect toggle passed physically on 2026-09-27 |
 | Serial console | Verified | Normal and diagnostic profiles produced their intended transcripts while preserving monitor output |
-| USB HID keyboard | Verified | User explicitly verified keyboard input |
+| USB HID keyboard | Verified | User explicitly reconfirmed keyboard input on 2026-09-22 |
 | Apple-1 PIA-like interface | Verified | Checkpoint 3 preserved WozMon memory examine/deposit, DVI/serial display output, USB/serial input, VACI directory/return, and stable scrolling |
 | CPU-neutral machine boundary | Verified | Checkpoint 4 preserved WozMon reset, both Neo1-23 ROM entries, `$0300` memory deposit/examine, VACI directory/cancel/return, USB and serial input, DVI output, and stable scrolling |
 | Explicit software-runner boundary | Verified | Checkpoint 5 preserved the same Neo1-23 WozMon, ROM-entry, memory, VACI, input, DVI, and scrolling gate after removing the build-wide CPU selector |
@@ -288,6 +294,11 @@ directory, bitmap, file-size, and destination limitations.
     not establish recovery; power cycling with the USB medium already inserted
     restored normal listing, loading, and writing. The shared register-level
     missing-media error paths remain covered by host tests.
+11. **The Pico aspect control has not been compared on the Beetronics.** F12
+    successfully switches to the centered 480-pixel widescreen-stretch
+    correction on tested hardware. The 1024×768 4:3 Beetronics still needs a
+    check that restart-default native 640×480 uses its full display area and
+    that toggling twice returns cleanly to that view.
 
 ## Storage-test expectations still outstanding
 
