@@ -134,18 +134,18 @@
       }
     },
     {
-      "name": "neo1-fruitjam-23-serial",
-      "displayName": "Neo1 Fruit Jam 23 Serial",
-      "description": "Fruit Jam Neo1-23 serial console; video, USB-host input, and storage disabled.",
+      "name": "neo1-fruitjam-23-dvi",
+      "displayName": "Neo1 Fruit Jam 23 DVI",
+      "description": "Fruit Jam Neo1-23 with HSTX DVI and serial console; USB-host input and storage disabled.",
       "inherits": "base-fruitjam",
       "cacheVariables": {
         "NEO1_PERSONALITY": "23"
       }
     },
     {
-      "name": "neo1-fruitjam-50-serial",
-      "displayName": "Neo1 Fruit Jam 50 Serial",
-      "description": "Fruit Jam Neo1-50 serial console; video, USB-host input, and storage disabled.",
+      "name": "neo1-fruitjam-50-dvi",
+      "displayName": "Neo1 Fruit Jam 50 DVI",
+      "description": "Fruit Jam Neo1-50 with HSTX DVI and serial console; USB-host input and storage disabled.",
       "inherits": "base-fruitjam",
       "cacheVariables": {
         "NEO1_PERSONALITY": "50"
@@ -194,14 +194,14 @@
       "configurePreset": "neo1-sdl-50-vaci-only"
     },
     {
-      "name": "build-neo1-fruitjam-23-serial",
-      "displayName": "Build Neo1 Fruit Jam 23 Serial",
-      "configurePreset": "neo1-fruitjam-23-serial"
+      "name": "build-neo1-fruitjam-23-dvi",
+      "displayName": "Build Neo1 Fruit Jam 23 DVI",
+      "configurePreset": "neo1-fruitjam-23-dvi"
     },
     {
-      "name": "build-neo1-fruitjam-50-serial",
-      "displayName": "Build Neo1 Fruit Jam 50 Serial",
-      "configurePreset": "neo1-fruitjam-50-serial"
+      "name": "build-neo1-fruitjam-50-dvi",
+      "displayName": "Build Neo1 Fruit Jam 50 DVI",
+      "configurePreset": "neo1-fruitjam-50-dvi"
     }
   ]
 }

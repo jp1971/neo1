@@ -29,3 +29,8 @@ void neo1_terminal_put_glyph(neo1_terminal_t* term, uint8_t ch);
 
 // Move left and replace that cell with a space. Column zero is unchanged.
 void neo1_terminal_backspace(neo1_terminal_t* term);
+
+// Apply the display-byte policy shared by physical Neo6502 and Fruit Jam:
+// carriage return advances to a new row, form feed clears the screen, printable
+// ASCII writes one glyph, and all other control bytes are ignored.
+void neo1_terminal_apple1_putc(neo1_terminal_t* term, uint8_t ch);

@@ -4,13 +4,7 @@
 #include <string.h>
 
 void neo1_terminal_pico_putc(neo1_terminal_t* term, uint8_t ch) {
-    if (ch == '\r') {
-        neo1_terminal_newline(term);
-    } else if (ch == 0x0C) {
-        neo1_terminal_clear(term);
-    } else if ((ch >= 32) && (ch <= 126)) {
-        neo1_terminal_put_glyph(term, ch);
-    }
+    neo1_terminal_apple1_putc(term, ch);
 }
 
 void neo1_terminal_pico_dump(const neo1_terminal_t* term) {

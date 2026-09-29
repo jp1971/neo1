@@ -105,6 +105,27 @@ static void test_pico_policy(void) {
     check_row_is(&term, 0, ' ');
 }
 
+static void test_shared_apple1_policy(void) {
+    neo1_terminal_t term;
+    neo1_terminal_clear(&term);
+
+    neo1_terminal_apple1_putc(&term, 'A');
+    neo1_terminal_apple1_putc(&term, 0x08);
+    neo1_terminal_apple1_putc(&term, '\n');
+    CHECK(term.chars[0][0] == 'A');
+    CHECK(term.cursor_x == 1);
+    CHECK(term.cursor_y == 0);
+
+    neo1_terminal_apple1_putc(&term, '\r');
+    CHECK(term.cursor_x == 0);
+    CHECK(term.cursor_y == 1);
+
+    neo1_terminal_apple1_putc(&term, 0x0C);
+    check_row_is(&term, 0, ' ');
+    CHECK(term.cursor_x == 0);
+    CHECK(term.cursor_y == 0);
+}
+
 static void test_sdl_policy(void) {
     neo1_terminal_t term;
     neo1_terminal_clear(&term);
@@ -129,6 +150,7 @@ int main(void) {
     test_newline_and_scroll();
     test_backspace();
     test_pico_policy();
+    test_shared_apple1_policy();
     test_sdl_policy();
 
     if (g_failures != 0) {
