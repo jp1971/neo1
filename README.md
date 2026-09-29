@@ -25,11 +25,10 @@ Platform targets:
 - `systems/neo1-sdl/` — macOS/Linux host target using SDL2
 - `systems/neo1-fruitjam/` — Adafruit Fruit Jam / RP2350 software-CPU target
 
-Fruit Jam checkpoint 3 is build-complete and awaiting its physical video gate.
-Both ROM personalities run through the shared machine and software CPU with
-HSTX DVI, USB-CDC diagnostics and console input, and lifecycle reset. USB-host
-keyboard input, storage, VACI, VCFFA1, and audio remain disabled. Their staged
-work is defined in the
+Fruit Jam checkpoint 3 is complete. Both ROM personalities run through the
+shared machine and software CPU with HSTX DVI, USB-CDC diagnostics and console
+input, and lifecycle reset. USB-host keyboard input, storage, VACI, VCFFA1, and
+audio remain disabled. Their staged work is defined in the
 [Fruit Jam execution plan](docs/fruit-jam-execution-plan.md).
 
 ## Monitor entry points

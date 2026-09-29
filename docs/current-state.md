@@ -78,9 +78,8 @@ snapshot, not the architecture contract or a roadmap.
   CRLF in the Fruit Jam console transport; physical testing confirmed proper
   line advancement and successful interactive use of WozMon, Integer BASIC,
   and Krusader. The Fruit Jam remains flashed with Neo1-23.
-- Fruit Jam checkpoint 3 implementation and build gates passed on 2026-09-28;
-  its physical video gate is partly complete. Both personalities compile with the
-  renamed `neo1-fruitjam-23-dvi` and `neo1-fruitjam-50-dvi` presets. The
+- Fruit Jam checkpoint 3 passed on 2026-09-28. Both personalities compile with
+  the renamed `neo1-fruitjam-23-dvi` and `neo1-fruitjam-50-dvi` presets. The
   Fruit Jam-only HSTX renderer produces 640x480 timing from compact internal-
   SRAM terminal rasters and scanline buffers, without PicoDVI, PSRAM, or a full
   framebuffer. Core 0 publishes coherent snapshots of the shared 40x24
@@ -97,8 +96,9 @@ snapshot, not the architecture contract or a roadmap.
   prototypes exposed a stray prompt-adjacent raster mark and HSTX starvation
   under output; direct DMA from pre-expanded text rasters removed the mark and
   signal resets, while bounded 30 Hz snapshot publication removed sustained-
-  output starvation. Ctrl-L clear and repeated Ctrl-R reset remain to be
-  explicitly reported before the checkpoint is closed.
+  output starvation. Physical testing also confirmed that Ctrl-L clears the
+  DVI terminal and repeated Ctrl-R resets return reliably to WozMon without
+  destabilizing video or serial.
 - A headless Neo6502 regression passed on 2026-09-20 using the normal Neo1-23
   profile built with SDK 2.3.0 and flashed immediately before testing. Through
   the serial console, Ctrl-R reached WozMon, `$0300` accepted and returned an
@@ -283,10 +283,9 @@ directory, bitmap, file-size, and destination limitations.
 3. **Neo1-50 hardware behavior is build-verified only in this pass.** The dated
    physical smoke result above is for Neo1-23.
 4. **Fruit Jam physical I/O remains incomplete.** Checkpoint 3 HSTX video is
-   implemented and has passed prompt, cursor, command, and sustained-output
-   testing, but still awaits explicit Ctrl-L and repeated-reset results.
-   USB-host keyboard input, microSD storage, VACI, VCFFA1, and audio are not
-   implemented; USB-CDC remains the temporary Apple-1 input transport.
+   physically verified. USB-host keyboard input, microSD storage, VACI,
+   VCFFA1, and audio are not implemented; USB-CDC remains the temporary
+   Apple-1 input transport.
 5. **The shared terminal is a modernized presentation model.** It provides a
    conventional 40x24 grid with immediate row advancement and scrolling. A
    2026-09-28 physical Replica 1 observation found that its Apple-1-style video

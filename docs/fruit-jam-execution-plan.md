@@ -4,7 +4,7 @@ Date: 2026-08-26
 
 Last updated: 2026-09-28
 
-Status: checkpoint 3 implementation/build complete; physical gate pending
+Status: checkpoints 0 through 3 complete; checkpoint 4 is next
 
 Baseline: `neo1-portable-core-complete-2026-08-26`
 
@@ -61,7 +61,7 @@ copy pin numbers from an example without that comparison.
 | Software 65C02 execution and timing budget | `neo1_soft_runner` | Reused by the current Fruit Jam target |
 | 40x24 character cells and scrolling | `neo1_terminal` | Reused by checkpoint 3 HSTX renderer |
 | `$D014-$D01C` MSC protocol | `neo1_msc` | Attach in checkpoint 5 |
-| Pixel rendering and output-byte policy | Target renderers plus shared physical-output policy | Fruit Jam HSTX implemented; physical gate pending |
+| Pixel rendering and output-byte policy | Target renderers plus shared physical-output policy | Fruit Jam HSTX verified in checkpoint 3 |
 | Keyboard transport | Fruit Jam USB-CDC console, Pico TinyUSB, or SDL events | Add Fruit Jam GPIO/PIO USB host in checkpoint 4 |
 | Filesystem transport | Pico USB MSC or SDL raw image | Add Fruit Jam microSD/FatFs transport |
 | VACI RAM payload installation | Pico runner | Share only when Pico and Fruit Jam consume it |
@@ -449,8 +449,7 @@ the shared PIA or introduce a shared input abstraction for this single consumer.
 
 ## Checkpoint 3: HSTX DVI text output
 
-Status: implementation and build gates complete on 2026-09-28; prompt, cursor,
-commands, and sustained output pass physically; control/reset checks pending
+Status: complete on 2026-09-28
 
 ### Boundary
 
@@ -499,9 +498,7 @@ terminal tests byte-for-byte.
 - All thirteen host tests pass; SDL-23 and SDL-50 reach WozMon headlessly; and
   Pico-23 and Pico-50 build with SDK 2.3.0.
 
-The remaining physical gate is Ctrl-L clear and repeated Ctrl-R reset.
-
-### Physical evidence to date
+### Physical completion evidence
 
 - WozMon appears with a stable prompt and cursor, and simple serial commands
   update DVI correctly.
@@ -510,8 +507,8 @@ The remaining physical gate is Ctrl-L clear and repeated Ctrl-R reset.
   terminal publication at 30 Hz.
 - The earlier prompt-adjacent mark, horizontal corruption, display resync, and
   sustained-output starvation are no longer observed.
-- Explicit Ctrl-L clear and repeated Ctrl-R reset results are still required to
-  close the checkpoint.
+- Ctrl-L clears the DVI terminal, and repeated Ctrl-R resets return reliably to
+  WozMon without destabilizing video or serial.
 
 ### Rollback
 
@@ -748,10 +745,10 @@ upgrade, target bring-up, and physical I/O work in one commit.
 
 ## Recommended next step
 
-Complete checkpoint 3's physical Fruit Jam test: verify WozMon on DVI, Ctrl-L
-clear, wrap/scroll/cursor behavior, sustained output, serial input, and repeated
-Ctrl-R reset. Keep USB-host keyboard input, storage, VACI, VCFFA1, and audio
-disabled until that gate passes.
+Begin checkpoint 4 by selecting and qualifying the Fruit Jam's GPIO/PIO USB-
+host dependency, including license, RP2350 support, clocking, onboard hub power,
+and coexistence with USB-C device CDC. Keep storage, VACI, VCFFA1, and audio
+disabled during keyboard bring-up.
 
 After checkpoint 7 is complete and tagged, the next planned compatibility
 workstream is `docs/vcffa1-execution-plan.md`. Fruit Jam does not acquire
