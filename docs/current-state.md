@@ -99,6 +99,29 @@ snapshot, not the architecture contract or a roadmap.
   output starvation. Physical testing also confirmed that Ctrl-L clears the
   DVI terminal and repeated Ctrl-R resets return reliably to WozMon without
   destabilizing video or serial.
+- Fruit Jam checkpoint 4 has passed its target hardware gate. The
+  target now powers the onboard USB-A hub and uses pinned Pico-PIO-USB 0.7.2
+  on GPIO 1/2 as TinyUSB host root port 1 while native USB-C CDC remains device
+  root port 0. Pico and Fruit Jam share a pure-C HID boot-keyboard decoder but
+  retain target-owned transports, queues, and lifecycle actions. Fruit Jam
+  Ctrl-R resets, Ctrl-L clears DVI, and F12 toggles the same native/corrected-
+  width presentation choice as Pico without entering the Apple-1 latch. HSTX
+  DMA remains on channels 0/1 and PIO USB explicitly uses channel 2. The host
+  tests and cross-target builds pass. The Neo6502 shared-decoder regression
+  remains outstanding.
+- The initial 2026-09-28 checkpoint-4 hardware run passed USB-A keyboard input,
+  lifecycle controls, F12 aspect switching, sustained video, and reconnect
+  testing, but the USB-C serial device no longer enumerated. SDK inspection
+  showed that linking `tinyusb_host` disables `pico_stdio_usb`'s automatic
+  native-device initialization and background task. Enabling both allowed the
+  device identity to enumerate but produced no configured CDC interfaces. The
+  SDK no-argument initialization was also starting host root 1 before its pins
+  and DMA channel were configured. The target now initializes device root 0,
+  services it throughout the startup enumeration wait, and only then configures
+  and initializes PIO host root 1; both tasks are pumped serially afterward.
+  The corrected image enumerated as `/dev/cu.usbmodem1101`, and the user
+  confirmed simultaneous USB-C serial, USB-A keyboard, and DVI operation. The
+  Neo6502 regression remains pending.
 - A headless Neo6502 regression passed on 2026-09-20 using the normal Neo1-23
   profile built with SDK 2.3.0 and flashed immediately before testing. Through
   the serial console, Ctrl-R reached WozMon, `$0300` accepted and returned an
@@ -282,10 +305,10 @@ directory, bitmap, file-size, and destination limitations.
    Pico VACI file behavior.
 3. **Neo1-50 hardware behavior is build-verified only in this pass.** The dated
    physical smoke result above is for Neo1-23.
-4. **Fruit Jam physical I/O remains incomplete.** Checkpoint 3 HSTX video is
-   physically verified. USB-host keyboard input, microSD storage, VACI,
-   VCFFA1, and audio are not implemented; USB-CDC remains the temporary
-   Apple-1 input transport.
+4. **Fruit Jam storage and other optional I/O remain incomplete.** Checkpoint 3
+   HSTX video and checkpoint 4 USB-host keyboard plus USB-C CDC coexistence are
+   physically verified; USB-CDC remains a fallback Apple-1 input transport.
+   MicroSD storage, VACI, VCFFA1, and audio are not implemented.
 5. **The shared terminal is a modernized presentation model.** It provides a
    conventional 40x24 grid with immediate row advancement and scrolling. A
    2026-09-28 physical Replica 1 observation found that its Apple-1-style video

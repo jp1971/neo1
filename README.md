@@ -25,10 +25,12 @@ Platform targets:
 - `systems/neo1-sdl/` — macOS/Linux host target using SDL2
 - `systems/neo1-fruitjam/` — Adafruit Fruit Jam / RP2350 software-CPU target
 
-Fruit Jam checkpoint 3 is complete. Both ROM personalities run through the
-shared machine and software CPU with HSTX DVI, USB-CDC diagnostics and console
-input, and lifecycle reset. USB-host keyboard input, storage, VACI, VCFFA1, and
-audio remain disabled. Their staged work is defined in the
+Fruit Jam checkpoints 0 through 3 are complete. Checkpoint 4 USB-host keyboard
+support has passed its Fruit Jam hardware gate; the Neo6502 shared-decoder
+regression remains. Both ROM personalities run through the shared machine and
+software CPU with HSTX DVI, USB-CDC diagnostics and fallback console input,
+and lifecycle reset. Storage, VACI, VCFFA1, and audio remain disabled. Their
+staged work is defined in the
 [Fruit Jam execution plan](docs/fruit-jam-execution-plan.md).
 
 ## Monitor entry points
@@ -49,18 +51,18 @@ On Neo1-50 Pico, `$E000` and `$F000` initially contain return-to-WozMon stubs
 until a storage utility overwrites them. SDL and Fruit Jam do not currently
 install the VACI or VCFFA1 RAM utilities.
 
-### Pico video aspect
+### Hardware video aspect
 
-Neo1 Pico emits a 640×480 60 Hz DVI signal, which is natively 4:3. Its normal
-40-column view uses the complete 640-pixel width; this is the correct mode for
-4:3 displays such as a 1024×768 panel. Some 16:9 displays forcibly stretch a
-4:3 input instead of preserving its aspect ratio.
+Neo1 Pico and Fruit Jam emit a 640×480 DVI signal, which is natively 4:3. Their
+normal 40-column view uses the complete 640-pixel width; this is the correct
+mode for 4:3 displays such as a 1024×768 panel. Some 16:9 displays forcibly
+stretch a 4:3 input instead of preserving its aspect ratio.
 
 Press **F12** on the USB keyboard to toggle a centered 480-pixel-wide
 compensation view for those displays. Press F12 again to restore native 4:3
-rendering. The setting affects only Pico rasterization, is not delivered to the
-Apple-1 keyboard latch, and returns to native 4:3 after a firmware restart or
-power cycle.
+rendering. Each hardware target owns its renderer setting; F12 is not delivered
+to the Apple-1 keyboard latch, and a firmware restart or power cycle restores
+native 4:3. Operation is physically verified on both hardware targets.
 
 ## Neo1 Pico build profiles
 
@@ -107,11 +109,11 @@ baseline.
 ### Prepare the checkout
 
 Install the Raspberry Pi Pico extension, allow it to install the verified SDK
-and toolchain, and initialize the four project submodules from the repository
+and toolchain, and initialize the project submodules from the repository
 root:
 
 ```sh
-git submodule update --init -- lib/pico-sdk lib/PicoDVI lib/tinyusb lib/qe6502
+git submodule update --init -- lib/pico-sdk lib/PicoDVI lib/tinyusb lib/qe6502 lib/Pico-PIO-USB
 ```
 
 The build uses the extension-managed official SDK. The checked-in Pico SDK fork
@@ -209,7 +211,7 @@ cmake --build --preset build-neo1-pico-23-full --target clean
 The SDL target remains a development and behavioral-test target, but it is not
 part of this hardware quickstart.
 
-## Fruit Jam HSTX DVI checkpoint
+## Fruit Jam HSTX DVI and USB keyboard
 
 Fruit Jam uses the official `adafruit_fruit_jam` SDK board definition and a
 separate `build-fruitjam/` directory. Configure and build either HSTX DVI
@@ -250,6 +252,17 @@ terminal line endings each produce one Apple-1 Return. WozMon echoes accepted
 input through the same serial console. Because Apple-1 software emits CR without
 LF, the serial transport expands outgoing CR to CRLF for ordinary terminals;
 that transport-only expansion does not alter the DVI terminal policy.
+
+Checkpoint 4 also enables the switched 5 V rail and GPIO/PIO host controller
+for the onboard USB-A hub. A boot-protocol USB keyboard connected to either
+USB-A port supplies the same US-layout key translation as Neo1 Pico. Ctrl-R
+resets Neo1, Ctrl-L clears only the DVI terminal, and F12 toggles between the
+full-width native 4:3 view and the centered 480-pixel widescreen-stretch
+correction. These controls are consumed by the Fruit Jam platform and never
+enter `$D010/$D011`. USB-C remains the native USB device port for diagnostics
+and fallback console input. This implementation has passed builds and host
+decoder tests but is not considered checkpoint-complete until the Fruit Jam
+hardware test passes.
 
 ## Host storage tests
 

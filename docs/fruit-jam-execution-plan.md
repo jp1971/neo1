@@ -4,7 +4,8 @@ Date: 2026-08-26
 
 Last updated: 2026-09-28
 
-Status: checkpoints 0 through 3 complete; checkpoint 4 is next
+Status: checkpoints 0 through 3 complete; checkpoint 4 Fruit Jam gate passed,
+Neo6502 shared-decoder regression pending
 
 Baseline: `neo1-portable-core-complete-2026-08-26`
 
@@ -74,9 +75,9 @@ copy pin numbers from an example without that comparison.
 | Build and target selection | Resolved | `fruitjam` is a first-class platform with isolated presets and TinyUSB configuration. |
 | Fruit Jam board and Neo1 runner | Resolved | Both personalities build and run on the official SDK board definition. |
 | Process-global `fake65c02` dependency | Resolved | The instance-owned, MIT-licensed qe6502 runner passed the recorded compatibility gates. |
-| Reusable HID report decoding | Open | Address in checkpoint 4 only when Pico and Fruit Jam are concrete consumers. |
+| Reusable HID report decoding | Implemented; Neo6502 regression pending | Pico and Fruit Jam consume one pure-C boot-keyboard decoder. |
 | Reusable FatFs named-file backend | Open | Address in checkpoint 5 while keeping target transports separate. |
-| GPIO/PIO USB-host dependency | Open | Select, pin, license, and qualify it in checkpoint 4. |
+| GPIO/PIO USB-host dependency | Fruit Jam verified | Pico-PIO-USB 0.7.2 is pinned for the Fruit Jam transport. |
 
 These are checkpoint boundaries, not reasons to create one broad platform API.
 
@@ -556,6 +557,9 @@ only when Pico, SDL, and Fruit Jam palette support is designed together.
 
 ## Checkpoint 4: USB keyboard through the onboard hub
 
+Status: implementation, build, and Fruit Jam physical gates complete on
+2026-09-28; Neo6502 shared-decoder regression pending
+
 ### Boundary
 
 Select and pin the GPIO/PIO USB-host dependency and document its license,
@@ -568,6 +572,11 @@ Shift, Ctrl-letter, Return, Backspace, Tab, and Space translation; it must not
 own TinyUSB tasks, mount callbacks, GPIO, or machine state. Both targets feed
 decoded bytes to `neo1_machine_key_down()`.
 
+F12 is a platform-control event from the same decoder. Both hardware targets
+consume it to toggle their own renderer between full-width native 4:3 and the
+centered 480-pixel widescreen-stretch correction; it never enters the Apple-1
+keyboard latch.
+
 ### Acceptance gate
 
 - A keyboard connected through either USB-A hub port reaches WozMon.
@@ -579,6 +588,60 @@ decoded bytes to `neo1_machine_key_down()`.
   or TinyUSB configuration collisions.
 - Pico keyboard behavior and its hardware smoke remain unchanged after any
   decoder extraction.
+
+### Implementation and build evidence
+
+- Pico-PIO-USB 0.7.2 is pinned as an MIT-licensed submodule at commit
+  `3c1eec3`. Upstream declares RP2040/RP2350, USB hub, and TinyUSB host/device
+  support. Neo1 keeps GPIO, host-power, TinyUSB callbacks, and queueing in the
+  Fruit Jam target.
+- The official SDK 2.3.0 board definition supplies GPIO 1/2 for USB-host D+/D-
+  and GPIO 11 for switched hub power. The target asserts those values at
+  compile time, enables the 5 V rail, waits 100 ms, and configures PIO USB as
+  TinyUSB host root port 1 while native root port 0 remains USB-C CDC device.
+  Because linking TinyUSB host disables `pico_stdio_usb`'s automatic device
+  initialization and background task by default, the Fruit Jam target
+  initializes device root 0 explicitly, services it during the startup
+  enumeration window, and only then configures and initializes host root 1.
+  Device and host tasks run serially from the main loop.
+- HSTX owns DMA channels 0 and 1; the USB host transport explicitly reserves
+  channel 2 before initialization. Pico-PIO-USB otherwise owns PIO0 state
+  machines 0 through 2 and hardware alarm 2. The 126 MHz video clock produces
+  exact fractional divisors for its 12/48/96 MHz PIO clocks; physical testing
+  remains the clock/coexistence gate.
+- A pure-C decoder owns only six-key report edges and US-layout Shift,
+  Ctrl-letter, Return, Escape, Backspace, Tab, Space, keypad, and F12
+  translation. Pico and Fruit Jam keep separate TinyUSB transports and
+  platform-control handling. Focused host coverage passes for translation,
+  held-key suppression, release/repress, reset/reconnect, and F12.
+- Fruit Jam queues decoded character bytes behind the one-byte Apple-1 PIA
+  latch. Ctrl-R resets, Ctrl-L clears the DVI terminal, and F12 toggles native
+  versus corrected-width HSTX rendering without entering `$D010/$D011`.
+- Both Fruit Jam personalities, both Pico personalities, and both SDL
+  personalities build with SDK 2.3.0 where applicable; all fourteen focused
+  host tests pass. Physical results are deliberately not claimed here.
+
+### Physical evidence
+
+- The first 2026-09-28 Fruit Jam run passed the keyboard, lifecycle, F12 aspect,
+  video-stability, and reconnect tests. USB-C CDC did not enumerate in that
+  image.
+- Source inspection traced the CDC regression to SDK 2.3.0's documented
+  `pico_stdio_usb` defaults when `tinyusb_host` is linked: automatic native-
+  device initialization and its background task are both disabled. Enabling
+  both restored native device enumeration only through the device descriptor;
+  macOS saw the Fruit Jam identity but no configured CDC interfaces. Further
+  inspection found that the SDK's no-argument initialization also initialized
+  host root 1 before its Fruit Jam pins and DMA channel were configured. The
+  target now initializes each root explicitly in order and services device root
+  0 throughout its startup wait.
+- The corrected Neo1-23 image enumerated as `/dev/cu.usbmodem1101`. The user
+  confirmed simultaneous USB-C serial, USB-A keyboard, and DVI operation after
+  flashing it. Together with the first run, this passes keyboard input,
+  shifted punctuation, lifecycle controls, F12 aspect switching, sustained
+  output, reconnect, and native-device/PIO-host coexistence.
+- The Neo6502 shared-decoder keyboard/F12 regression remains pending; do not
+  mark the overall checkpoint complete until it passes.
 
 ### Rollback
 
@@ -745,10 +808,10 @@ upgrade, target bring-up, and physical I/O work in one commit.
 
 ## Recommended next step
 
-Begin checkpoint 4 by selecting and qualifying the Fruit Jam's GPIO/PIO USB-
-host dependency, including license, RP2350 support, clocking, onboard hub power,
-and coexistence with USB-C device CDC. Keep storage, VACI, VCFFA1, and audio
-disabled during keyboard bring-up.
+Repeat the affected Neo6502 keyboard/aspect smoke before marking checkpoint 4
+complete: confirm ordinary and shifted input, Ctrl-R, Ctrl-L, F12 twice, and
+keyboard disconnect/reconnect while DVI remains stable. Keep storage, VACI,
+VCFFA1, and audio disabled in the Fruit Jam target.
 
 After checkpoint 7 is complete and tagged, the next planned compatibility
 workstream is `docs/vcffa1-execution-plan.md`. Fruit Jam does not acquire
@@ -760,6 +823,7 @@ VCFFA1 implicitly as part of that workstream.
 - [Adafruit Fruit Jam PCB and schematic repository](https://github.com/adafruit/Adafruit-Fruit-Jam-PCB)
 - [Raspberry Pi Pico SDK releases](https://github.com/raspberrypi/pico-sdk/releases)
 - [Raspberry Pi RP2350 HSTX DVI example](https://github.com/raspberrypi/pico-examples/tree/master/hstx/dvi_out_hstx_encoder)
+- [Pico-PIO-USB 0.7.2](https://github.com/sekigon-gonnoc/Pico-PIO-USB/tree/3c1eec3)
 - [Adafruit Fruit Jam SDIO guide](https://learn.adafruit.com/adafruit-fruit-jam/sdio-usage)
 - [qe6502 1.0.0 source pin](https://github.com/nnqe/qe6502/tree/8ae9074203e0a6c46ae687e19194c6a3f4bc1d07)
 - [SingleStepTests WDC65C02 vectors](https://github.com/SingleStepTests/65x02/tree/2f6980a2d95757486c7bee24355c360e40e2a224/wdc65c02/v1)

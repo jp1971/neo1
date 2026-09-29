@@ -68,14 +68,20 @@ rasters and streams 640x480 scanlines with HSTX DMA. It uses neither a full
 framebuffer nor PSRAM. The serial output adapter separately expands Apple-1 CR
 to CRLF for terminal line advancement.
 
-Fruit Jam's temporary target-local console input adapter converts lowercase
-serial input to uppercase, collapses CRLF, and feeds accepted bytes to the
-shared Apple-1 keyboard latch at `$D010/$D011`. Serial Ctrl-R remains target
-lifecycle control: it clears the terminal and resets PIA and CPU state rather
-than becoming a key. Serial Ctrl-L clears only the target-owned DVI terminal and
-likewise is not delivered as an Apple-1 key. The target attaches no MSC or
-VCFFA1 port, installs no RAM utilities or Neo1-50 entry stubs, and links no
-PicoDVI or physical-W65C02 code.
+Fruit Jam owns its GPIO/PIO USB-host transport and retains USB-C serial as a
+fallback input and diagnostic device. Pico and Fruit Jam consume one pure-C
+boot-keyboard report decoder for key-edge detection and US-layout translation;
+the decoder has no TinyUSB, GPIO, machine, or lifecycle state. Each target owns
+its TinyUSB callbacks and decides whether a decoded event is a machine key or a
+platform control. Accepted character bytes feed the shared Apple-1 keyboard
+latch at `$D010/$D011`.
+
+Ctrl-R remains target lifecycle control: it clears the terminal and resets PIA
+and CPU state rather than becoming a key. Ctrl-L clears only the target-owned
+DVI terminal, while F12 toggles the target-owned native/corrected-width video
+view. None is delivered as an Apple-1 key. The target attaches no MSC or VCFFA1
+port, installs no RAM utilities or Neo1-50 entry stubs, and links no PicoDVI or
+physical-W65C02 code.
 
 ## Reset and top memory
 
@@ -148,13 +154,12 @@ LF/form feed, and renders the cells with SDL. Both target callbacks strip the
 Apple-1 output high bit before applying those policies; the shared grid itself
 preserves all eight bits supplied to its glyph primitive.
 
-Pico always emits 640×480 60 Hz DVI timing. Its default renderer uses 16×16
+Pico and Fruit Jam emit 640×480 DVI timing. Each default renderer uses 16×16
 cells across the full 640×384 text area for native 4:3 output. A target-owned
 F12 action can instead render 12×16 cells in a centered 480×384 area to
 compensate for 16:9 displays that forcibly stretch a 4:3 input. This choice
-does not resize the shared grid, alter the DVI timing, or place F12 in the
-Apple-1 keyboard latch; a firmware restart or power cycle restores native 4:3
-rendering.
+does not resize the shared grid, alter DVI timing, or place F12 in the Apple-1
+keyboard latch; a firmware restart or power cycle restores native 4:3.
 
 ## Neo1 MSC file interface
 
