@@ -9,6 +9,11 @@
 [submodule "lib/tinyusb"]
 	path = lib/tinyusb
 	url = https://github.com/vsladkov/tinyusb.git
+
 [submodule "lib/qe6502"]
 	path = lib/qe6502
 	url = https://github.com/nnqe/qe6502.git
+
+[submodule "lib/Pico-PIO-USB"]
+	path = lib/Pico-PIO-USB
+	url = https://github.com/sekigon-gonnoc/Pico-PIO-USB.git
