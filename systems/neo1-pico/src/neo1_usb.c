@@ -4,8 +4,8 @@
 //
 // Input path:
 // - TinyUSB HID callbacks deliver keyboard reports
-// - six-key reports are edge-detected against the previous report
-// - Shift selects the TinyUSB lookup column; Ctrl-letter emits $01-$1A
+// - a shared decoder edge-detects six-key reports against the previous report
+// - Shift selects the US-layout mapping; Ctrl-letter emits $01-$1A
 // - Enter, Backspace, Tab, and Space have explicit translations
 // - F12 emits a Pico-owned video-aspect action rather than an Apple-1 key
 // - decoded bytes are forwarded to the runner callback
@@ -18,30 +18,25 @@
 
 #include "neo1_usb.h"
 
-#include <string.h>
 #include <stdio.h>
-#include <ctype.h>
 
 #include "bsp/board_api.h"
 #include "tusb.h"
 #include "class/hid/hid.h"
 #include "class/msc/msc.h"
 #include "ff.h"
+#include "input/neo1_hid_keyboard.h"
 
 #ifndef NEO1_DIAGNOSTICS
 #define NEO1_DIAGNOSTICS 0
 #endif
-
-// Keep the HID keycode -> ASCII lookup local to Neo1 instead of depending on
-// TinyUSB example helper headers.
-static const uint8_t keycode2ascii[128][2] = { HID_KEYCODE_TO_ASCII };
 
 static neo1_usb_char_handler_t g_char_handler = NULL;
 static neo1_usb_action_handler_t g_action_handler = NULL;
 static void* g_handler_user_data = NULL;
 
 static bool g_keyboard_mounted = false;
-static hid_keyboard_report_t g_prev_report = { 0 };
+static neo1_hid_keyboard_t g_keyboard_decoder;
 
 static bool g_msc_mounted = false;
 static FATFS fs;
@@ -50,89 +45,19 @@ static FATFS fs;
 // internal helpers
 // -----------------------------------------------------------------------------
 
-// Returns true if keycode exists in the current 6-key rollover report.
-static inline bool neo1_usb_is_key_in_report(hid_keyboard_report_t const* report, uint8_t keycode) {
-    for (uint32_t i = 0; i < 6; i++) {
-        if (report->keycode[i] == keycode) {
-            return true;
+static void neo1_usb_hid_event(
+    const neo1_hid_event_t* event,
+    void* user_data)
+{
+    (void)user_data;
+    if (event->kind == NEO1_HID_EVENT_CHARACTER) {
+        if (g_char_handler) {
+            g_char_handler(event->character, g_handler_user_data);
         }
+    } else if (event->kind == NEO1_HID_EVENT_F12 && g_action_handler) {
+        g_action_handler(
+            NEO1_USB_ACTION_TOGGLE_VIDEO_ASPECT, g_handler_user_data);
     }
-    return false;
-}
-
-// Forward one decoded byte to system callback if registered.
-static void neo1_usb_emit_char(uint8_t ch) {
-    if (g_char_handler) {
-        g_char_handler(ch, g_handler_user_data);
-    }
-}
-
-static void neo1_usb_emit_action(neo1_usb_action_t action) {
-    if (g_action_handler) {
-        g_action_handler(action, g_handler_user_data);
-    }
-}
-
-// Decode one HID keyboard report and emit newly-pressed keys only.
-static void neo1_usb_process_kbd_report(hid_keyboard_report_t const* report) {
-    // Modifier bits from TinyUSB HID definitions.
-    const bool shift =
-        (report->modifier & (KEYBOARD_MODIFIER_LEFTSHIFT | KEYBOARD_MODIFIER_RIGHTSHIFT)) != 0;
-    const bool ctrl =
-        (report->modifier & (KEYBOARD_MODIFIER_LEFTCTRL | KEYBOARD_MODIFIER_RIGHTCTRL)) != 0;
-
-    for (uint32_t i = 0; i < 6; i++) {
-        uint8_t keycode = report->keycode[i];
-        if (keycode == 0) {
-            continue;
-        }
-
-        // Only emit newly pressed keys.
-        if (neo1_usb_is_key_in_report(&g_prev_report, keycode)) {
-            continue;
-        }
-
-        switch (keycode) {
-            case HID_KEY_F12:
-                neo1_usb_emit_action(NEO1_USB_ACTION_TOGGLE_VIDEO_ASPECT);
-                break;
-
-            case HID_KEY_ENTER:
-                neo1_usb_emit_char('\r');
-                break;
-
-            case HID_KEY_BACKSPACE:
-                neo1_usb_emit_char(0x08);
-                break;
-
-            case HID_KEY_TAB:
-                neo1_usb_emit_char('\t');
-                break;
-
-            case HID_KEY_SPACE:
-                neo1_usb_emit_char(' ');
-                break;
-
-            default: {
-                if (keycode < 128) {
-                    uint8_t ch = keycode2ascii[keycode][shift ? 1 : 0];
-                    if (ch) {
-                        // Ctrl-modified letters map to ASCII control range.
-                        if (ctrl) {
-                            uint8_t upper = (uint8_t)toupper((int)ch);
-                            if ((upper >= 'A') && (upper <= 'Z')) {
-                                ch = (uint8_t)(upper - '@');
-                            }
-                        }
-                        neo1_usb_emit_char(ch);
-                    }
-                }
-                break;
-            }
-        }
-    }
-
-    g_prev_report = *report;
 }
 
 // -----------------------------------------------------------------------------
@@ -148,7 +73,7 @@ void neo1_usb_init(
     g_action_handler = action_handler;
     g_handler_user_data = user_data;
     g_keyboard_mounted = false;
-    memset(&g_prev_report, 0, sizeof(g_prev_report));
+    neo1_hid_keyboard_reset(&g_keyboard_decoder);
 
     board_init();
     tusb_init();
@@ -183,7 +108,7 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const* desc_re
         printf("[usb] keyboard dev=%u inst=%u\n", dev_addr, instance);
 #endif
         g_keyboard_mounted = true;
-        memset(&g_prev_report, 0, sizeof(g_prev_report));
+        neo1_hid_keyboard_reset(&g_keyboard_decoder);
         tuh_hid_receive_report(dev_addr, instance);
     }
 }
@@ -195,7 +120,7 @@ void tuh_hid_umount_cb(uint8_t dev_addr, uint8_t instance) {
 
     printf("[usb] keyboard removed\n");
     g_keyboard_mounted = false;
-    memset(&g_prev_report, 0, sizeof(g_prev_report));
+    neo1_hid_keyboard_reset(&g_keyboard_decoder);
 }
 
 // A report was received.
@@ -206,7 +131,14 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t cons
 
     if (itf_protocol == HID_ITF_PROTOCOL_KEYBOARD) {
         // Keyboard reports are parsed into ASCII/control bytes for Neo1 input.
-        neo1_usb_process_kbd_report((hid_keyboard_report_t const*) report);
+        const hid_keyboard_report_t* keyboard_report =
+            (const hid_keyboard_report_t*)report;
+        neo1_hid_keyboard_process(
+            &g_keyboard_decoder,
+            keyboard_report->modifier,
+            keyboard_report->keycode,
+            neo1_usb_hid_event,
+            NULL);
     }
 
     // Request the next report.

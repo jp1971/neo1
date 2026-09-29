@@ -83,6 +83,7 @@ elseif (NOT NEO1_PLATFORM STREQUAL "sdl" AND
 endif()
 
 add_subdirectory(src/devices)
+add_subdirectory(src/input)
 add_subdirectory(src/systems)
 if (NEO1_PLATFORM STREQUAL "sdl" OR NEO1_PLATFORM STREQUAL "fruitjam")
     add_subdirectory(src/runners)

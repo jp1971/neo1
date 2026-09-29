@@ -184,3 +184,15 @@ target_compile_options(neo1_terminal_tests PRIVATE
 target_link_libraries(neo1_terminal_tests PRIVATE neo1_terminal_grid)
 
 add_test(NAME neo1_terminal_grid_contract COMMAND neo1_terminal_tests)
+
+add_executable(neo1_hid_keyboard_tests
+    test_neo1_hid_keyboard.c
+)
+target_compile_options(neo1_hid_keyboard_tests PRIVATE
+    -Wall
+    -Wextra
+    -Werror
+)
+target_link_libraries(neo1_hid_keyboard_tests PRIVATE neo1_hid_keyboard)
+
+add_test(NAME neo1_hid_keyboard_contract COMMAND neo1_hid_keyboard_tests)
