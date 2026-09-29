@@ -58,16 +58,24 @@ through visible bus reads before instruction-cycle accounting begins. The
 adapter then preserves Neo1's deterministic software-target register baseline
 of `A=X=Y=0`, `S=$FD`, and `P=I`; it does not patch machine memory.
 
-The current Fruit Jam serial target owns one shared machine and one software
-runner. It schedules represented cycles from RP2350 monotonic time and routes
-display bytes to USB-CDC without installing a terminal renderer. The output
-adapter preserves ordinary bytes and expands Apple-1 CR to CRLF for
-serial-terminal line advancement. Its target-local console input adapter
-converts lowercase serial input to uppercase, collapses CRLF, and feeds
-accepted bytes to the shared Apple-1 keyboard latch at `$D010/$D011`. Serial
-Ctrl-R remains target lifecycle control: it resets PIA and CPU state and is not
-delivered as a key. The target attaches no MSC or VCFFA1 port, installs no RAM
-utilities or Neo1-50 entry stubs, and links no PicoDVI or physical-W65C02 code.
+The current Fruit Jam target owns one shared machine, one software runner, and
+an HSTX DVI renderer. It schedules represented cycles from RP2350 monotonic
+time. Display bytes update the shared 40x24 terminal using the same CR,
+form-feed, printable-character, and ignored-control-byte policy as physical
+Neo6502. The runner coalesces burst output into terminal publications at a
+bounded 30 Hz; core 1 renders coherent snapshots into bounded internal-SRAM
+rasters and streams 640x480 scanlines with HSTX DMA. It uses neither a full
+framebuffer nor PSRAM. The serial output adapter separately expands Apple-1 CR
+to CRLF for terminal line advancement.
+
+Fruit Jam's temporary target-local console input adapter converts lowercase
+serial input to uppercase, collapses CRLF, and feeds accepted bytes to the
+shared Apple-1 keyboard latch at `$D010/$D011`. Serial Ctrl-R remains target
+lifecycle control: it clears the terminal and resets PIA and CPU state rather
+than becoming a key. Serial Ctrl-L clears only the target-owned DVI terminal and
+likewise is not delivered as an Apple-1 key. The target attaches no MSC or
+VCFFA1 port, installs no RAM utilities or Neo1-50 entry stubs, and links no
+PicoDVI or physical-W65C02 code.
 
 ## Reset and top memory
 

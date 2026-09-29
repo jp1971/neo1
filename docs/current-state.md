@@ -1,6 +1,6 @@
 # Neo1 Current State
 
-Last updated: 2026-09-27
+Last updated: 2026-09-28
 
 This document records evidence-backed capabilities and known defects. It is a
 snapshot, not the architecture contract or a roadmap.
@@ -78,6 +78,27 @@ snapshot, not the architecture contract or a roadmap.
   CRLF in the Fruit Jam console transport; physical testing confirmed proper
   line advancement and successful interactive use of WozMon, Integer BASIC,
   and Krusader. The Fruit Jam remains flashed with Neo1-23.
+- Fruit Jam checkpoint 3 implementation and build gates passed on 2026-09-28;
+  its physical video gate is partly complete. Both personalities compile with the
+  renamed `neo1-fruitjam-23-dvi` and `neo1-fruitjam-50-dvi` presets. The
+  Fruit Jam-only HSTX renderer produces 640x480 timing from compact internal-
+  SRAM terminal rasters and scanline buffers, without PicoDVI, PSRAM, or a full
+  framebuffer. Core 0 publishes coherent snapshots of the shared 40x24
+  terminal and core 1 owns rasterization and video DMA. Physical Neo6502 and
+  Fruit Jam now share the verified CR, form-feed, printable-glyph, and ignored-
+  control-byte output policy. Serial console input and output remain enabled;
+  Ctrl-L clears only the DVI terminal and Ctrl-R resets the terminal, PIA, and
+  CPU without delivering either control to the Apple-1 keyboard latch. All
+  thirteen host tests passed; SDL-23 and SDL-50 reached WozMon headlessly; and
+  both Pico profiles built with SDK 2.3.0.
+- The 2026-09-28 Fruit Jam checkpoint-3 physical pass established a stable
+  640x480 DVI signal, correct WozMon prompt/cursor rendering, interactive
+  monitor commands, and a sustained `E000.EFFF` dump with scrolling. Early
+  prototypes exposed a stray prompt-adjacent raster mark and HSTX starvation
+  under output; direct DMA from pre-expanded text rasters removed the mark and
+  signal resets, while bounded 30 Hz snapshot publication removed sustained-
+  output starvation. Ctrl-L clear and repeated Ctrl-R reset remain to be
+  explicitly reported before the checkpoint is closed.
 - A headless Neo6502 regression passed on 2026-09-20 using the normal Neo1-23
   profile built with SDK 2.3.0 and flashed immediately before testing. Through
   the serial console, Ctrl-R reached WozMon, `$0300` accepted and returned an
@@ -240,9 +261,11 @@ block write. Writable operation requires a preferred writable image such as
 
 VCFFA1 is retained as an optional Replica 1 compatibility feature, but the
 controller and firmware compatibility work is deferred until after Fruit Jam
-checkpoint 7. The staged rework and local-only CFFA1 v1.1 ROM policy are
-recorded in `docs/vcffa1-execution-plan.md`. VACI remains the preferred
-Apple-1 storage path.
+checkpoint 7. Rich Dreher granted written permission on 2026-09-27 to use the
+CFFA1 binary in Neo1; the exact scope, attribution requirement, and staged
+integration policy are recorded in `docs/vcffa1-execution-plan.md`. The ROM
+remains in ignored local references until that workstream resumes. VACI
+remains the preferred Apple-1 storage path.
 Until that work resumes, use VCFFA1 `W` and `D` only with disposable images;
 the verified catalog/load workflow may continue to be used within the stated
 directory, bitmap, file-size, and destination limitations.
@@ -259,11 +282,25 @@ directory, bitmap, file-size, and destination limitations.
    Pico VACI file behavior.
 3. **Neo1-50 hardware behavior is build-verified only in this pass.** The dated
    physical smoke result above is for Neo1-23.
-4. **Fruit Jam physical I/O remains incomplete.** Checkpoints 2 and 2A provide
-   the shared machine, qe6502 software runner, USB-CDC display output and
-   Apple-1 console input for both personalities. HSTX video, USB-host keyboard
-   input, microSD storage, VACI, VCFFA1, and audio are not implemented.
-5. **Automated coverage remains limited.** Focused host tests cover the shared
+4. **Fruit Jam physical I/O remains incomplete.** Checkpoint 3 HSTX video is
+   implemented and has passed prompt, cursor, command, and sustained-output
+   testing, but still awaits explicit Ctrl-L and repeated-reset results.
+   USB-host keyboard input, microSD storage, VACI, VCFFA1, and audio are not
+   implemented; USB-CDC remains the temporary Apple-1 input transport.
+5. **The shared terminal is a modernized presentation model.** It provides a
+   conventional 40x24 grid with immediate row advancement and scrolling. A
+   2026-09-28 physical Replica 1 observation found that its Apple-1-style video
+   progression renders left-to-right rather than as discrete line updates.
+   Neo1 has not yet traced that behavior against the original Apple-1 circuit,
+   defined an exact compatibility contract, or implemented selectable modern
+   and period-correct modes.
+6. **Video color is currently target-defined and inconsistent.** Fruit Jam
+   explicitly renders RGB332 `$1C` green on black. Neo6502 uses PicoDVI's 1-bpp
+   encoder and is believed to appear white on black, but the two targets have
+   not received a controlled side-by-side comparison. A future presentation
+   feature should provide selectable white, green, and period-style amber/brown
+   profiles without changing 6502-visible terminal behavior.
+7. **Automated coverage remains limited.** Focused host tests cover the shared
    MSC protocol with the Pico FatFs backend, the SDL raw MSC backend and basic
    VCFFA1 separation, and execute VACI BASIC plus ordinary read/write paths on
    the software 65C02; enabled/disabled MSC and VCFFA1 address decode, the
@@ -271,32 +308,32 @@ directory, bitmap, file-size, and destination limitations.
    vectors, reset preservation, and soft-instruction cycle budgeting are also
    covered. There are still no focused tests for VACI delete, the complete
    VCFFA1 protocol/error behavior, snapshots, or broad CPU compatibility.
-6. **The VCFFA1 utility's create/delete updates are not transactional.** New
+8. **The VCFFA1 utility's create/delete updates are not transactional.** New
     file creation commits allocation bits before its directory and sapling
     index writes, without rollback. Delete may free an index block after an
     index-read error, ignores a bitmap-write error, and can then remove the
     directory entry. Failures can leak blocks or leave ProDOS metadata
     inconsistent; use a disposable image for write/delete testing.
-7. **VCFFA1 existing-file writes do not update catalog metadata.** The utility
+9. **VCFFA1 existing-file writes do not update catalog metadata.** The utility
     writes the requested bytes into an existing seedling or sapling but leaves
     its EOF, blocks-used, auxtype, and other directory fields unchanged when
     source or length differs from the entry.
-8. **The VCFFA1 utility has hard-coded filesystem limits.** Catalog, lookup,
+10. **The VCFFA1 utility has hard-coded filesystem limits.** Catalog, lookup,
     create, and delete inspect only root directory block 2. Allocation/freeing
     uses only the first bitmap block and assumes at most 4096 volume blocks;
     load/create/write support only seedling and two-data-block sapling files
     through 1024 bytes. Load destinations are not range checked.
-9. **The VCFFA1 block driver can wait forever for DRQ.** Read/write checks the
+11. **The VCFFA1 block driver can wait forever for DRQ.** Read/write checks the
     error register immediately after command issue, then polls DRQ without a
     timeout or further busy/error checks. A device or backend that never raises
     DRQ stalls the 6502 utility indefinitely.
-10. **USB-storage recovery is cold-boot verified only.** During checkpoint 9,
+12. **USB-storage recovery is cold-boot verified only.** During checkpoint 9,
     the specialized VACI BASIC `L` command returned silently to its menu when
     storage was unavailable instead of printing an error. Live reinsertion did
     not establish recovery; power cycling with the USB medium already inserted
     restored normal listing, loading, and writing. The shared register-level
     missing-media error paths remain covered by host tests.
-11. **The Pico aspect control has not been compared on the Beetronics.** F12
+13. **The Pico aspect control has not been compared on the Beetronics.** F12
     successfully switches to the centered 480-pixel widescreen-stretch
     correction on tested hardware. The 1024×768 4:3 Beetronics still needs a
     check that restart-default native 640×480 uses its full display area and

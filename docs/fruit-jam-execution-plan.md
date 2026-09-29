@@ -2,9 +2,9 @@
 
 Date: 2026-08-26
 
-Last updated: 2026-09-20
+Last updated: 2026-09-28
 
-Status: checkpoints 0 through 2A complete; checkpoint 3 is next
+Status: checkpoint 3 implementation/build complete; physical gate pending
 
 Baseline: `neo1-portable-core-complete-2026-08-26`
 
@@ -16,10 +16,10 @@ port of the Neo6502 physical-bus runner and must not turn SDL's mixed local
 interface into a speculative universal HAL.
 
 `systems/neo1-fruitjam/` is now a thin RP2350B runner around the shared machine
-and `neo1_soft_runner`. It owns timing, USB-CDC diagnostics and console input,
-and lifecycle. Later checkpoints add Fruit Jam-owned HSTX video, GPIO/PIO
-USB-host transport, and microSD transport. The shared machine continues to own
-all 6502-visible memory and device behavior.
+and `neo1_soft_runner`. It owns timing, HSTX DVI, USB-CDC diagnostics and
+console input, and lifecycle. Later checkpoints add GPIO/PIO USB-host and
+microSD transports. The shared machine continues to own all 6502-visible
+memory and device behavior.
 
 The completed foundation established Pico SDK 2.3.0 compatibility and qualified
 the software CPU without copying the Neo6502 RP2040 runner. Fruit Jam has no
@@ -58,10 +58,10 @@ copy pin numbers from an example without that comparison.
 | 64 KB address space, RAM/ROM policy, decode | `neo1_machine` | Reuse unchanged |
 | Neo1-23/Neo1-50 ROM layouts | `neo1_profile` | Reuse unchanged |
 | Apple-1 `$D010-$D013` behavior | `neo1_apple1_pia` | Reuse unchanged |
-| Software 65C02 execution and timing budget | `neo1_soft_runner` | Reused by the current serial target |
-| 40x24 character cells and scrolling | `neo1_terminal` | Attach in checkpoint 3 |
+| Software 65C02 execution and timing budget | `neo1_soft_runner` | Reused by the current Fruit Jam target |
+| 40x24 character cells and scrolling | `neo1_terminal` | Reused by checkpoint 3 HSTX renderer |
 | `$D014-$D01C` MSC protocol | `neo1_msc` | Attach in checkpoint 5 |
-| Pixel rendering and output-byte policy | Pico/SDL target code | Add Fruit Jam HSTX implementation |
+| Pixel rendering and output-byte policy | Target renderers plus shared physical-output policy | Fruit Jam HSTX implemented; physical gate pending |
 | Keyboard transport | Fruit Jam USB-CDC console, Pico TinyUSB, or SDL events | Add Fruit Jam GPIO/PIO USB host in checkpoint 4 |
 | Filesystem transport | Pico USB MSC or SDL raw image | Add Fruit Jam microSD/FatFs transport |
 | VACI RAM payload installation | Pico runner | Share only when Pico and Fruit Jam consume it |
@@ -384,7 +384,8 @@ Neo1-50 entry-stub policy.
 
 ### Completion evidence
 
-- The `neo1-fruitjam-23-serial` and `neo1-fruitjam-50-serial` presets configure
+- The then-named `neo1-fruitjam-23-serial` and
+  `neo1-fruitjam-50-serial` presets configure
   the official `adafruit_fruit_jam` board as `rp2350-arm-s` in the separate
   `build-fruitjam/` tree. Both compile with SDK 2.3.0 and Arm GNU Toolchain
   13.3.Rel1.
@@ -448,6 +449,9 @@ the shared PIA or introduce a shared input abstraction for this single consumer.
 
 ## Checkpoint 3: HSTX DVI text output
 
+Status: implementation and build gates complete on 2026-09-28; prompt, cursor,
+commands, and sustained output pass physically; control/reset checks pending
+
 ### Boundary
 
 Add a Fruit Jam-only HSTX renderer that consumes snapshots of the shared 40x24
@@ -470,10 +474,88 @@ terminal tests byte-for-byte.
 - Diagnostic output and repeated reset remain operational.
 - No PicoDVI source or configuration is used by Fruit Jam.
 
+### Implementation and build evidence
+
+- Both personalities compile with SDK 2.3.0 through the renamed
+  `neo1-fruitjam-23-dvi` and `neo1-fruitjam-50-dvi` presets.
+- The renderer retains Raspberry Pi's BSD-3-Clause notice and adapts the
+  official HSTX command-expander and ping-pong DMA sequence to the Fruit Jam's
+  board-defined negative/positive HSTX pin order.
+- A 126 MHz system clock gives the HSTX encoder an exact 25.2 MHz 640x480 pixel
+  rate. Two 122,880-byte pre-expanded text rasters and a 4 KB expansion table
+  remain in internal SRAM. DMA reads completed rows directly, so the scanout
+  IRQ does no pixel generation; no full 640x480 framebuffer or PSRAM is used.
+- The runner coalesces burst output into terminal publications at a bounded
+  30 Hz. Core 0 publishes through a three-buffer index exchange with only the
+  index protected by a cross-core critical section. Core 1 renders an inactive
+  raster and swaps it only at a frame boundary.
+- The CR, form-feed, printable-glyph, and ignored-control-byte policy moved to
+  `neo1_terminal` because physical Neo6502 and Fruit Jam are now concrete
+  consumers. Focused host coverage preserves that policy.
+- Serial output and console input remain enabled. Ctrl-L clears the DVI
+  terminal, while Ctrl-R clears it and resets the PIA and CPU; neither control
+  enters the Apple-1 keyboard latch. Fruit Jam links no PicoDVI or physical-
+  W65C02 source.
+- All thirteen host tests pass; SDL-23 and SDL-50 reach WozMon headlessly; and
+  Pico-23 and Pico-50 build with SDK 2.3.0.
+
+The remaining physical gate is Ctrl-L clear and repeated Ctrl-R reset.
+
+### Physical evidence to date
+
+- WozMon appears with a stable prompt and cursor, and simple serial commands
+  update DVI correctly.
+- A sustained `E000.EFFF` monitor dump completes and scrolls correctly after
+  moving scanout to direct DMA from pre-expanded text rasters and coalescing
+  terminal publication at 30 Hz.
+- The earlier prompt-adjacent mark, horizontal corruption, display resync, and
+  sustained-output starvation are no longer observed.
+- Explicit Ctrl-L clear and repeated Ctrl-R reset results are still required to
+  close the checkpoint.
+
 ### Rollback
 
 Revert if video requires shared-machine timing changes, an unbounded
 framebuffer, or target-specific state inside `neo1_terminal`.
+
+### Deferred video-fidelity mode
+
+Neo1's current 40x24 terminal is the modern mode: it exposes a conventional
+grid with immediate row advancement and scrolling. A physical Replica 1 test
+in September 2026 highlighted the original-style display's visibly different
+left-to-right progression rather than discrete line updates.
+
+After the first Fruit Jam release baseline, investigate a selectable
+`modern`/`period-correct` video policy. Before implementation:
+
+- trace the Apple-1 display circuit, manuals, and known-good physical behavior;
+- specify character insertion, carriage return, clearing, wrapping, bottom-of-
+  screen behavior, cursor behavior, and visible update progression;
+- determine which differences are 6502-visible terminal semantics and which
+  are presentation timing only;
+- place shared semantics above PicoDVI, HSTX, and SDL renderers rather than
+  recreating them independently in each target; and
+- retain modern mode as the default until the period-correct contract has
+  physical evidence and focused tests.
+
+This is a fidelity feature, not a prerequisite for checkpoints 4 through 7.
+
+Color profiles are a related but independent presentation feature. Fruit Jam
+currently emits RGB332 `$1C` green on black, while Neo6502's 1-bpp PicoDVI path
+is believed to appear white on black. Plan three named profiles:
+
+- `white` for the current Neo6502-style monochrome presentation;
+- `green` for the current Fruit Jam presentation; and
+- `amber` for a period-style amber/brown monitor appearance.
+
+Research the period label before calling a palette historically correct: the
+Apple-1 produces a monochrome composite signal, while the visible white, green,
+or amber color also depends on the phosphor/display connected to it. Palette
+selection must remain outside the 6502-visible machine and must not alter the
+terminal grid or byte policy. Use a target-owned key chord that is consumed by
+the platform, never delivered to `$D010/$D011`, and does not conflict with
+Ctrl-L clear, Ctrl-R reset, or Pico F12 aspect control. Choose the exact chord
+only when Pico, SDL, and Fruit Jam palette support is designed together.
 
 ## Checkpoint 4: USB keyboard through the onboard hub
 
@@ -666,9 +748,10 @@ upgrade, target bring-up, and physical I/O work in one commit.
 
 ## Recommended next step
 
-Begin checkpoint 3 with a Fruit Jam-only HSTX DVI text renderer fed by the
-shared terminal grid. Preserve serial diagnostics and reset while keeping
-USB-host keyboard input, storage, VACI, VCFFA1, and audio disabled.
+Complete checkpoint 3's physical Fruit Jam test: verify WozMon on DVI, Ctrl-L
+clear, wrap/scroll/cursor behavior, sustained output, serial input, and repeated
+Ctrl-R reset. Keep USB-host keyboard input, storage, VACI, VCFFA1, and audio
+disabled until that gate passes.
 
 After checkpoint 7 is complete and tagged, the next planned compatibility
 workstream is `docs/vcffa1-execution-plan.md`. Fruit Jam does not acquire

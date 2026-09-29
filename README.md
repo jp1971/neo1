@@ -25,11 +25,11 @@ Platform targets:
 - `systems/neo1-sdl/` — macOS/Linux host target using SDL2
 - `systems/neo1-fruitjam/` — Adafruit Fruit Jam / RP2350 software-CPU target
 
-Fruit Jam currently provides the completed checkpoint-2A serial target: both
-ROM personalities run through the shared machine and software CPU, with
-USB-CDC diagnostics, serial display output, Apple-1 console input, and lifecycle
-reset. HSTX video, USB-host keyboard input, storage, VACI, VCFFA1, and audio
-remain disabled. Their staged work is defined in the
+Fruit Jam checkpoint 3 is build-complete and awaiting its physical video gate.
+Both ROM personalities run through the shared machine and software CPU with
+HSTX DVI, USB-CDC diagnostics and console input, and lifecycle reset. USB-host
+keyboard input, storage, VACI, VCFFA1, and audio remain disabled. Their staged
+work is defined in the
 [Fruit Jam execution plan](docs/fruit-jam-execution-plan.md).
 
 ## Monitor entry points
@@ -210,19 +210,19 @@ cmake --build --preset build-neo1-pico-23-full --target clean
 The SDL target remains a development and behavioral-test target, but it is not
 part of this hardware quickstart.
 
-## Fruit Jam serial checkpoint
+## Fruit Jam HSTX DVI checkpoint
 
 Fruit Jam uses the official `adafruit_fruit_jam` SDK board definition and a
-separate `build-fruitjam/` directory. Configure and build either serial-only
+separate `build-fruitjam/` directory. Configure and build either HSTX DVI
 profile through CMake Tools or the equivalent commands:
 
 ```sh
-cmake --preset neo1-fruitjam-23-serial
-cmake --build --preset build-neo1-fruitjam-23-serial
+cmake --preset neo1-fruitjam-23-dvi
+cmake --build --preset build-neo1-fruitjam-23-dvi
 ```
 
-Use `neo1-fruitjam-50-serial` and
-`build-neo1-fruitjam-50-serial` for Neo1-50. The UF2 is written to:
+Use `neo1-fruitjam-50-dvi` and `build-neo1-fruitjam-50-dvi` for Neo1-50. The
+UF2 is written to:
 
 ```text
 build-fruitjam/systems/neo1-fruitjam/neo1.uf2
@@ -237,13 +237,20 @@ picotool load -f -x build-fruitjam/systems/neo1-fruitjam/neo1.uf2
 
 Connect the Fruit Jam through its USB-C device port and open its USB-CDC serial
 port. Startup reports the selected personality, reset vector, and first opcode
-fetch; WozMon then prints its `\` prompt. Serial Ctrl-R resets the shared PIA and
-software CPU and repeats that evidence. Printable console input, Backspace, and
-Return feed the shared Apple-1 keyboard latch; lowercase letters are converted
-to uppercase, and CR, LF, or CRLF terminal line endings each produce one Apple-1
-Return. WozMon echoes accepted input through the same serial console. Because
-Apple-1 software emits CR without LF, the Fruit Jam console renders outgoing CR
-as CRLF so ordinary serial terminals advance to a new line.
+fetch; WozMon then prints its `\` prompt on serial and DVI. The HSTX renderer
+produces a 640x480 signal and renders the shared 40x24 terminal without a full
+framebuffer or PSRAM. It follows the physical Neo6502 byte policy: CR advances
+to a new row, form feed clears, printable ASCII draws a glyph, and other control
+bytes are ignored. Serial Ctrl-R resets the shared terminal, PIA, and software
+CPU and repeats the startup evidence. Serial Ctrl-L clears only the DVI
+terminal; neither lifecycle control is delivered to the Apple-1 keyboard latch.
+
+Printable console input, Backspace, and Return feed the shared Apple-1 keyboard
+latch; lowercase letters are converted to uppercase, and CR, LF, or CRLF
+terminal line endings each produce one Apple-1 Return. WozMon echoes accepted
+input through the same serial console. Because Apple-1 software emits CR without
+LF, the serial transport expands outgoing CR to CRLF for ordinary terminals;
+that transport-only expansion does not alter the DVI terminal policy.
 
 ## Host storage tests
 
@@ -370,7 +377,8 @@ at `$AFF0-$AFFF`. VCFFA1 is an optional Replica 1 compatibility feature; VACI
 is the preferred Apple-1-oriented storage interface. The current VCFFA1
 implementation is retained for compatibility while its reliability work is
 deferred until the Fruit Jam release baseline is complete. The planned path to
-the original CFFA1 v1.1 user experience, including the local-only ROM policy,
+the original CFFA1 v1.1 user experience, including the permission-recorded ROM
+inclusion policy,
 is recorded in the [VCFFA1 compatibility plan](docs/vcffa1-execution-plan.md).
 
 - Prefers writable `CFFA1RW.PO` or `CFFA1RW.HDV` images.
@@ -420,7 +428,7 @@ ledger.
 - `docs/architecture.md` — stable 6502-visible memory and device contracts
 - `docs/current-state.md` — verified capabilities, known defects, and dated test evidence
 - `docs/fruit-jam-execution-plan.md` — active Fruit Jam checkpoint plan
-- `docs/vcffa1-execution-plan.md` — deferred CFFA1 v1.1 compatibility plan and ROM policy
+- `docs/vcffa1-execution-plan.md` — deferred CFFA1 v1.1 compatibility plan and permission record
 - `docs/neo1-milestone-plan.md` — historical overall milestone plan (VACI track)
 - `docs/vcffa1-v0-baseline.md` — dated VCFFA1 V0 smoke-test log
 - `docs/neo1-sdl-emulator-plan.md` — SDL experiment plan; verify its claims against current code
