@@ -2,7 +2,8 @@
 
 Date: 2026-09-27
 
-Status: planned and deferred until the Fruit Jam execution plan is complete
+Status: planned and deferred until the Fruit Jam execution plan is complete;
+CFFA1 binary-use permission recorded on 2026-09-27
 
 Starting baseline: `9899eef` (`feat(pico): add runtime video aspect correction`)
 
@@ -31,13 +32,20 @@ media-backend use case.
 
 ## Firmware and reference-material policy
 
-Rich Dreher has been asked for permission to redistribute the CFFA1 v1.1
-firmware. Until that permission and its conditions are recorded:
+On 2026-09-27, Rich Dreher gave Jameson explicit written permission to use the
+CFFA1 binary in Neo1: “you have my permission to use the CFFA1 binary to add to
+your project.” This resolves whether the unmodified firmware binary may be
+added to Neo1. It does not explicitly grant permission to modify or relicense
+the ROM, or to redistribute the source archive, manual, or supplied disk
+images independently.
+
+Until the deferred VCFFA1 workstream deliberately adds the authorized artifact
+with its provenance and attribution:
 
 - the original ROM, source archive, manual, disk images, and extracted files
   remain under ignored local `ref/` paths;
 - no ROM bytes, ROM-derived C array/header, archive, manual, or supplied disk
-  image may be staged or committed;
+  image is staged as part of the current Fruit Jam work;
 - no test may silently download the firmware;
 - an optional local ROM test must report `SKIP` with a useful path hint when
   the fixture is absent;
@@ -151,12 +159,15 @@ not be expanded into a second CFFA1 firmware implementation.
 
 ## Checkpoint 0: permission record and reproducible local fixture
 
+Status: binary-use permission recorded on 2026-09-27; fixture plumbing deferred
+
 ### Boundary
 
-Record Rich Dreher's response when received, including what may be distributed,
-modified, embedded, and sublicensed. Separately add an optional local-fixture
-configuration that accepts a user-supplied v1.1 ROM without adding its bytes to
-the repository.
+Preserve Rich Dreher's permission record and its exact scope: the CFFA1 binary
+may be used and added to Neo1, while modification, relicensing, and unrelated
+reference artifacts were not addressed. Separately add an optional local-
+fixture configuration before deciding how the authorized binary enters normal
+builds.
 
 This checkpoint does not alter memory decode or runtime behavior.
 
@@ -391,25 +402,14 @@ W65C02 stuck indefinitely.
 
 ### Boundary
 
-Resolve the permission outcome without changing controller semantics.
+Apply the recorded permission without changing controller semantics:
 
-If redistribution is granted:
-
-- preserve the exact permission/license notice and attribution;
-- commit only the specifically authorized artifacts;
-- document whether modification is permitted;
+- preserve the permission notice and Rich Dreher/R&D Automation attribution;
+- commit only the specifically authorized, unmodified CFFA1 binary artifact;
+- do not describe the binary as relicensed or modification-authorized;
 - make the checked-in ROM reproducible and hash-verified; and
 - enable the CFFA1 user experience only in profiles whose memory map and media
   backend have passed the physical gate.
-
-If redistribution is denied or remains unresolved:
-
-- keep the ROM as an explicit user-supplied optional fixture;
-- keep normal builds redistributable and functional without it;
-- describe those builds as providing the VCFFA1 controller or transitional
-  utility, not the full CFFA1 firmware experience; and
-- do not publish ROM-bearing UF2, ELF, test logs containing ROM dumps, or
-  derived source artifacts.
 
 ### Acceptance gate
 
@@ -458,8 +458,9 @@ in `docs/current-state.md`; writes and deletes require disposable images.
 
 - Local, ignored `ref/cffa1/CFFA1_cdromv1.1.zip`: original v1.1 manual,
   firmware binary, API equates, firmware source, CPLD artifacts, and sample
-  images used to establish the planning contract. These files are evidence,
-  not repository inputs until permission is resolved.
+  images used to establish the planning contract. Permission covers adding the
+  binary to Neo1; the other archive contents remain local evidence unless their
+  inclusion is separately authorized.
 - [POM1 repository](https://github.com/habib256/POM1): secondary behavioral
   comparison and integration example.
 - [POM1 CFFA1 controller](https://github.com/habib256/POM1/blob/main/src/CFFA1.cpp)
