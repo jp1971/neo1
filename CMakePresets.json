@@ -136,7 +136,7 @@
     {
       "name": "neo1-fruitjam-23-dvi",
       "displayName": "Neo1 Fruit Jam 23 DVI",
-      "description": "Fruit Jam Neo1-23 with HSTX DVI and serial console; USB-host input and storage disabled.",
+      "description": "Fruit Jam Neo1-23 with HSTX DVI, USB-host keyboard, and serial fallback; storage disabled.",
       "inherits": "base-fruitjam",
       "cacheVariables": {
         "NEO1_PERSONALITY": "23"
@@ -145,7 +145,7 @@
     {
       "name": "neo1-fruitjam-50-dvi",
       "displayName": "Neo1 Fruit Jam 50 DVI",
-      "description": "Fruit Jam Neo1-50 with HSTX DVI and serial console; USB-host input and storage disabled.",
+      "description": "Fruit Jam Neo1-50 with HSTX DVI, USB-host keyboard, and serial fallback; storage disabled.",
       "inherits": "base-fruitjam",
       "cacheVariables": {
         "NEO1_PERSONALITY": "50"

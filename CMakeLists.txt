@@ -35,6 +35,11 @@ if (NEO1_PLATFORM STREQUAL "pico" OR NEO1_PLATFORM STREQUAL "fruitjam")
         set(PICO_TINYUSB_PATH "${CMAKE_CURRENT_LIST_DIR}/lib/tinyusb")
     else()
         set(PICO_BOARD adafruit_fruit_jam CACHE STRING "Pico SDK board")
+        # Pico SDK's TinyUSB integration discovers Pico-PIO-USB during
+        # pico_sdk_init(). Fruit Jam uses native USB as a CDC device and this
+        # pinned PIO implementation as host root port 1.
+        set(PICO_PIO_USB_PATH
+            "${CMAKE_CURRENT_LIST_DIR}/lib/Pico-PIO-USB")
     endif()
     include(pico_sdk_import.cmake)
 endif()

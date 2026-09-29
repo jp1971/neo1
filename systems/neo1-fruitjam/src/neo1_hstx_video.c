@@ -71,6 +71,11 @@ enum {
     NEO1_VIDEO_FONT_WIDTH = 8,
     NEO1_VIDEO_FONT_HEIGHT = 8,
     NEO1_VIDEO_CELL_WIDTH = 16,
+    NEO1_VIDEO_CORRECTED_CELL_WIDTH = 12,
+    NEO1_VIDEO_CORRECTED_TEXT_WIDTH =
+        NEO1_TERM_COLS * NEO1_VIDEO_CORRECTED_CELL_WIDTH,
+    NEO1_VIDEO_CORRECTED_LEFT =
+        (NEO1_VIDEO_H_ACTIVE - NEO1_VIDEO_CORRECTED_TEXT_WIDTH) / 2,
     NEO1_VIDEO_CELL_HEIGHT = 16,
     NEO1_VIDEO_TEXT_HEIGHT = NEO1_TERM_ROWS * NEO1_VIDEO_CELL_HEIGHT,
     NEO1_VIDEO_TEXT_TOP = (NEO1_VIDEO_V_ACTIVE - NEO1_VIDEO_TEXT_HEIGHT) / 2,
@@ -151,8 +156,12 @@ static volatile uint32_t g_pending_raster;
 static volatile bool g_raster_pending;
 static volatile bool g_cursor_refresh;
 static volatile uint32_t g_frame_counter;
+// Protected by g_terminal_publication_lock because F12 is handled on core 0
+// while raster generation runs on core 1.
+static bool g_widescreen_correction_requested;
 
 static uint32_t g_pixel_expand[256][4];
+static uint32_t g_pixel_expand_corrected[256][3];
 static uint32_t g_blank_line[NEO1_VIDEO_H_ACTIVE / sizeof(uint32_t)];
 
 static int g_dma_ping;
@@ -166,21 +175,36 @@ static void neo1_video_build_expansion_table(void) {
     const uint8_t foreground = 0x1Cu;
     for (uint32_t bits = 0; bits < 256; ++bits) {
         uint8_t* pixels = (uint8_t*)g_pixel_expand[bits];
+        uint8_t* corrected = (uint8_t*)g_pixel_expand_corrected[bits];
         for (uint32_t pixel = 0; pixel < NEO1_VIDEO_FONT_WIDTH; ++pixel) {
             const uint8_t color = (bits & (1u << pixel)) ? foreground : 0;
             pixels[pixel * 2] = color;
             pixels[pixel * 2 + 1] = color;
+
+            const uint32_t first =
+                (pixel * NEO1_VIDEO_CORRECTED_CELL_WIDTH) /
+                NEO1_VIDEO_FONT_WIDTH;
+            const uint32_t end =
+                ((pixel + 1u) * NEO1_VIDEO_CORRECTED_CELL_WIDTH) /
+                NEO1_VIDEO_FONT_WIDTH;
+            for (uint32_t dst = first; dst < end; ++dst) {
+                corrected[dst] = color;
+            }
         }
     }
 }
 
 static void neo1_video_render_raster(uint32_t raster_index,
                                      const neo1_terminal_t* term,
-                                     bool cursor_on) {
+                                     bool cursor_on,
+                                     bool widescreen_correction) {
     for (uint32_t row = 0; row < NEO1_TERM_ROWS; ++row) {
         for (uint32_t glyph_row = 0; glyph_row < NEO1_VIDEO_FONT_HEIGHT; ++glyph_row) {
             uint32_t* dst = g_rasters[raster_index]
                                      [row * NEO1_VIDEO_FONT_HEIGHT + glyph_row];
+            if (widescreen_correction) {
+                memset(dst, 0, NEO1_VIDEO_H_ACTIVE);
+            }
             for (uint32_t col = 0; col < NEO1_TERM_COLS; ++col) {
                 uint8_t ch = term->chars[row][col] & 0x7Fu;
                 if (cursor_on && term->cursor_x == col && term->cursor_y == row) {
@@ -188,11 +212,21 @@ static void neo1_video_render_raster(uint32_t raster_index,
                 }
                 const uint8_t bits = apple1_vid[
                     (uint32_t)ch * NEO1_VIDEO_FONT_HEIGHT + glyph_row];
-                const uint32_t* expanded = g_pixel_expand[bits];
-                dst[col * 4u + 0u] = expanded[0];
-                dst[col * 4u + 1u] = expanded[1];
-                dst[col * 4u + 2u] = expanded[2];
-                dst[col * 4u + 3u] = expanded[3];
+                if (widescreen_correction) {
+                    const uint32_t* expanded = g_pixel_expand_corrected[bits];
+                    const uint32_t word =
+                        (NEO1_VIDEO_CORRECTED_LEFT / sizeof(uint32_t)) +
+                        col * 3u;
+                    dst[word + 0u] = expanded[0];
+                    dst[word + 1u] = expanded[1];
+                    dst[word + 2u] = expanded[2];
+                } else {
+                    const uint32_t* expanded = g_pixel_expand[bits];
+                    dst[col * 4u + 0u] = expanded[0];
+                    dst[col * 4u + 1u] = expanded[1];
+                    dst[col * 4u + 2u] = expanded[2];
+                    dst[col * 4u + 3u] = expanded[3];
+                }
             }
         }
     }
@@ -346,16 +380,24 @@ static void __not_in_flash_func(neo1_hstx_video_core1)(void) {
     neo1_video_configure_hstx();
     neo1_video_configure_dma();
     sem_release(&g_video_ready);
+    bool rendered_widescreen_correction = false;
 
     while (true) {
         const bool terminal_changed = neo1_video_accept_terminal();
+
+        critical_section_enter_blocking(&g_terminal_publication_lock);
+        const bool widescreen_correction =
+            g_widescreen_correction_requested;
+        critical_section_exit(&g_terminal_publication_lock);
+        const bool aspect_changed =
+            widescreen_correction != rendered_widescreen_correction;
 
         const uint32_t interrupt_state = save_and_disable_interrupts();
         const bool cursor_changed = g_cursor_refresh;
         g_cursor_refresh = false;
         restore_interrupts(interrupt_state);
 
-        if (terminal_changed || cursor_changed) {
+        if (terminal_changed || cursor_changed || aspect_changed) {
             const uint32_t state = save_and_disable_interrupts();
             const uint32_t target = 1u - g_active_raster;
             g_raster_pending = false;
@@ -366,7 +408,9 @@ static void __not_in_flash_func(neo1_hstx_video_core1)(void) {
             neo1_video_render_raster(
                 target,
                 &g_terminal_buffers[g_front_terminal_index],
-                cursor_on);
+                cursor_on,
+                widescreen_correction);
+            rendered_widescreen_correction = widescreen_correction;
 
             const uint32_t publish_state = save_and_disable_interrupts();
             g_pending_raster = target;
@@ -398,16 +442,27 @@ bool neo1_hstx_video_init(const neo1_terminal_t* term) {
     g_raster_pending = false;
     g_cursor_refresh = false;
     g_frame_counter = 0;
+    g_widescreen_correction_requested = false;
     g_next_completed_is_pong = false;
     g_v_scanline = 2;
     g_vactive_cmdlist_posted = false;
 
     neo1_video_build_expansion_table();
-    neo1_video_render_raster(0, term, true);
+    neo1_video_render_raster(0, term, true, false);
 
     multicore_launch_core1(neo1_hstx_video_core1);
     sem_acquire_blocking(&g_video_ready);
     return true;
+}
+
+bool neo1_hstx_video_toggle_widescreen_correction(void) {
+    critical_section_enter_blocking(&g_terminal_publication_lock);
+    g_widescreen_correction_requested =
+        !g_widescreen_correction_requested;
+    const bool requested = g_widescreen_correction_requested;
+    critical_section_exit(&g_terminal_publication_lock);
+    __sev();
+    return requested;
 }
 
 void neo1_hstx_video_set_terminal(const neo1_terminal_t* term) {
